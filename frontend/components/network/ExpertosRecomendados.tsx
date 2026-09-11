@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { NETWORK_ENABLED, PUEDE_USAR_EJEMPLOS } from '@/lib/networkFlag';
 
 // ─── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -329,11 +330,20 @@ interface ExpertosRecomendadosProps {
 export default function ExpertosRecomendados({ categoria }: ExpertosRecomendadosProps) {
   const [tab, setTab] = useState<'patrocinados' | 'top'>('patrocinados');
   const cfg = CONFIG[categoria];
-  const todos = EXPERTOS_MOCK[categoria] ?? [];
+
+  // La red de expertos aún no existe: no hay backend ni un solo experto real.
+  // Hasta que lo haya, esta sección no se pinta. Lo que se mostraba eran
+  // despachos inventados con insignia de verificado y reseñas fabricadas, sin
+  // aviso de que fueran ejemplos. Ver lib/networkFlag.ts.
+  const todos = PUEDE_USAR_EJEMPLOS ? (EXPERTOS_MOCK[categoria] ?? []) : [];
 
   const patrocinados = todos.filter(e => e.es_patrocinado);
   const organicos    = todos.filter(e => !e.es_patrocinado).sort((a, b) => b.rating - a.rating);
   const visibles     = tab === 'patrocinados' ? patrocinados : organicos;
+
+  // Sin red activa o sin expertos que mostrar, la sección desaparece. Un
+  // apartado vacío de "expertos recomendados" promete algo que no hay.
+  if (!NETWORK_ENABLED || todos.length === 0) return null;
 
   return (
     <section className="mt-10 no-print">
@@ -352,16 +362,6 @@ export default function ExpertosRecomendados({ categoria }: ExpertosRecomendados
           <h3 className="text-white font-extrabold text-xl leading-tight mb-1">{cfg.titulo}</h3>
           <p className="text-white/40 text-sm max-w-xl">{cfg.subtitulo}</p>
         </div>
-        {/* CTA ir a la red completa */}
-        <Link
-          href="/network"
-          className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all duration-200 ${cfg.accentBg} ${cfg.accentBorder} ${cfg.accentText} hover:brightness-110`}
-        >
-          Ver toda la Red
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-          </svg>
-        </Link>
       </div>
 
       {/* ── Tabs ────────────────────────────────────────────────────────────── */}
@@ -399,9 +399,6 @@ export default function ExpertosRecomendados({ categoria }: ExpertosRecomendados
         <div className={`rounded-2xl border ${cfg.accentBorder} ${cfg.accentBg} p-8 text-center`}>
           <p className={`${cfg.accentText} font-bold mb-1`}>¡Sé el primero!</p>
           <p className="text-white/40 text-sm">Aún no hay expertos destacados en esta categoría.</p>
-          <Link href="/network/registro" className={`inline-block mt-4 px-5 py-2 rounded-xl text-xs font-bold border ${cfg.accentBorder} ${cfg.accentText} ${cfg.accentBg} hover:brightness-110 transition-all`}>
-            Registrarme como proveedor →
-          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -418,12 +415,6 @@ export default function ExpertosRecomendados({ categoria }: ExpertosRecomendados
           <p className="text-white/30 text-xs mt-0.5">Postúlate y llega a miles de emprendedores que necesitan tus servicios.</p>
         </div>
         <div className="flex gap-2 flex-shrink-0">
-          <Link
-            href="/network/registro"
-            className={`px-5 py-2.5 rounded-xl text-xs font-bold border transition-all ${cfg.accentBg} ${cfg.accentBorder} ${cfg.accentText} hover:brightness-110`}
-          >
-            Crear mi perfil gratis
-          </Link>
         </div>
       </div>
     </section>

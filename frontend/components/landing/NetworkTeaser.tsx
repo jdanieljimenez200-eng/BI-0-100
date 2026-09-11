@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { NETWORK_ENABLED } from '@/lib/networkFlag';
 import Link from 'next/link';
 
 // ─── Lucide-style inline SVG icons (sin dependencia externa) ──────────────────
@@ -137,6 +138,8 @@ const EXPERTOS = [
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function NetworkTeaser() {
+  // La red de expertos todavía no existe (ver lib/networkFlag.ts). Hasta que
+  // haya profesionales reales dados de alta, la landing no la anuncia.
   const [step, setStep] = useState<'analisis' | 'conectando' | 'expertos'>('analisis');
   const [expertosCount, setExpertosCount] = useState(0);
   const [mounted, setMounted] = useState(false);
@@ -158,6 +161,11 @@ export default function NetworkTeaser() {
     }, 320);
     return () => clearInterval(id);
   }, [step]);
+
+  // Los hooks van arriba (no pueden ir tras un return condicional), así que el
+  // corte se hace aquí: sin red activa, la landing no anuncia una sección de
+  // expertos que todavía no se puede usar.
+  if (!NETWORK_ENABLED) return null;
 
   return (
     <section className="relative py-24 md:py-32 overflow-hidden border-t border-white/[0.05]">
@@ -435,12 +443,6 @@ export default function NetworkTeaser() {
               <IconUsers />
               Analizar y ver expertos
               <IconArrowRight />
-            </Link>
-            <Link
-              href="/network/registro"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-[14px] border border-white/[0.1] text-white/60 hover:border-white/20 hover:text-white hover:bg-white/[0.04] transition-all duration-200"
-            >
-              Soy experto — publicar mi perfil
             </Link>
           </div>
         </div>
