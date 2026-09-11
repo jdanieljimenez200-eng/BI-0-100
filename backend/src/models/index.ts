@@ -30,3 +30,6 @@ export { StripeEvent } from './StripeEvent';
 export { TemaUsuario, type UIConfig } from './TemaUsuario';
 export { PerfilAnalitico } from './PerfilAnalitico';
 export { PerfilVideo } from './PerfilVideo';
+export { Experto, type CategoriaExperto, type EstadoExperto } from './Experto';
+export { ResenaExperto, type EstadoResena } from './ResenaExperto';
+export { PatrocinioExperto, type EstadoPatrocinio } from './PatrocinioExperto';

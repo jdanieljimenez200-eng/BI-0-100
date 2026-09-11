@@ -32,6 +32,9 @@ import { TemaUsuario } from '../models/TemaUsuario';
 import { PerfilAnalitico } from '../models/PerfilAnalitico';
 import { PerfilVideo } from '../models/PerfilVideo';
 import { AuditoriaHerramienta } from '../models/AuditoriaHerramienta';
+import { Experto } from '../models/Experto';
+import { ResenaExperto } from '../models/ResenaExperto';
+import { PatrocinioExperto } from '../models/PatrocinioExperto';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -72,6 +75,9 @@ function buildDataSourceOptions() {
       TemaUsuario,
       PerfilAnalitico,
       PerfilVideo,
+      Experto,
+      ResenaExperto,
+      PatrocinioExperto,
     ],
     migrations: [__dirname + '/../migrations/*.{js,ts}'],
     // synchronize SOLO en dev, y desactivable con TYPEORM_SYNCHRONIZE=false
