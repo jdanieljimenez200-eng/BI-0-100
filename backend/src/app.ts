@@ -27,7 +27,6 @@ import configRoutes from './routes/config';
 import marcaRoutes from './routes/marca';
 import equipoRoutes from './routes/equipo';
 import adminRoutes from './routes/admin';
-import analyticsRoutes from './routes/analytics';
 import eventsRoutes from './routes/events';
 import calendarioRoutes from './routes/calendario';
 import clientesRoutes from './routes/clientes';
@@ -38,10 +37,8 @@ import inventarioRoutes from './routes/inventario';
 import nominaRoutes from './routes/nomina';
 import posRoutes from './routes/pos';
 import negociosRoutes from './routes/negocios';
-import metasRoutes from './routes/metas';
 import verticalRoutes from './routes/vertical';
 import ventasRoutes from './routes/ventas';
-import perfilesRoutes from './routes/perfiles';
 
 const app = express();
 app.set('trust proxy', 1); // Railway/Vercel/Nginx: IP real para rate-limit
@@ -137,21 +134,24 @@ app.use('/api/config', configRoutes);
 app.use('/api/marca', marcaRoutes);
 app.use('/api/equipo', equipoRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/analytics', analyticsRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/calendario', calendarioRoutes);
 app.use('/api/clientes', clientesRoutes);
 app.use('/api/contabilidad', contabilidadRoutes);
 app.use('/api/reportes', reportesRoutes);
+
+// Retirados en la auditoría de 2026-09: /api/metas, /api/perfiles y
+// /api/analytics eran 1.039 líneas de rutas que NINGUNA pantalla llamaba, sin
+// tests y sin uso interno. Sus tablas (metas_negocio, perfiles_analiticos,
+// perfiles_video) y sus entidades siguen intactas: volver a montarlos es
+// reimportar la ruta si algún día se construye la interfaz.
 app.use('/api/cotizaciones', cotizacionesRoutes);
 app.use('/api/inventario', inventarioRoutes);
 app.use('/api/nomina', nominaRoutes);
 app.use('/api/pos', posRoutes);
 app.use('/api/negocios', negociosRoutes);
-app.use('/api/metas', metasRoutes);
 app.use('/api/vertical', verticalRoutes);
 app.use('/api/ventas', ventasRoutes);
-app.use('/api/perfiles', perfilesRoutes);
 
 // 404 Handler
 app.use((req: Request, res: Response): void => {

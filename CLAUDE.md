@@ -101,7 +101,7 @@ Este documento es la **fuente única de verdad técnica** para Claude, Antigravi
 
 ---
 
-## 6. Catálogo de Rutas Backend (26 Módulos API)
+## 6. Catálogo de Rutas Backend (24 Módulos API)
 
 Montadas en `backend/src/app.ts`:
 1. `/api/auth`: Signup, login (rate limited), refresh token, logout, me, reset-password.
@@ -120,16 +120,14 @@ Montadas en `backend/src/app.ts`:
 14. `/api/contabilidad`: Importación de transacciones CSV, conciliación y deduplicación.
 15. `/api/nomina`: Registro y cálculo de nóminas para colaboradores.
 16. `/api/clientes`: Directorio de clientes y CRM básico.
-17. `/api/metas`: Seguimiento de objetivos OKR y KPIs del negocio.
-18. `/api/negocios`: Perfil empresarial y configuración de actividad económica.
-19. `/api/calendario`: Cronogramas y eventos (cálculo de días exacto sin desfase UTC).
-20. `/api/vertical`: Módulo de adaptación vertical de la industria.
-21. `/api/ventas`: Análisis de ventas, transcripción de voz (Whisper) y tips autenticados.
-22. `/api/perfiles`: Gestión de perfiles de usuario.
-23. `/api/admin`: Métricas y paneles de administración de la plataforma (`requireAdmin`).
-24. `/api/analytics`: Métricas de uso y telemetría de eventos.
-25. `/api/events`: Server-Sent Events (SSE) en tiempo real con validación JTI en Redis.
-26. `/api/config`: Parámetros públicos de configuración de la aplicación.
+17. `/api/negocios`: Perfil empresarial y configuración de actividad económica.
+18. `/api/calendario`: Cronogramas y eventos (cálculo de días exacto sin desfase UTC).
+19. `/api/vertical`: Módulo de adaptación vertical de la industria.
+20. `/api/ventas`: Análisis de ventas, transcripción de voz (Whisper) y tips autenticados.
+21. `/api/admin`: Métricas y paneles de administración de la plataforma (`requireAdmin`).
+22. `/api/events`: Server-Sent Events (SSE) en tiempo real con validación JTI en Redis.
+23. `/api/reportes`: Área de reportes de Contabilidad — series de ventas, ranking de productos, almacén, clientes, horarios y conversión de cotizaciones. Agregación en SQL; hereda el gating de `contabilidad`.
+24. `/api/config`: Parámetros públicos de configuración de la aplicación.
 - `/health`: Estado de salud de PostgreSQL, Redis, Uptime y Worker in-process.
 - `/metrics`: Endpoint de Prometheus protegido con token Bearer en producción.
 
