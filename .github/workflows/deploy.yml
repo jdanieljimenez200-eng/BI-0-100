@@ -1,0 +1,98 @@
+name: Deploy
+
+# El deploy NO se dispara con el push: espera a que el workflow "CI" termine
+# en verde sobre main. Así un commit que rompe typecheck, tests o el build de
+# Docker nunca llega a Railway ni a Vercel.
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+  # Escape hatch manual (re-deploy sin push, rollback, etc.)
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  # ─── Gate: solo continuar si CI pasó ────────────────────────────────────────
+  gate:
+    name: Verify CI status
+    runs-on: ubuntu-latest
+    # workflow_dispatch no trae conclusion: se permite explícitamente.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: CI green — proceeding
+        run: |
+          echo "trigger=${{ github.event_name }}"
+          echo "conclusion=${{ github.event.workflow_run.conclusion || 'n/a' }}"
+          echo "sha=${{ github.event.workflow_run.head_sha || github.sha }}"
+
+  # ─── Deploy Backend → Railway ────────────────────────────────────────────────
+  deploy-backend:
+    name: Deploy Backend → Railway
+    runs-on: ubuntu-latest
+    environment: production
+    needs: gate
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Desplegar exactamente el commit que CI validó, no el HEAD actual.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@3
+
+      - name: Deploy to Railway
+        working-directory: backend
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service backend --detach
+
+  # ─── Deploy Frontend → Vercel ────────────────────────────────────────────────
+  # NOTA: si la integración GitHub de Vercel está activa, desactiva su
+  # auto-deploy (vercel.json → "git": { "deploymentEnabled": false } o en el
+  # dashboard) para que este job sea la única vía y el gate de CI no se salte.
+  deploy-frontend:
+    name: Deploy Frontend → Vercel
+    runs-on: ubuntu-latest
+    environment: production
+    needs: deploy-backend
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel environment (production)
+        working-directory: frontend
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Build (Vercel)
+        working-directory: frontend
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel build --prod --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Deploy prebuilt output
+        working-directory: frontend
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}" --yes

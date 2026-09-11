@@ -1,0 +1,16 @@
+{
+  "key": "oftalmologo",
+  "nombre": "Consultorio Oftalmológico",
+  "entidad_singular": "Paciente",
+  "entidad_plural": "Pacientes",
+  "tema": { "acento": "#0EA5E9", "icono": "eye" },
+  "herramientas": ["agenda", "historial_clinico", "receta_optica", "documentos"],
+  "campos_expediente": [
+    { "id": "fecha_nacimiento", "label": "Fecha de nacimiento", "tipo": "date" },
+    { "id": "agudeza_visual_od", "label": "Agudeza visual OD", "tipo": "text" },
+    { "id": "agudeza_visual_oi", "label": "Agudeza visual OI", "tipo": "text" },
+    { "id": "presion_intraocular", "label": "PIO (mmHg)", "tipo": "number" },
+    { "id": "usa_lentes", "label": "Usa lentes", "tipo": "boolean" },
+    { "id": "antecedentes", "label": "Antecedentes", "tipo": "textarea" }
+  ]
+}

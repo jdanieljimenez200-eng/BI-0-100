@@ -1,0 +1,26 @@
+# Dependencias y compilación
+node_modules/
+dist/
+.tsbuildinfo
+*.tsbuildinfo
+
+# Secretos y credenciales
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Git e IDEs
+.git/
+.github/
+.vscode/
+.idea/
+
+# Tests y cobertura
+coverage/
+src/__tests__/
+
+# Logs y temporales
+*.log
+npm-debug.log*

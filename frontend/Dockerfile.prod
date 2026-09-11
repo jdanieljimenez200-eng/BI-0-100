@@ -1,0 +1,58 @@
+# ─── Stage 1: Build ──────────────────────────────────────────────────────────
+# Next.js 16 exige Node >= 20.9: node:18 hace fallar el build.
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Build-time env var for the API URL. Las NEXT_PUBLIC_* se hornean en el bundle
+# del cliente durante `next build`: si llega vacía, la imagen compila igual pero
+# el navegador acaba pidiendo rutas relativas del propio frontend y todas las
+# llamadas a la API fallan en runtime. Preferimos romper el build aquí.
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+RUN test -n "$NEXT_PUBLIC_API_URL" || { \
+      echo "ERROR: falta --build-arg NEXT_PUBLIC_API_URL=https://api.tu-dominio.com/api"; \
+      exit 1; \
+    }
+
+RUN npm run build
+
+# ─── Stage 2: Production runtime ─────────────────────────────────────────────
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3000
+# Docker inyecta HOSTNAME=<container id> y el server.js de standalone lo usa
+# como host de bind: sin esto el contenedor no escucha en la interfaz pública.
+ENV HOSTNAME=0.0.0.0
+
+# dumb-init para propagar señales POSIX (SIGTERM/SIGINT) y evitar procesos zombie
+RUN apk add --no-cache dumb-init
+
+# Configurar usuario no privilegiado y estructura de cache de Next.js
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001 && \
+    mkdir -p .next/cache && \
+    chown -R nextjs:nodejs /app
+
+# Standalone output de Next.js con permisos estrictos de usuario
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+EXPOSE 3000
+
+# Health check para monitoreo y orquestación
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD node -e "const p=process.env.PORT||3000;require('http').get('http://127.0.0.1:'+p+'/',(r)=>{if(r.statusCode>=500)throw new Error(r.statusCode)}).on('error',()=>{process.exit(1)})"
+
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "server.js"]

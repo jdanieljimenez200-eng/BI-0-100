@@ -1,0 +1,29 @@
+groups:
+  - name: bi0a100_alerts
+    rules:
+      - alert: BackendDown
+        expr: up{job="bi0a100-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend BI 0 A 100 no responde"
+          description: "El contenedor backend no responde a los checks de scraping de Prometheus."
+
+      - alert: HighHttp5xxRate
+        expr: sum(rate(http_requests_total{status_code=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tasa de errores 5xx superior al 5%"
+          description: "La proporción de peticiones con error HTTP 5xx supera el umbral del 5% durante más de 2 minutos."
+
+      - alert: AuthDenylistCheckFailing
+        expr: rate(auth_denylist_check_failed_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Fallo en verificación de denylist JWT (Redis no disponible)"
+          description: "La denylist de tokens revocados no pudo ser consultada en Redis. Operando en modo fail-open temporal."

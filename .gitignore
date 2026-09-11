@@ -1,0 +1,66 @@
+# Dependencias
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+dist/
+.next/
+out/
+build/
+
+# Entorno — NUNCA subir .env con secretos
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+docker-compose.override.yml
+
+# TypeScript
+*.tsbuildinfo
+
+# Artefactos pesados / dumps que NO deben versionarse
+proyecto_contexto.txt
+backup_antes_borrado.sql
+owner.demo
+
+# Volcados de esquema/tablas generados en local: exponen la estructura de la BD
+tmp_*.sql
+*.dump
+
+# Backups (incluye backups/db/*.sql)
+backups/
+
+# Scripts sensibles
+scripts/dev/*.sql
+scripts/db/
+
+# Fixtures de credenciales (en repo pero gitignored)
+tests/fixtures/*credentials*
+
+# ===== Seguridad: secretos, seeds y datos locales (NUNCA commitear) =====
+.demo-seed
+test_login.json
+*.token
+token.txt
+snippets/
+
+# Tooling/agentes ajenos al producto (no son código del proyecto)
+agency-agents/
+gsap-skills/
+ui-ux-pro-max-skill/
+5/

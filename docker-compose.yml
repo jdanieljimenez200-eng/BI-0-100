@@ -1,0 +1,145 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: bi0a100_user
+      POSTGRES_PASSWORD: bi0a100_password
+      POSTGRES_DB: bi0a100_db
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bi0a100_user -d bi0a100_db"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - bi0a100-network
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - bi0a100-network
+
+  backend:
+    build: ./backend
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://bi0a100_user:bi0a100_password@postgres:5432/bi0a100_db
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      PORT: 3001
+      # DESACTIVADO A PROPOSITO. Con synchronize activo, TypeORM considera
+      # "ajenos" todos los indices y FK creados por migraciones con nombre
+      # explicito (idx_*, uq_*, fk_*) porque las entidades no los declaran o
+      # los declaran sin nombre. `schema:log` confirma que el arranque
+      # ejecutaria 43 statements: 29 DROP INDEX + 4 DROP CONSTRAINT, es decir
+      # borraria los indices de rendimiento y renombraria las FK a FK_<hash>.
+      # Los cambios de esquema se aplican SOLO con `npm run migration:run`.
+      TYPEORM_SYNCHRONIZE: "false"
+      JWT_SECRET: dev_jwt_secret_change_me_min_32_chars_random_string
+      JWT_REFRESH_SECRET: dev_jwt_refresh_secret_change_me_min_32_chars_random
+      FRONTEND_URL: http://localhost:3000
+      # Transcripción de voz (opcional): si no está en el .env del host, la
+      # ruta /api/ventas/transcribir se declara no disponible (503).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_TRANSCRIPTION_MODEL: ${OPENAI_TRANSCRIPTION_MODEL:-whisper-1}
+      # Blindaje: nunca type-check en runtime dentro del contenedor
+      TS_NODE_TRANSPILE_ONLY: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # /health informa además del estado de Postgres y Redis. Se declara aquí
+      # y no solo en el Dockerfile para poder ajustar los tiempos sin rebuild.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - bi0a100-network
+
+  frontend:
+    build: ./frontend
+    # frontend/Dockerfile es la imagen de DESARROLLO: instala dependencias y NO
+    # ejecuta `next build`, porque los montajes de abajo (./frontend en /app y
+    # el volumen anónimo en /app/.next) taparían cualquier artefacto compilado.
+    # La imagen de producción es frontend/Dockerfile.prod.
+    command: npm run dev
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      NODE_ENV: development
+      # URL que usa el NAVEGADOR (debe ser accesible desde el host)
+      NEXT_PUBLIC_API_URL: http://localhost:3001/api
+      # URL que usa el proxy server-side del frontend dentro de la red docker
+      BACKEND_URL: http://backend:3001
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Los eventos de filesystem no se propagan por el bind mount de
+      # Docker Desktop en Windows: hace falta polling para el hot reload.
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - bi0a100-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  bi0a100-network:
+    driver: bridge

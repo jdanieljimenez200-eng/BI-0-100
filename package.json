@@ -1,0 +1,15 @@
+{
+  "name": "bi0a100-root",
+  "private": true,
+  "engines": {
+    "node": ">=20.9.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "kill-all": "npx kill-port 3000 3001",
+    "up": "docker compose up -d --build -V",
+    "down": "docker compose down",
+    "logs": "docker compose logs -f backend frontend",
+    "demo": "docker compose up -d --build -V; cd backend; npm run seed:demo"
+  }
+}

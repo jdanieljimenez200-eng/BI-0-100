@@ -1,0 +1,29 @@
+# Dependencias y artefactos de Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# Secretos y credenciales
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+
+# Git e IDEs
+.git/
+.github/
+.vscode/
+.idea/
+
+# Tests y logs
+coverage/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

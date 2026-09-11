@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─── Backend: Lint + Migraciones + Tests ────────────────────────────────────
+  backend-ci:
+    name: Backend — Lint + Migraciones + Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: bi0a100_user
+          POSTGRES_PASSWORD: bi0a100_password
+          POSTGRES_DB: bi0a100_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bi0a100_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://bi0a100_user:bi0a100_password@localhost:5432/bi0a100_db
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      JWT_SECRET: ci_jwt_secret_min_32_chars_random_string_value
+      JWT_REFRESH_SECRET: ci_jwt_refresh_secret_min_32_chars_random_string
+      # El esquema de test sale de las MIGRACIONES, no de synchronize.
+      #
+      # Con synchronize: true los tests corrían contra un esquema que producción
+      # nunca usa: las migraciones no se ejercitaban, sus índices y constraints
+      # no existían, y una entidad modificada sin su migración pasaba el CI en
+      # verde para reventar en el deploy.
+      TYPEORM_SYNCHRONIZE: 'false'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      # `npm ci` (no `npm install`) para que CI falle si el lockfile tiene
+      # deriva respecto a package.json, igual que backend/Dockerfile*.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript check (full source tree)
+        run: node --max-old-space-size=12288 ./node_modules/typescript/bin/tsc --noEmit
+
+      # Construye el esquema igual que producción. Si una migración tiene SQL
+      # inválido, el fallo aparece aquí y no en el deploy.
+      - name: Run migrations
+        run: npm run migration:run
+
+      # NOTA: aquí había un paso que usaba `schema:log` para detectar entidades
+      # modificadas sin migración. Se retiró porque no es fiable en este
+      # proyecto: las migraciones nombran las claves foráneas de forma explícita
+      # (FK_analisis_legal_usuario, …) y TypeORM, que genera nombres por hash, no
+      # las reconoce y propone borrarlas todas. Habría fallado en cada ejecución.
+      # Un test que grita en falso acaba desactivado y no protege de nada.
+      #
+      # La protección real la da el paso anterior: `migration:run` sobre una base
+      # limpia. Al implantarlo destapó dos migraciones que llevaban meses rotas.
+
+      - name: Run tests
+        run: npm test
+
+      - name: Coverage report
+        run: npm run test:coverage
+        continue-on-error: true  # No bloquea CI si coverage no alcanza umbral
+
+  # ─── Frontend: Lint + TypeCheck + Build ─────────────────────────────────────
+  frontend-ci:
+    name: Frontend — Lint + TypeCheck + Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci` (no `npm install`) para reproducir frontend/Dockerfile* y
+      # detectar deriva de lockfile en CI en lugar de en el build de imagen.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Build (verify production build)
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://placeholder.railway.app/api
+
+  # ─── Backend: Docker production build ───────────────────────────────────────
+  backend-docker:
+    name: Backend — Docker prod build
+    runs-on: ubuntu-latest
+    needs: backend-ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build production Docker image
+        run: |
+          docker build \
+            -f backend/Dockerfile.prod \
+            -t bi0a100-backend:ci \
+            ./backend

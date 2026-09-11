@@ -1,0 +1,57 @@
+# === BUILD STAGE ===
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copiar package files
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# Instalar TODAS las dependencias (incluyendo dev)
+RUN npm ci
+
+# Copiar código fuente (las migraciones viven en src/migrations y se
+# compilan a dist/migrations con el tsconfig del proyecto)
+COPY src ./src
+
+# Build TypeScript
+RUN npm run build
+
+# === PRODUCTION STAGE ===
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Instalar dumb-init para signal handling limpio.
+# ffmpeg (incluye ffprobe) para extraer frames de vídeo en el Evaluador de Pitch.
+RUN apk add --no-cache dumb-init ffmpeg
+
+# Crear usuario sin privilegios antes de crear archivos para evitar capas duplicadas por chown
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 && \
+    chown nodejs:nodejs /app
+
+# Copiar manifiestos de dependencias con usuario nodejs asignado
+COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
+
+USER nodejs
+
+# Instalar dependencias de producción directamente como usuario no privilegiado
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Copiar artefactos compilados (dist/) con usuario nodejs asignado
+COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+
+# Health check — la ruta real definida en app.ts es /health.
+# El puerto se lee de PORT (mismo default que app.ts) para que el contenedor
+# no se marque unhealthy si en producción se define un puerto distinto.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "const p=process.env.PORT||3001;require('http').get('http://127.0.0.1:'+p+'/health',(r)=>{if(r.statusCode!==200)throw new Error(r.statusCode)})"
+
+EXPOSE 3001
+
+# Usar dumb-init para propagar señales (SIGTERM/SIGINT) y evitar procesos zombie
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start app
+CMD ["node", "dist/app.js"]

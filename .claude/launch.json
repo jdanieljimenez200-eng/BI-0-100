@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "frontend/node_modules/next/dist/bin/next",
+        "dev",
+        "frontend",
+        "-p",
+        "3100"
+      ],
+      "port": 3100
+    }
+  ]
+}
