@@ -1,12 +1,15 @@
-import { Router, Response } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import jwt from 'jsonwebtoken';
 import { AppDataSource } from '../config/database';
 import { Experto } from '../models/Experto';
+import { ResenaExperto } from '../models/ResenaExperto';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireAdmin } from '../middleware/requireAdmin';
 import { ah } from '../utils/asyncHandler';
 import { logger } from '../utils/logger';
 import * as expertosService from '../services/network/expertosService';
+import * as resenasService from '../services/network/resenasService';
 
 /**
  * Red de expertos: directorio de profesionales que los usuarios consultan desde
@@ -88,6 +91,33 @@ const DirectorioQuerySchema = z.object({
 
 const UUID = z.string().uuid();
 
+const ResenaSchema = z.object({
+  puntuacion: z.number().int().min(1, 'La puntuación va de 1 a 5').max(5, 'La puntuación va de 1 a 5'),
+  comentario: texto(2000).nullable().optional(),
+});
+
+/**
+ * Reconoce al usuario si trae un token válido, y sigue adelante si no.
+ *
+ * Sirve para UNA cosa: que la ficha pública sepa marcar `es_mia` en la reseña
+ * propia y no ofrezca un botón de "valorar" que va a responder 409. No autoriza
+ * nada y no comprueba la denylist de Redis, así que **jamás** debe usarse para
+ * decidir si alguien puede leer o escribir algo. Para eso está `authenticate`.
+ */
+function sesionOpcional(req: AuthRequest, _res: Response, next: NextFunction): void {
+  const token = req.cookies?.access_token ?? req.headers.authorization?.split(' ')[1];
+  const secret = process.env.JWT_SECRET;
+  if (token && secret) {
+    try {
+      const payload = jwt.verify(token, secret, { algorithms: ['HS256'] }) as { userId?: string };
+      if (payload.userId) req.userId = payload.userId;
+    } catch {
+      // Token ausente, caducado o inválido: se sigue como visitante anónimo.
+    }
+  }
+  next();
+}
+
 /**
  * Cambios que obligan a revisar la ficha otra vez.
  *
@@ -131,9 +161,10 @@ router.get(
   })
 );
 
-/** Ficha pública. 404 también si existe pero no está aprobada. */
+/** Ficha pública, con sus reseñas publicadas. 404 si no está aprobada. */
 router.get(
   '/expertos/:id',
+  sesionOpcional,
   ah(async (req: AuthRequest, res: Response) => {
     if (!UUID.safeParse(req.params.id).success) {
       return res.status(400).json({ error: 'Identificador inválido' });
@@ -142,7 +173,33 @@ router.get(
     const ficha = await expertosService.obtenerFichaPublica(req.params.id);
     if (!ficha) return res.status(404).json({ error: 'Experto no encontrado' });
 
-    res.json({ experto: ficha });
+    const [resenas, reparto] = await Promise.all([
+      resenasService.listarPublicadas(ficha.id, req.userId),
+      resenasService.distribucion(ficha.id),
+    ]);
+
+    res.json({ experto: ficha, resenas, distribucion: reparto });
+  })
+);
+
+/** Reseñas publicadas de un experto aprobado. */
+router.get(
+  '/expertos/:id/resenas',
+  sesionOpcional,
+  ah(async (req: AuthRequest, res: Response) => {
+    if (!UUID.safeParse(req.params.id).success) {
+      return res.status(400).json({ error: 'Identificador inválido' });
+    }
+    // Se pasa por la ficha para no listar las reseñas de un experto que no
+    // está aprobado: sería una puerta lateral a fichas que no son públicas.
+    const ficha = await expertosService.obtenerFichaPublica(req.params.id);
+    if (!ficha) return res.status(404).json({ error: 'Experto no encontrado' });
+
+    const [resenas, reparto] = await Promise.all([
+      resenasService.listarPublicadas(ficha.id, req.userId),
+      resenasService.distribucion(ficha.id),
+    ]);
+    res.json({ resenas, distribucion: reparto, total: ficha.total_resenas, rating: ficha.rating });
   })
 );
 
@@ -280,6 +337,125 @@ router.delete(
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Reseñas (autenticado)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Dejar una reseña.
+ *
+ * Puede reseñar cualquier usuario con cuenta —fue la decisión de producto— con
+ * tres límites que la hacen sostenible sin contradecirla: una por persona (lo
+ * garantiza un índice único, no una comprobación que se pueda colar por una
+ * carrera), nadie se reseña a sí mismo, y el admin puede ocultar una reseña.
+ *
+ * Sin el primero, inflar el rating cuesta lo que repetir el POST, y la
+ * puntuación deja de servir para lo único que sirve: elegir a quién contratar.
+ */
+router.post(
+  '/expertos/:id/resenas',
+  ah(async (req: AuthRequest, res: Response) => {
+    if (!UUID.safeParse(req.params.id).success) {
+      return res.status(400).json({ error: 'Identificador inválido' });
+    }
+    const parsed = ResenaSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+    }
+
+    const experto = await AppDataSource.getRepository(Experto).findOne({
+      where: { id: req.params.id },
+      select: ['id', 'estado', 'usuario_id'],
+    });
+    // Mismo 404 para "no existe" y "no está aprobado": reseñar una ficha que
+    // nadie puede ver no significa nada, y el 404 no confirma que exista.
+    if (!experto || experto.estado !== 'aprobado') {
+      return res.status(404).json({ error: 'Experto no encontrado' });
+    }
+    if (experto.usuario_id && experto.usuario_id === req.userId) {
+      return res.status(403).json({ error: 'No puedes reseñar tu propia ficha' });
+    }
+
+    const repo = AppDataSource.getRepository(ResenaExperto);
+    try {
+      const resena = await repo.save(
+        repo.create({
+          experto_id: experto.id,
+          usuario_id: req.userId!,
+          puntuacion: parsed.data.puntuacion,
+          comentario: parsed.data.comentario?.trim() || null,
+          estado: 'publicada',
+        })
+      );
+      await resenasService.recalcularRating(experto.id);
+      res.status(201).json({ resena });
+    } catch (e) {
+      if ((e as { code?: string }).code === '23505') {
+        return res.status(409).json({ error: 'Ya has reseñado a este experto. Edita tu reseña.' });
+      }
+      throw e;
+    }
+  })
+);
+
+/** Editar la reseña propia. La pertenencia va en el `where`, no después. */
+router.patch(
+  '/resenas/:id',
+  ah(async (req: AuthRequest, res: Response) => {
+    if (!UUID.safeParse(req.params.id).success) {
+      return res.status(400).json({ error: 'Identificador inválido' });
+    }
+    const parsed = ResenaSchema.partial().safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+    }
+    if (parsed.data.puntuacion === undefined && parsed.data.comentario === undefined) {
+      return res.status(400).json({ error: 'No hay nada que cambiar' });
+    }
+
+    const repo = AppDataSource.getRepository(ResenaExperto);
+    const resena = await repo.findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
+    if (!resena) return res.status(404).json({ error: 'Reseña no encontrada' });
+
+    if (parsed.data.puntuacion !== undefined) resena.puntuacion = parsed.data.puntuacion;
+    if (parsed.data.comentario !== undefined) resena.comentario = parsed.data.comentario?.trim() || null;
+
+    await repo.save(resena);
+    await resenasService.recalcularRating(resena.experto_id);
+    res.json({ resena });
+  })
+);
+
+/** Retirar la reseña propia. */
+router.delete(
+  '/resenas/:id',
+  ah(async (req: AuthRequest, res: Response) => {
+    if (!UUID.safeParse(req.params.id).success) {
+      return res.status(400).json({ error: 'Identificador inválido' });
+    }
+    const repo = AppDataSource.getRepository(ResenaExperto);
+    const resena = await repo.findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
+    if (!resena) return res.status(404).json({ error: 'Reseña no encontrada' });
+
+    await repo.delete(resena.id);
+    await resenasService.recalcularRating(resena.experto_id);
+    res.json({ mensaje: 'Reseña retirada' });
+  })
+);
+
+/** Las reseñas que ha escrito el usuario, incluidas las que un admin ocultó. */
+router.get(
+  '/mis-resenas',
+  ah(async (req: AuthRequest, res: Response) => {
+    const resenas = await AppDataSource.getRepository(ResenaExperto).find({
+      where: { usuario_id: req.userId! },
+      order: { fecha_creacion: 'DESC' },
+      take: 100,
+    });
+    res.json({ resenas });
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Admin — se monta aparte, en /api/admin/network
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -357,6 +533,51 @@ adminNetworkRouter.patch(
       `[network] admin ${req.userId} puso la ficha ${experto.id} en '${estado}' (verificado=${experto.verificado})`
     );
     res.json({ experto });
+  })
+);
+
+/** Reseñas para moderar, filtrables por estado. */
+adminNetworkRouter.get(
+  '/resenas',
+  ah(async (req: AuthRequest, res: Response) => {
+    const estado = z.enum(['publicada', 'oculta']).safeParse(req.query.estado);
+    const resenas = await AppDataSource.getRepository(ResenaExperto).find({
+      where: estado.success ? { estado: estado.data } : {},
+      order: { fecha_creacion: 'DESC' },
+      take: 200,
+    });
+    res.json({ resenas, total: resenas.length });
+  })
+);
+
+/**
+ * Ocultar o volver a publicar una reseña.
+ *
+ * Ocultar no borra: queda el registro de qué se retiró y cuándo. Pero sí deja
+ * de contar para el rating —lo hace `recalcularRating`—, porque esconder una
+ * reseña abusiva y dejarle la estrella puesta no arregla nada.
+ */
+adminNetworkRouter.patch(
+  '/resenas/:id/estado',
+  ah(async (req: AuthRequest, res: Response) => {
+    if (!UUID.safeParse(req.params.id).success) {
+      return res.status(400).json({ error: 'Identificador inválido' });
+    }
+    const parsed = z.object({ estado: z.enum(['publicada', 'oculta']) }).safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'El estado debe ser publicada u oculta' });
+    }
+
+    const repo = AppDataSource.getRepository(ResenaExperto);
+    const resena = await repo.findOne({ where: { id: req.params.id } });
+    if (!resena) return res.status(404).json({ error: 'Reseña no encontrada' });
+
+    resena.estado = parsed.data.estado;
+    await repo.save(resena);
+    await resenasService.recalcularRating(resena.experto_id);
+
+    logger.info(`[network] admin ${req.userId} puso la reseña ${resena.id} en '${resena.estado}'`);
+    res.json({ resena });
   })
 );
 
