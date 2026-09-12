@@ -101,7 +101,7 @@ Este documento es la **fuente única de verdad técnica** para Claude, Antigravi
 
 ---
 
-## 6. Catálogo de Rutas Backend (24 Módulos API)
+## 6. Catálogo de Rutas Backend (25 Módulos API)
 
 Montadas en `backend/src/app.ts`:
 1. `/api/auth`: Signup, login (rate limited), refresh token, logout, me, reset-password.
@@ -128,6 +128,7 @@ Montadas en `backend/src/app.ts`:
 22. `/api/events`: Server-Sent Events (SSE) en tiempo real con validación JTI en Redis.
 23. `/api/reportes`: Área de reportes de Contabilidad — series de ventas, ranking de productos, almacén, clientes, horarios y conversión de cotizaciones. Agregación en SQL; hereda el gating de `contabilidad`.
 24. `/api/config`: Parámetros públicos de configuración de la aplicación.
+25. `/api/network`: Red de expertos (directorio de profesionales legal/marketing/ventas). **Las rutas `GET /expertos` y `GET /expertos/:id` son públicas sin token** y solo devuelven fichas con `estado = 'aprobado'`; el alta y la edición exigen autenticación, y la cola de revisión vive en `/api/admin/network` (montada **antes** de `/api/admin` en `app.ts`). `documento_url` (cédula) nunca se expone fuera de admin.
 - `/health`: Estado de salud de PostgreSQL, Redis, Uptime y Worker in-process.
 - `/metrics`: Endpoint de Prometheus protegido con token Bearer en producción.
 

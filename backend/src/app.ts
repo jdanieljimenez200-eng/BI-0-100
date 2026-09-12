@@ -32,6 +32,7 @@ import calendarioRoutes from './routes/calendario';
 import clientesRoutes from './routes/clientes';
 import contabilidadRoutes from './routes/contabilidad';
 import reportesRoutes from './routes/reportes';
+import networkRoutes, { adminNetworkRouter } from './routes/network';
 import cotizacionesRoutes from './routes/cotizaciones';
 import inventarioRoutes from './routes/inventario';
 import nominaRoutes from './routes/nomina';
@@ -133,12 +134,15 @@ app.use('/api/billing', billingRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/marca', marcaRoutes);
 app.use('/api/equipo', equipoRoutes);
+// Antes que /api/admin: Express resuelve por orden de montaje.
+app.use('/api/admin/network', adminNetworkRouter);
 app.use('/api/admin', adminRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/calendario', calendarioRoutes);
 app.use('/api/clientes', clientesRoutes);
 app.use('/api/contabilidad', contabilidadRoutes);
 app.use('/api/reportes', reportesRoutes);
+app.use('/api/network', networkRoutes);
 
 // Retirados en la auditoría de 2026-09: /api/metas, /api/perfiles y
 // /api/analytics eran 1.039 líneas de rutas que NINGUNA pantalla llamaba, sin
