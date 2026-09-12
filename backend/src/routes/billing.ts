@@ -15,9 +15,12 @@ import {
   createPortalSession,
   constructWebhookEvent,
   extractSubscriptionPlan,
+  esPatrocinio,
+  datosPatrocinio,
   PURCHASABLE_PLANS,
   BillingCycle,
 } from '../services/billing/stripeService';
+import * as patrocinios from '../services/network/patrociniosService';
 import { Producto } from '../models/Producto';
 import { AnalisisMercado } from '../models/AnalisisMercado';
 import { AnalisisMarketing } from '../models/AnalisisMarketing';
@@ -239,6 +242,20 @@ async function handleStripeEvent(event: Stripe.Event): Promise<void> {
     type StripeObj = Record<string, unknown>;
     const repo = manager.getRepository(Usuario);
 
+    // ── Patrocinios de la red de expertos ────────────────────────────────
+    //
+    // Un patrocinio se cobra por el mismo Stripe y al mismo cliente, pero NO es
+    // un plan del SaaS. Hay que desviarlo ANTES de que el switch toque al
+    // usuario: `extractSubscriptionPlan` devuelve 'freemium' ante un producto
+    // que no reconoce, así que un experto con plan Pro que pagara un patrocinio
+    // se quedaría en freemium por haber pagado más. Y su
+    // `stripe_subscription_id` pasaría a apuntar al patrocinio, dejando su
+    // suscripción real sin rastro.
+    if (esPatrocinio(event.data.object)) {
+      await manejarEventoPatrocinio(manager, event);
+      return;
+    }
+
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as unknown as StripeObj;
@@ -311,6 +328,77 @@ async function handleStripeEvent(event: Stripe.Event): Promise<void> {
       } catch (err) {
         logger.error('[stripe:webhook] no se pudo invalidar la caché de plan:', err);
       }
+    }
+  }
+}
+
+/**
+ * Eventos de Stripe que corresponden a un patrocinio de la red de expertos.
+ *
+ * Ningún camino de aquí toca la tabla `usuarios`: un patrocinio no cambia el
+ * plan de nadie. Se ejecuta dentro de la transacción del webhook, junto al
+ * registro del evento, para que un reenvío no lo aplique dos veces.
+ */
+async function manejarEventoPatrocinio(
+  manager: EntityManager,
+  event: Stripe.Event,
+): Promise<void> {
+  const obj = event.data.object as unknown as Record<string, unknown>;
+  const datos = datosPatrocinio(obj);
+
+  if (!datos) {
+    logger.error(
+      `[network] evento de patrocinio ${event.id} (${event.type}) sin experto_id o categoría válidos en la metadata`,
+    );
+    return;
+  }
+
+  switch (event.type) {
+    case 'checkout.session.completed': {
+      // La sesión trae el id de la suscripción recién creada.
+      const subscriptionId = obj['subscription'] as string | null;
+      if (!subscriptionId) {
+        logger.error(`[network] checkout de patrocinio ${event.id} sin suscripción`);
+        return;
+      }
+      await patrocinios.activarPatrocinio(manager, {
+        expertoId: datos.expertoId,
+        categoria: datos.categoria,
+        subscriptionId,
+        fechaFin: null,
+      });
+      logger.info(`[network] patrocinio activado para el experto ${datos.expertoId} (${datos.categoria})`);
+      break;
+    }
+
+    case 'customer.subscription.created':
+    case 'customer.subscription.updated': {
+      const subscriptionId = obj['id'] as string;
+      const status = obj['status'] as string;
+      const periodEnd = obj['current_period_end'] as number | null;
+
+      if (['active', 'trialing'].includes(status)) {
+        // `current_period_end` marca hasta cuándo está pagado. Si el experto
+        // canceló pero el periodo sigue corriendo, el patrocinio sigue vigente
+        // hasta esa fecha: ya lo pagó.
+        await patrocinios.activarPatrocinio(manager, {
+          expertoId: datos.expertoId,
+          categoria: datos.categoria,
+          subscriptionId,
+          fechaFin: periodEnd ? new Date(periodEnd * 1000) : null,
+        });
+      } else {
+        // Impagado, incompleto o cancelado: deja de subir a nadie.
+        await patrocinios.cerrarPatrocinio(manager, subscriptionId, 'vencido');
+        logger.info(`[network] patrocinio ${subscriptionId} vencido (estado Stripe: ${status})`);
+      }
+      break;
+    }
+
+    case 'customer.subscription.deleted': {
+      await patrocinios.cerrarPatrocinio(manager, obj['id'] as string, 'cancelado');
+      logger.info(`[network] patrocinio ${obj['id']} cancelado`);
+      break;
     }
   }
 }

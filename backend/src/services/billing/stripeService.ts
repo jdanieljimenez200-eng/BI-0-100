@@ -165,3 +165,102 @@ export function extractSubscriptionPlan(productId: string): Plan {
   }
   return 'freemium';
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Patrocinios de la red de expertos
+//
+// Un patrocinio es una suscripción más, cobrada por el mismo Stripe y al mismo
+// cliente, pero NO es un plan del SaaS. Esa distinción no es cosmética: el
+// webhook de billing traduce cada suscripción a un plan con
+// `extractSubscriptionPlan`, que devuelve 'freemium' ante un producto que no
+// reconoce. Sin marcar estas suscripciones, un experto con plan Pro que pagara
+// un patrocinio se quedaría en freemium por haber pagado más.
+//
+// La marca viaja en la metadata, en la sesión y en la suscripción, y el webhook
+// desvía por ella antes de tocar al usuario.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Marca que distingue una suscripción de patrocinio de un plan del SaaS. */
+export const TIPO_SUSCRIPCION_PATROCINIO = 'patrocinio_experto';
+
+export type CategoriaPatrocinable = 'legal' | 'marketing' | 'ventas';
+
+const PRICE_IDS_PATROCINIO: Record<CategoriaPatrocinable, string> = {
+  legal: process.env.STRIPE_PRICE_PATROCINIO_LEGAL ?? process.env.STRIPE_PRICE_PATROCINIO ?? '',
+  marketing:
+    process.env.STRIPE_PRICE_PATROCINIO_MARKETING ?? process.env.STRIPE_PRICE_PATROCINIO ?? '',
+  ventas: process.env.STRIPE_PRICE_PATROCINIO_VENTAS ?? process.env.STRIPE_PRICE_PATROCINIO ?? '',
+};
+
+/** Price del patrocinio de esa categoría, o null si no está configurado. */
+export function getPriceIdPatrocinio(categoria: CategoriaPatrocinable): string | null {
+  return PRICE_IDS_PATROCINIO[categoria] || null;
+}
+
+/**
+ * Checkout de un patrocinio.
+ *
+ * `experto_id` y `categoria` viajan en la metadata porque el webhook llega sin
+ * más contexto que el id de la suscripción: es lo único que le permite saber a
+ * qué ficha activar el patrocinio.
+ */
+export async function createSponsorshipCheckoutSession(params: {
+  customerId: string;
+  expertoId: string;
+  categoria: CategoriaPatrocinable;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<string> {
+  if (!stripe) throw new Error('Stripe no configurado');
+
+  const priceId = getPriceIdPatrocinio(params.categoria);
+  if (!priceId) {
+    throw new Error(`Precio de patrocinio no configurado para ${params.categoria}`);
+  }
+
+  const metadata = {
+    tipo: TIPO_SUSCRIPCION_PATROCINIO,
+    experto_id: params.expertoId,
+    categoria: params.categoria,
+  };
+
+  const session = await stripe.checkout.sessions.create({
+    customer: params.customerId,
+    payment_method_types: ['card'],
+    mode: 'subscription',
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: params.successUrl,
+    cancel_url: params.cancelUrl,
+    locale: 'es',
+    allow_promotion_codes: true,
+    metadata,
+    // También en la suscripción: los eventos `customer.subscription.*` no
+    // traen la metadata de la sesión, solo la suya.
+    subscription_data: { metadata },
+  });
+
+  return session.url!;
+}
+
+/**
+ * ¿Este objeto de Stripe pertenece a un patrocinio?
+ *
+ * Se consulta desde el webhook sobre la sesión o sobre la suscripción, por eso
+ * acepta cualquier objeto con metadata.
+ */
+export function esPatrocinio(obj: unknown): boolean {
+  const metadata = (obj as { metadata?: Record<string, unknown> } | null)?.metadata;
+  return metadata?.tipo === TIPO_SUSCRIPCION_PATROCINIO;
+}
+
+/** Lee `experto_id` y `categoria` de la metadata de un objeto de Stripe. */
+export function datosPatrocinio(
+  obj: unknown
+): { expertoId: string; categoria: CategoriaPatrocinable } | null {
+  const metadata = (obj as { metadata?: Record<string, unknown> } | null)?.metadata;
+  const expertoId = metadata?.experto_id;
+  const categoria = metadata?.categoria;
+  if (typeof expertoId !== 'string' || !expertoId) return null;
+  if (categoria !== 'legal' && categoria !== 'marketing' && categoria !== 'ventas') return null;
+  return { expertoId, categoria };
+}

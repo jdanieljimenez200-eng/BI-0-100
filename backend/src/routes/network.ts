@@ -4,12 +4,20 @@ import jwt from 'jsonwebtoken';
 import { AppDataSource } from '../config/database';
 import { Experto } from '../models/Experto';
 import { ResenaExperto } from '../models/ResenaExperto';
+import { Usuario } from '../models/Usuario';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireAdmin } from '../middleware/requireAdmin';
 import { ah } from '../utils/asyncHandler';
 import { logger } from '../utils/logger';
 import * as expertosService from '../services/network/expertosService';
 import * as resenasService from '../services/network/resenasService';
+import * as patrociniosService from '../services/network/patrociniosService';
+import {
+  isStripeAvailable,
+  getOrCreateCustomer,
+  getPriceIdPatrocinio,
+  createSponsorshipCheckoutSession,
+} from '../services/billing/stripeService';
 
 /**
  * Red de expertos: directorio de profesionales que los usuarios consultan desde
@@ -452,6 +460,87 @@ router.get(
       take: 100,
     });
     res.json({ resenas });
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Patrocinios (autenticado, solo el dueño de la ficha)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Abre el Checkout para patrocinar una ficha propia.
+ *
+ * Solo fichas **aprobadas**: cobrar por destacar algo que todavía nadie puede
+ * ver sería cobrar por nada. Y el patrocinio no compra la insignia de
+ * verificado ni salta la revisión — pagar no acredita a nadie.
+ */
+router.post(
+  '/patrocinios/checkout',
+  ah(async (req: AuthRequest, res: Response) => {
+    if (!isStripeAvailable()) {
+      return res.status(503).json({ error: 'Los pagos no están disponibles ahora mismo' });
+    }
+
+    const parsed = z.object({ experto_id: UUID }).safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Falta el identificador de la ficha' });
+    }
+
+    const experto = await AppDataSource.getRepository(Experto).findOne({
+      where: { id: parsed.data.experto_id, usuario_id: req.userId! },
+    });
+    if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
+    if (experto.estado !== 'aprobado') {
+      return res.status(409).json({
+        error: 'Tu ficha tiene que estar aprobada antes de patrocinarla',
+      });
+    }
+    if (await patrociniosService.tienePatrocinioVigente(experto.id)) {
+      return res.status(409).json({ error: 'Esta ficha ya tiene un patrocinio vigente' });
+    }
+    if (!getPriceIdPatrocinio(experto.categoria)) {
+      return res.status(503).json({
+        error: `Todavía no hay patrocinios a la venta en ${experto.categoria}`,
+      });
+    }
+
+    const usuario = await AppDataSource.getRepository(Usuario).findOne({
+      where: { id: req.userId! },
+      select: ['id', 'email', 'stripe_customer_id'],
+    });
+    if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    const customerId = await getOrCreateCustomer(
+      usuario.id,
+      usuario.email,
+      usuario.stripe_customer_id ?? undefined
+    );
+    // Se guarda el cliente para no crear uno nuevo en cada intento de pago.
+    if (usuario.stripe_customer_id !== customerId) {
+      await AppDataSource.getRepository(Usuario).update(usuario.id, {
+        stripe_customer_id: customerId,
+      });
+    }
+
+    const base = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+    const url = await createSponsorshipCheckoutSession({
+      customerId,
+      expertoId: experto.id,
+      categoria: experto.categoria,
+      successUrl: `${base}/network/mis-fichas?patrocinio=ok`,
+      cancelUrl: `${base}/network/mis-fichas?patrocinio=cancelado`,
+    });
+
+    res.json({ url });
+  })
+);
+
+/** Los patrocinios de las fichas propias, con su estado y vigencia. */
+router.get(
+  '/mis-patrocinios',
+  ah(async (req: AuthRequest, res: Response) => {
+    const lista = await patrociniosService.listarDeUsuario(req.userId!);
+    res.json({ patrocinios: lista });
   })
 );
 

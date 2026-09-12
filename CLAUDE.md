@@ -128,7 +128,11 @@ Montadas en `backend/src/app.ts`:
 22. `/api/events`: Server-Sent Events (SSE) en tiempo real con validación JTI en Redis.
 23. `/api/reportes`: Área de reportes de Contabilidad — series de ventas, ranking de productos, almacén, clientes, horarios y conversión de cotizaciones. Agregación en SQL; hereda el gating de `contabilidad`.
 24. `/api/config`: Parámetros públicos de configuración de la aplicación.
-25. `/api/network`: Red de expertos (directorio de profesionales legal/marketing/ventas). **Las rutas `GET /expertos` y `GET /expertos/:id` son públicas sin token** y solo devuelven fichas con `estado = 'aprobado'`; el alta y la edición exigen autenticación, y la cola de revisión vive en `/api/admin/network` (montada **antes** de `/api/admin` en `app.ts`). `documento_url` (cédula) nunca se expone fuera de admin.
+25. `/api/network`: Red de expertos (directorio de profesionales legal/marketing/ventas), reseñas y patrocinios. **Las rutas `GET /expertos` y `GET /expertos/:id` son públicas sin token** y solo devuelven fichas con `estado = 'aprobado'`; el alta y la edición exigen autenticación, y la cola de revisión vive en `/api/admin/network` (montada **antes** de `/api/admin` en `app.ts`). `documento_url` (cédula) nunca se expone fuera de admin.
+
+> [!CAUTION]
+> **Patrocinios y el webhook de Stripe**
+> Los patrocinios de la red se cobran con el mismo Stripe y al mismo cliente que los planes del SaaS, pero **no son un plan**. Sus suscripciones llevan `metadata.tipo = 'patrocinio_experto'` y `handleStripeEvent` (en `routes/billing.ts`) las **desvía a `manejarEventoPatrocinio` antes de tocar la tabla `usuarios`**. Si se quita ese desvío, `extractSubscriptionPlan` no reconoce el producto, devuelve `'freemium'` y un experto con plan Pro **queda degradado por haber pagado un patrocinio**, además de perder el rastro de su suscripción real. Precios: `STRIPE_PRICE_PATROCINIO_LEGAL` / `_MARKETING` / `_VENTAS`, con `STRIPE_PRICE_PATROCINIO` como fallback común.
 - `/health`: Estado de salud de PostgreSQL, Redis, Uptime y Worker in-process.
 - `/metrics`: Endpoint de Prometheus protegido con token Bearer en producción.
 
