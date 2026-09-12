@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { NETWORK_ENABLED } from '@/lib/networkFlag';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 // ─── Lucide-style inline SVG icons (sin dependencia externa) ──────────────────
@@ -34,31 +33,14 @@ const IconX = () => (
     <path d="m18 6-12 12M6 6l12 12"/>
   </svg>
 );
-const IconChevronRight = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="m9 18 6-6-6-6"/>
-  </svg>
-);
 const IconStar = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
     <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2Z"/>
   </svg>
 );
-const IconVerified = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-    <path d="M12 2l2.4 4.88L20 8.27l-4 3.89.94 5.48L12 15.02l-4.94 2.62.94-5.48L4 8.27l5.6-1.39L12 2Z"/>
-    <path d="m9 12 2 2 4-4" strokeWidth="2"/>
-  </svg>
-);
 const IconArrowRight = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <path d="M5 12h14M12 5l7 7-7 7"/>
-  </svg>
-);
-const IconMapPin = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
-    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
-    <circle cx="12" cy="10" r="3"/>
   </svg>
 );
 const IconAlertTriangle = () => (
@@ -90,47 +72,44 @@ const CHECKLIST = [
   { texto: 'Alta Patronal IMSS del personal',      ok: false },
 ];
 
-const EXPERTOS = [
+/**
+ * Perfiles de la ilustración de la landing.
+ *
+ * NO son expertos: son el TIPO de profesional que la red conecta. Por eso
+ * describen una especialidad y no llevan nombre de despacho, ni rating, ni
+ * número de reseñas. La versión anterior de esta sección mostraba "García &
+ * Asociados, 4.9, 63 reseñas, verificado" en la página pública, y cualquiera
+ * podía intentar contratar a un despacho que no existe creyendo que la
+ * plataforma lo había comprobado.
+ *
+ * El directorio real está en /network y lo sirve el backend.
+ */
+const PERFILES_ILUSTRATIVOS = [
   {
     id: 1,
-    iniciales: 'GA',
-    nombre: 'García & Asociados',
-    rol: 'Derecho Corporativo',
+    iniciales: 'DC',
+    rol: 'Derecho corporativo',
+    descripcion: 'Altas fiscales, contratos y cumplimiento con el consumidor',
     tags: ['SAT', 'PROFECO', 'Contratos'],
-    ciudad: 'Ciudad de México',
-    rating: 4.9,
-    resenas: 63,
-    patrocinado: true,
-    verificado: true,
-    consulta: true,
+    destacado: true,
     icon: IconScale,
   },
   {
     id: 2,
-    iniciales: 'AM',
-    nombre: 'Ana Morales',
-    rol: 'Derecho Laboral & Fiscal',
+    iniciales: 'LF',
+    rol: 'Laboral y fiscal',
+    descripcion: 'Alta patronal, nómina y auditorías',
     tags: ['IMSS', 'Nómina', 'Auditorías'],
-    ciudad: 'Guadalajara',
-    rating: 4.8,
-    resenas: 41,
-    patrocinado: false,
-    verificado: true,
-    consulta: false,
+    destacado: false,
     icon: IconShield,
   },
   {
     id: 3,
-    iniciales: 'LN',
-    nombre: 'Lex Norte Despacho',
-    rol: 'Propiedad Intelectual',
+    iniciales: 'PI',
+    rol: 'Propiedad intelectual',
+    descripcion: 'Registro de marca y protección en comercio electrónico',
     tags: ['IMPI', 'Marcas', 'E-commerce'],
-    ciudad: 'Monterrey',
-    rating: 4.7,
-    resenas: 29,
-    patrocinado: false,
-    verificado: false,
-    consulta: true,
+    destacado: false,
     icon: IconBriefcase,
   },
 ];
@@ -138,8 +117,6 @@ const EXPERTOS = [
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function NetworkTeaser() {
-  // La red de expertos todavía no existe (ver lib/networkFlag.ts). Hasta que
-  // haya profesionales reales dados de alta, la landing no la anuncia.
   const [step, setStep] = useState<'analisis' | 'conectando' | 'expertos'>('analisis');
   const [expertosCount, setExpertosCount] = useState(0);
   const [mounted, setMounted] = useState(false);
@@ -157,15 +134,10 @@ export default function NetworkTeaser() {
     const id = setInterval(() => {
       i++;
       setExpertosCount(i);
-      if (i >= EXPERTOS.length) clearInterval(id);
+      if (i >= PERFILES_ILUSTRATIVOS.length) clearInterval(id);
     }, 320);
     return () => clearInterval(id);
   }, [step]);
-
-  // Los hooks van arriba (no pueden ir tras un return condicional), así que el
-  // corte se hace aquí: sin red activa, la landing no anuncia una sección de
-  // expertos que todavía no se puede usar.
-  if (!NETWORK_ENABLED) return null;
 
   return (
     <section className="relative py-24 md:py-32 overflow-hidden border-t border-white/[0.05]">
@@ -288,7 +260,7 @@ export default function NetworkTeaser() {
                         : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
                     }`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${step === 'conectando' ? 'bg-violet-400 animate-ping' : 'bg-emerald-400'}`} />
-                      {step === 'conectando' ? 'Buscando expertos...' : `${EXPERTOS.length} expertos encontrados`}
+                      {step === 'conectando' ? 'Buscando expertos...' : `${PERFILES_ILUSTRATIVOS.length} expertos encontrados`}
                     </div>
                     <div className="h-px flex-1 bg-white/[0.06]" />
                   </div>
@@ -301,15 +273,19 @@ export default function NetworkTeaser() {
           <div className="space-y-3">
 
             {/* Label encabezado */}
-            <div className={`flex items-center gap-2 mb-5 transition-all duration-500 ${step === 'expertos' ? 'opacity-100' : 'opacity-0'}`}>
+            <div className={`flex flex-wrap items-center gap-2 mb-5 transition-all duration-500 ${step === 'expertos' ? 'opacity-100' : 'opacity-0'}`}>
               <div className="w-px h-5 bg-violet-500/40" />
               <p className="text-[13px] font-medium text-white/35">
-                Expertos disponibles para este análisis
+                Especialidades que te conecta la red
               </p>
+              {/* Dicho donde se ve, no en una nota al pie: esta columna es una
+                  ilustración de cómo funciona, no gente contratable. */}
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/30 border border-white/10 rounded-full px-2 py-0.5">
+                Ejemplo
+              </span>
             </div>
 
-            {EXPERTOS.map((experto, i) => {
-              const Icon = experto.icon;
+            {PERFILES_ILUSTRATIVOS.map((experto, i) => {
               return (
                 <div
                   key={experto.id}
@@ -320,13 +296,13 @@ export default function NetworkTeaser() {
                   }}
                 >
                   <div className={`group relative rounded-xl border bg-white/[0.025] p-4 hover:bg-white/[0.04] transition-all duration-200 hover:-translate-y-px ${
-                    experto.patrocinado
+                    experto.destacado
                       ? 'border-amber-500/20 shadow-[0_0_0_1px_rgba(245,158,11,0.08)]'
                       : 'border-white/[0.06]'
                   }`}>
 
                     {/* Patrocinado tag */}
-                    {experto.patrocinado && (
+                    {experto.destacado && (
                       <div className="absolute top-3 right-3 flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-amber-400/70 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
                         <IconStar />
                         Destacado
@@ -342,21 +318,13 @@ export default function NetworkTeaser() {
                       </div>
 
                       <div className="min-w-0 flex-1 pr-8">
-                        {/* Nombre + verificado */}
+                        {/* Especialidad. Sin nombre de despacho y sin insignia de
+                            verificado: aquí no hay nadie a quien verificar. */}
                         <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-[14px] font-semibold text-white leading-none">{experto.nombre}</span>
-                          {experto.verificado && (
-                            <span className="text-blue-400 flex-shrink-0" title="Verificado">
-                              <IconVerified />
-                            </span>
-                          )}
+                          <span className="text-[14px] font-semibold text-white leading-none">{experto.rol}</span>
                         </div>
 
-                        {/* Rol */}
-                        <p className="text-[12px] text-white/35 mb-2.5 flex items-center gap-1">
-                          <span className="text-white/20"><IconMapPin /></span>
-                          {experto.ciudad} · {experto.rol}
-                        </p>
+                        <p className="text-[12px] text-white/35 mb-2.5">{experto.descripcion}</p>
 
                         {/* Tags */}
                         <div className="flex flex-wrap gap-1 mb-3">
@@ -367,27 +335,11 @@ export default function NetworkTeaser() {
                           ))}
                         </div>
 
-                        {/* Footer: Rating + CTA */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5">
-                            <div className="flex items-center gap-0.5 text-amber-400">
-                              {[1,2,3,4,5].map(s => (
-                                <span key={s} className={s <= Math.round(experto.rating) ? 'opacity-100' : 'opacity-15'}>
-                                  <IconStar />
-                                </span>
-                              ))}
-                            </div>
-                            <span className="text-[12px] font-semibold text-white/50 tabular-nums">{experto.rating}</span>
-                            <span className="text-[11px] text-white/25">({experto.resenas})</span>
-                            {experto.consulta && (
-                              <span className="ml-1.5 text-[10px] font-medium text-emerald-400/70">· Consulta gratis</span>
-                            )}
-                          </div>
-                          <button className="text-[12px] font-semibold text-violet-400 hover:text-violet-300 flex items-center gap-0.5 transition-colors duration-150 group-hover:gap-1.5">
-                            Contactar
-                            <IconChevronRight />
-                          </button>
-                        </div>
+                        {/* Ni estrellas ni "(63)": un rating de adorno es el dato
+                            que mas empuja a contratar, y aqui seria inventado. */}
+                        <p className="text-[11px] text-white/25">
+                          Perfil de ejemplo · el directorio real se llena con quienes pasan la revisión
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -399,16 +351,18 @@ export default function NetworkTeaser() {
             <div
               className="transition-all duration-500"
               style={{
-                opacity: expertosCount >= EXPERTOS.length ? 1 : 0,
-                transform: expertosCount >= EXPERTOS.length ? 'none' : 'translateY(8px)',
+                opacity: expertosCount >= PERFILES_ILUSTRATIVOS.length ? 1 : 0,
+                transform: expertosCount >= PERFILES_ILUSTRATIVOS.length ? 'none' : 'translateY(8px)',
               }}
             >
+              {/* Antes decía "Ver 28 expertos más en tu área". No había 28, ni
+                  uno. Ahora lleva al directorio, que enseña los que hay. */}
               <Link
-                href="/auth/signup"
+                href="/network"
                 className="group flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-dashed border-white/[0.08] text-white/30 text-[13px] font-medium hover:border-violet-500/30 hover:text-violet-400 hover:bg-violet-500/[0.04] transition-all duration-200"
               >
                 <IconPlus />
-                Ver 28 expertos más en tu área
+                Ver el directorio de expertos
               </Link>
             </div>
           </div>
@@ -419,10 +373,15 @@ export default function NetworkTeaser() {
 
           {/* Stats horizontales */}
           <div className="flex flex-wrap gap-10">
+            {/*
+              Aquí decía "150+ expertos verificados" cuando no había ninguno.
+              Lo que queda son afirmaciones que se sostienen: las categorías
+              existen, el alta es gratis, y toda ficha pasa por revisión manual.
+            */}
             {[
-              { valor: '150+', label: 'Expertos verificados', sub: 'en 3 categorías' },
-              { valor: 'Gratis',  label: 'Para crear tu perfil', sub: 'sin tarjeta de crédito' },
-              { valor: 'Real',   label: 'Reseñas verificadas', sub: 'solo por clientes reales' },
+              { valor: '3', label: 'Categorías', sub: 'legal, marketing y ventas' },
+              { valor: 'Gratis', label: 'Presentar tu ficha', sub: 'sin tarjeta de crédito' },
+              { valor: 'Manual', label: 'Revisión de cada ficha', sub: 'antes de publicarse' },
             ].map(stat => (
               <div key={stat.label} className="flex flex-col gap-1">
                 <span className="text-[clamp(24px,3vw,36px)] font-semibold tracking-[-0.02em] text-white">
@@ -437,12 +396,18 @@ export default function NetworkTeaser() {
           {/* Dos CTAs en línea */}
           <div className="flex flex-col sm:flex-row gap-3">
             <Link
-              href="/auth/signup"
+              href="/network"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-[14px] bg-white text-[#070E17] hover:bg-white/90 transition-all duration-200 shadow-[0_0_40px_rgba(255,255,255,0.08)] hover:shadow-[0_0_60px_rgba(255,255,255,0.15)]"
             >
               <IconUsers />
-              Analizar y ver expertos
+              Ver el directorio
               <IconArrowRight />
+            </Link>
+            <Link
+              href="/network/registro"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-[14px] border border-white/15 text-white/70 hover:bg-white/5 transition-all duration-200"
+            >
+              Soy experto, quiero presentarme
             </Link>
           </div>
         </div>
