@@ -3,7 +3,13 @@ import { body, query, validationResult } from 'express-validator';
 import { AppDataSource } from '../config/database';
 import { Usuario, Plan, type AdminRol } from '../models/Usuario';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { requireAdmin, requirePermiso, permisosDe, type AdminRequest } from '../middleware/requireAdmin';
+import {
+  requireAdmin,
+  requirePermiso,
+  exigirTotpFresco,
+  permisosDe,
+  type AdminRequest,
+} from '../middleware/requireAdmin';
 import { logger } from '../utils/logger';
 import { bloquearSesiones, levantarBloqueo } from '../services/auth/bloqueoSesion';
 import { invalidatePlanCache } from '../middleware/requirePlan';
@@ -406,6 +412,8 @@ router.patch(
     if (id === req.userId) {
       return res.status(400).json({ error: 'No puedes cambiar tu propio rol de administración' });
     }
+    // Después de validar: no se gasta el código en una petición que iba a fallar.
+    if (!(await exigirTotpFresco(req, res))) return;
 
     try {
       const resultado = await AppDataSource.transaction(async (manager) => {
@@ -439,7 +447,15 @@ router.patch(
           };
         }
 
-        await repo.update(id, { admin_rol: rol });
+        if (rol === null) {
+          // Sin rol no hay panel: su secreto TOTP y sus códigos de recuperación
+          // no tienen por qué seguir existiendo. Si vuelve a ser admin, se enrola
+          // de nuevo.
+          await repo.update(id, { admin_rol: null, admin_totp_secreto: null, admin_totp_activado_en: null });
+          await manager.query(`DELETE FROM admin_codigos_recuperacion WHERE usuario_id = $1`, [id]);
+        } else {
+          await repo.update(id, { admin_rol: rol });
+        }
         await registrarAccionAdmin(manager, req, {
           accion: rol === null ? 'rol.retirado' : 'rol.asignado',
           recursoTipo: 'rol',
@@ -455,6 +471,60 @@ router.patch(
     } catch (err) {
       logger.error('[admin] error cambiando rol:', err);
       return res.status(500).json({ error: 'Error al cambiar el rol' });
+    }
+  },
+);
+
+
+// ─── POST /api/admin/usuarios/:id/2fa/reiniciar ───────────────────────────────
+
+/**
+ * Reinicia la verificación en dos pasos de otro admin que perdió el móvil y sus
+ * códigos de recuperación. Al entrar de nuevo tendrá que enrolarse.
+ *
+ * Es la operación que convierte "perdí el acceso" en "alguien más puede atar su
+ * móvil a mi cuenta", así que pide lo máximo: superadmin, código fresco y motivo.
+ * Además cierra sus sesiones: si el móvil lo tiene otra persona, no puede seguir
+ * dentro mientras tanto.
+ */
+router.post(
+  '/usuarios/:id/2fa/reiniciar',
+  requirePermiso('gestionarRoles'),
+  async (req: AuthRequest, res: Response) => {
+    const motivo = MotivoSchema.safeParse(req.body?.motivo);
+    if (!motivo.success) return res.status(400).json({ error: motivo.error.errors[0].message });
+
+    const { id } = req.params;
+    if (id === req.userId) {
+      return res.status(400).json({ error: 'No puedes reiniciar tu propia verificación en dos pasos' });
+    }
+    if (!(await exigirTotpFresco(req, res))) return;
+
+    try {
+      const existe = await AppDataSource.transaction(async (manager) => {
+        const repo = manager.getRepository(Usuario);
+        const usuario = await repo.findOne({ where: { id }, select: ['id', 'admin_totp_activado_en'] });
+        if (!usuario) return false;
+
+        await repo.update(id, { admin_totp_secreto: null, admin_totp_activado_en: null });
+        await manager.query(`DELETE FROM admin_codigos_recuperacion WHERE usuario_id = $1`, [id]);
+        await registrarAccionAdmin(manager, req, {
+          accion: 'admin.2fa_reiniciado',
+          recursoTipo: 'usuario',
+          recursoId: id,
+          antes: { activado: Boolean(usuario.admin_totp_activado_en) },
+          despues: { activado: false },
+          motivo: motivo.data,
+        });
+        return true;
+      });
+      if (!existe) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+      await bloquearSesiones(id);
+      return res.json({ message: 'Verificación en dos pasos reiniciada. Tendrá que enrolarse de nuevo.' });
+    } catch (err) {
+      logger.error('[admin] error reiniciando 2FA:', err);
+      return res.status(500).json({ error: 'Error al reiniciar la verificación' });
     }
   },
 );

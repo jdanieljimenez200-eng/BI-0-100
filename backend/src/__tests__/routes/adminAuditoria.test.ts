@@ -1,7 +1,7 @@
 import * as request from 'supertest';
 import { app, initTestDb, closeTestDb } from '../helpers/testApp';
 import { describeWithDb } from '../helpers/dbGuard';
-import { signupTestUser, TestUser } from '../helpers/authHelper';
+import { signupTestUser, TestUser, hacerAdmin, cabeceras, type AdminTestUser } from '../helpers/authHelper';
 import { AppDataSource } from '../../config/database';
 import { Usuario } from '../../models/Usuario';
 import { Experto } from '../../models/Experto';
@@ -18,21 +18,21 @@ import * as auditoria from '../../services/admin/auditoria';
  *  3. Si el rastro no se puede escribir, el cambio no se aplica.
  */
 describeWithDb('Auditoría de admin', () => {
-  let admin: TestUser;
+  let admin: AdminTestUser;
   let usuario: TestUser;
   let dueno: TestUser;
 
-  const auth = (t: TestUser) => ({ Authorization: `Bearer ${t.accessToken}` });
+  const auth = cabeceras;
   const registros = () => AppDataSource.getRepository(AuditoriaAdmin);
   const ultimoSobre = (recursoId: string) =>
     registros().findOne({ where: { recurso_id: recursoId }, order: { fecha: 'DESC' } });
 
   beforeAll(async () => {
     await initTestDb();
-    admin = await signupTestUser();
+    admin = (await signupTestUser()) as AdminTestUser;
     usuario = await signupTestUser();
     dueno = await signupTestUser();
-    await AppDataSource.getRepository(Usuario).update({ id: admin.userId }, { es_admin: true });
+    admin = await hacerAdmin(admin);
   });
 
   afterAll(async () => {

@@ -1,7 +1,7 @@
 import * as request from 'supertest';
 import { app, initTestDb, closeTestDb } from '../helpers/testApp';
 import { describeWithDb } from '../helpers/dbGuard';
-import { signupTestUser, TestUser } from '../helpers/authHelper';
+import { signupTestUser, TestUser, hacerAdmin, cabeceras, type AdminTestUser } from '../helpers/authHelper';
 import { AppDataSource } from '../../config/database';
 import { Usuario } from '../../models/Usuario';
 import { Experto } from '../../models/Experto';
@@ -18,10 +18,10 @@ describeWithDb('Reseñas de expertos (/api/network)', () => {
   let autor: TestUser;
   let otroAutor: TestUser;
   let profesional: TestUser;
-  let admin: TestUser;
+  let admin: AdminTestUser;
   let expertoId: string;
 
-  const auth = (t: TestUser) => ({ Authorization: `Bearer ${t.accessToken}` });
+  const auth = cabeceras;
 
   const resenar = (t: TestUser, id: string, body: Record<string, unknown>) =>
     request.default(app).post(`/api/network/expertos/${id}/resenas`).set(auth(t)).send(body);
@@ -36,8 +36,7 @@ describeWithDb('Reseñas de expertos (/api/network)', () => {
     autor = await signupTestUser();
     otroAutor = await signupTestUser();
     profesional = await signupTestUser();
-    admin = await signupTestUser();
-    await AppDataSource.getRepository(Usuario).update({ id: admin.userId }, { es_admin: true });
+    admin = await hacerAdmin(await signupTestUser());
 
     const alta = await request
       .default(app)

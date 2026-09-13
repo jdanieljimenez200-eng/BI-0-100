@@ -1,4 +1,4 @@
-import api from '@/lib/api';
+import api, { CLAVE_TOKEN_ADMIN } from '@/lib/api';
 
 /**
  * Cliente del panel de administración: lo que no es de ningún módulo en
@@ -84,11 +84,22 @@ export async function listarAdministradores() {
   return data.administradores;
 }
 
-export async function cambiarRolAdmin(id: string, rol: AdminRol | null, motivo: string) {
-  const { data } = await api.patch<{ message: string; rol: AdminRol | null }>(`/admin/usuarios/${id}/rol`, {
-    rol,
-    motivo,
-  });
+/** Cambiar un rol pide un código fresco de la app, aunque la sesión de admin siga abierta. */
+export async function cambiarRolAdmin(id: string, rol: AdminRol | null, motivo: string, codigoTotp: string) {
+  const { data } = await api.patch<{ message: string; rol: AdminRol | null }>(
+    `/admin/usuarios/${id}/rol`,
+    { rol, motivo },
+    { headers: { 'X-Admin-Totp': codigoTotp } }
+  );
+  return data;
+}
+
+export async function reiniciar2faAdmin(id: string, motivo: string, codigoTotp: string) {
+  const { data } = await api.post<{ message: string }>(
+    `/admin/usuarios/${id}/2fa/reiniciar`,
+    { motivo },
+    { headers: { 'X-Admin-Totp': codigoTotp } }
+  );
   return data;
 }
 
@@ -104,4 +115,63 @@ export async function buscarUsuarios(texto: string) {
     params: { search: texto, page: 1 },
   });
   return data.usuarios;
+}
+
+// ─── Sesión de admin (verificación en dos pasos) ─────────────────────────────
+
+export interface EstadoSesionAdmin {
+  enrolado: boolean;
+  rol: AdminRol;
+}
+
+export async function estadoSesionAdmin() {
+  const { data } = await api.get<EstadoSesionAdmin>('/admin/sesion/estado');
+  return data;
+}
+
+export async function iniciarEnrolamiento(password: string) {
+  const { data } = await api.post<{ qr: string; uri: string; secreto: string }>('/admin/sesion/enrolar', {
+    password,
+  });
+  return data;
+}
+
+export async function confirmarEnrolamiento(codigo: string) {
+  const { data } = await api.post<{ token: string; expira_en: string; codigos_recuperacion: string[] }>(
+    '/admin/sesion/enrolar/confirmar',
+    { codigo }
+  );
+  guardarTokenAdmin(data.token, data.expira_en);
+  return data;
+}
+
+export async function verificarCodigoAdmin(entrada: { codigo?: string; codigo_recuperacion?: string }) {
+  const { data } = await api.post<{ token: string; expira_en: string; codigos_restantes?: number }>(
+    '/admin/sesion/verificar',
+    entrada
+  );
+  guardarTokenAdmin(data.token, data.expira_en);
+  return data;
+}
+
+export async function cerrarSesionAdmin() {
+  try {
+    await api.post('/admin/sesion/cerrar');
+  } finally {
+    sessionStorage.removeItem(CLAVE_TOKEN_ADMIN);
+    sessionStorage.removeItem(`${CLAVE_TOKEN_ADMIN}:expira`);
+  }
+}
+
+function guardarTokenAdmin(token: string, expiraEn: string) {
+  sessionStorage.setItem(CLAVE_TOKEN_ADMIN, token);
+  sessionStorage.setItem(`${CLAVE_TOKEN_ADMIN}:expira`, expiraEn);
+}
+
+/** Momento en que caduca la sesión de admin, o `null` si no hay. */
+export function expiracionSesionAdmin(): Date | null {
+  if (typeof window === 'undefined' || !sessionStorage.getItem(CLAVE_TOKEN_ADMIN)) return null;
+  const expira = sessionStorage.getItem(`${CLAVE_TOKEN_ADMIN}:expira`);
+  const fecha = expira ? new Date(expira) : null;
+  return fecha && fecha.getTime() > Date.now() ? fecha : null;
 }

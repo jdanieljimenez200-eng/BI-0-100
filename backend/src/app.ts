@@ -27,6 +27,7 @@ import configRoutes from './routes/config';
 import marcaRoutes from './routes/marca';
 import equipoRoutes from './routes/equipo';
 import adminRoutes from './routes/admin';
+import adminSesionRoutes from './routes/adminSesion';
 import eventsRoutes from './routes/events';
 import calendarioRoutes from './routes/calendario';
 import clientesRoutes from './routes/clientes';
@@ -135,6 +136,8 @@ app.use('/api/config', configRoutes);
 app.use('/api/marca', marcaRoutes);
 app.use('/api/equipo', equipoRoutes);
 // Antes que /api/admin: Express resuelve por orden de montaje.
+// La sesión de admin emite el token que el resto de /api/admin exige: va delante.
+app.use('/api/admin/sesion', adminSesionRoutes);
 app.use('/api/admin/network', adminNetworkRouter);
 app.use('/api/admin', adminRoutes);
 app.use('/api/events', eventsRoutes);

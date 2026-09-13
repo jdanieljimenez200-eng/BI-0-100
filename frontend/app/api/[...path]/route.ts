@@ -36,15 +36,32 @@ function buildHeaders(request: NextRequest, contentType?: string | null): Header
   const cookie = request.headers.get('cookie');
   if (cookie) headers['Cookie'] = cookie;
 
+  // Verificación en dos pasos del panel de admin. Sin reenviarlas, detrás de este
+  // proxy ninguna petición de admin pasaría nunca: el backend exige el token de
+  // admin en cada una y un código fresco en las acciones peligrosas.
+  for (const nombre of ['x-admin-token', 'x-admin-totp']) {
+    const valor = request.headers.get(nombre);
+    if (valor) headers[nombre] = valor;
+  }
+
   return headers;
 }
 
-async function parseResponse(response: Response): Promise<unknown> {
-  const contentType = response.headers.get('content-type');
-  if (contentType?.includes('application/json')) {
-    return response.json();
+/**
+ * Cabeceras de la respuesta que el cliente necesita tal cual. Sobre todo para
+ * ficheros: la cédula de un experto llega como PDF, y sin `Content-Disposition`
+ * ni `Cache-Control: no-store` se descargaría con otro nombre o se quedaría en
+ * una caché intermedia.
+ */
+const CABECERAS_DE_RESPUESTA = ['content-type', 'content-disposition', 'cache-control', 'x-content-type-options'];
+
+function cabecerasDeRespuesta(response: Response): Headers {
+  const salida = new Headers();
+  for (const nombre of CABECERAS_DE_RESPUESTA) {
+    const valor = response.headers.get(nombre);
+    if (valor) salida.set(nombre, valor);
   }
-  return response.text();
+  return salida;
 }
 
 async function handleProxy(
@@ -78,11 +95,15 @@ async function handleProxy(
       ...(body !== undefined ? { body } : {}),
     });
 
-    const data = await parseResponse(response);
-    if (typeof data === 'string') {
-      return new NextResponse(data, { status: response.status });
+    if (response.headers.get('content-type')?.includes('application/json')) {
+      return NextResponse.json(await response.json(), { status: response.status });
     }
-    return NextResponse.json(data, { status: response.status });
+    // Todo lo demás se pasa en binario. Leerlo como texto corrompía cualquier
+    // fichero (un PDF, una imagen) y perdía su tipo.
+    return new NextResponse(await response.arrayBuffer(), {
+      status: response.status,
+      headers: cabecerasDeRespuesta(response),
+    });
   } catch (error) {
     console.error(`API proxy ${method} error:`, error);
     return NextResponse.json(

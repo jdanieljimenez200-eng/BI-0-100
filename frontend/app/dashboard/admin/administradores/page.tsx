@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   listarAdministradores,
   cambiarRolAdmin,
+  reiniciar2faAdmin,
   buscarUsuarios,
   miRolAdmin,
   NOMBRE_ROL,
@@ -16,6 +17,12 @@ import {
 } from '@/lib/admin';
 
 const ROLES: AdminRol[] = ['soporte', 'moderador', 'superadmin'];
+
+function pedirCodigo(): string | null {
+  const codigo = window.prompt('Escribe un código nuevo de tu app de autenticación (6 cifras):');
+  const limpio = (codigo ?? '').replace(/\D/g, '');
+  return limpio.length === 6 ? limpio : null;
+}
 
 function errorDe(e: unknown, porDefecto: string) {
   return (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? porDefecto;
@@ -82,17 +89,44 @@ export default function AdministradoresPage() {
     const accion = rol ? `dar el rol ${NOMBRE_ROL[rol]} a ${email}` : `retirar el acceso de administración a ${email}`;
     const motivo = window.prompt(`Motivo para ${accion} (queda en el registro de auditoría):`);
     if (!motivo || !motivo.trim()) return;
+    // Cambiar roles da o quita poder: se confirma con un código nuevo de la app,
+    // aunque la sesión de admin siga abierta.
+    const codigo = pedirCodigo();
+    if (!codigo) return;
 
     setOcupado(id);
     setError(null);
     setAviso(null);
     try {
-      const { message } = await cambiarRolAdmin(id, rol, motivo.trim());
+      const { message } = await cambiarRolAdmin(id, rol, motivo.trim(), codigo);
       setAviso(`${email}: ${message}`);
       setBusqueda('');
       await cargar();
     } catch (e) {
       setError(errorDe(e, 'No se pudo cambiar el rol.'));
+    } finally {
+      setOcupado(null);
+    }
+  };
+
+  const reiniciar2fa = async (id: string, email: string) => {
+    const motivo = window.prompt(
+      `Reiniciar la verificación en dos pasos de ${email}. Tendrá que volver a enrolarse y se cerrarán sus sesiones.
+
+Motivo (queda en la auditoría):`
+    );
+    if (!motivo || !motivo.trim()) return;
+    const codigo = pedirCodigo();
+    if (!codigo) return;
+
+    setOcupado(id);
+    setError(null);
+    setAviso(null);
+    try {
+      const { message } = await reiniciar2faAdmin(id, motivo.trim(), codigo);
+      setAviso(`${email}: ${message}`);
+    } catch (e) {
+      setError(errorDe(e, 'No se pudo reiniciar la verificación.'));
     } finally {
       setOcupado(null);
     }
@@ -213,6 +247,14 @@ export default function AdministradoresPage() {
                         </option>
                       ))}
                     </select>
+                    <button
+                      onClick={() => reiniciar2fa(a.id, a.email)}
+                      disabled={ocupado === a.id}
+                      className="px-3 py-1.5 rounded-lg text-white/40 hover:text-white/70 text-xs font-semibold disabled:opacity-50"
+                      title="Para quien perdió el móvil y sus códigos de recuperación"
+                    >
+                      Reiniciar 2FA
+                    </button>
                     <button
                       onClick={() => cambiar(a.id, a.email, null)}
                       disabled={ocupado === a.id}

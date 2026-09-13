@@ -35,7 +35,7 @@ export async function authenticate(req: AuthRequest, res: Response, next: NextFu
 
     const payload = jwt.verify(token, secret, {
       algorithms: ['HS256'],
-    }) as { userId: string; jti?: string };
+    }) as { userId: string; jti?: string; iat?: number };
 
     // Denylist del token y bloqueo de la cuenta, en una sola ida a Redis.
     //
@@ -44,10 +44,15 @@ export async function authenticate(req: AuthRequest, res: Response, next: NextFu
     // hasta 15 minutos de acceso.
     if (redisClient?.isReady) {
       try {
-        const [denegado, bloqueado] = await redisClient.mGet([
+        const [denegado, bloqueadoEn] = await redisClient.mGet([
           payload.jti ? `deny:${payload.jti}` : `deny:__sin_jti__`,
           claveBloqueo(payload.userId),
         ]);
+        // El bloqueo guarda CUÁNDO se bloqueó: invalida los tokens emitidos hasta
+        // ese momento, no los que se emitan después. Si no, a quien se le reinicia
+        // la verificación en dos pasos y vuelve a entrar se le rechazaría también
+        // la sesión nueva durante 15 minutos.
+        const bloqueado = bloqueadoEn !== null && (payload.iat ?? 0) <= Number(bloqueadoEn);
         if (denegado || bloqueado) {
           res.status(401).json({ error: 'Token inválido o expirado' });
           return;

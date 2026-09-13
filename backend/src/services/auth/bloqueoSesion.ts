@@ -40,7 +40,11 @@ export async function bloquearSesiones(userId: string): Promise<boolean> {
     return false;
   }
   try {
-    await redisClient.set(claveBloqueo(userId), '1', { EX: VIDA_ACCESS_TOKEN_S });
+    // Se guarda el instante (en segundos, como el `iat` del JWT): `authenticate`
+    // rechaza los tokens emitidos hasta ese momento y deja pasar los posteriores.
+    await redisClient.set(claveBloqueo(userId), String(Math.floor(Date.now() / 1000)), {
+      EX: VIDA_ACCESS_TOKEN_S,
+    });
     return true;
   } catch (err) {
     logger.error(`[bloqueo] No se pudo marcar el bloqueo de ${userId}:`, err);

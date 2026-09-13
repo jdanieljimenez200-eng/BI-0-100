@@ -1,7 +1,7 @@
 import * as request from 'supertest';
 import { app, initTestDb, closeTestDb } from '../helpers/testApp';
 import { describeWithDb } from '../helpers/dbGuard';
-import { signupTestUser, TestUser } from '../helpers/authHelper';
+import { signupTestUser, TestUser, hacerAdmin, cabeceras, type AdminTestUser } from '../helpers/authHelper';
 import { AppDataSource } from '../../config/database';
 import { Usuario } from '../../models/Usuario';
 import { Experto } from '../../models/Experto';
@@ -19,7 +19,7 @@ import { Experto } from '../../models/Experto';
 describeWithDb('Red de expertos (/api/network)', () => {
   let dueno: TestUser;
   let ajeno: TestUser;
-  let admin: TestUser;
+  let admin: AdminTestUser;
   const creados: string[] = [];
 
   const alta = (token: string, body: Record<string, unknown>) =>
@@ -54,15 +54,14 @@ describeWithDb('Red de expertos (/api/network)', () => {
     request
       .default(app)
       .patch(`/api/admin/network/expertos/${id}/estado`)
-      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .set(cabeceras(admin))
       .send({ estado: 'aprobado', verificado });
 
   beforeAll(async () => {
     await initTestDb();
     dueno = await signupTestUser();
     ajeno = await signupTestUser();
-    admin = await signupTestUser();
-    await AppDataSource.getRepository(Usuario).update({ id: admin.userId }, { es_admin: true });
+    admin = await hacerAdmin(await signupTestUser());
   });
 
   afterAll(async () => {
@@ -222,7 +221,7 @@ describeWithDb('Red de expertos (/api/network)', () => {
       const res = await request
         .default(app)
         .get('/api/admin/network/pendientes')
-        .set('Authorization', `Bearer ${admin.accessToken}`);
+        .set(cabeceras(admin));
       expect(res.status).toBe(200);
       const ficha = res.body.fichas.find((f: { id: string }) => f.id === id);
       // El documento se abre por su endpoint, que vuelve a exigir admin; el
@@ -235,7 +234,7 @@ describeWithDb('Red de expertos (/api/network)', () => {
       const res = await request
         .default(app)
         .patch(`/api/admin/network/expertos/${id}/estado`)
-        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .set(cabeceras(admin))
         .send({ estado: 'rechazado' });
       expect(res.status).toBe(400);
     });
@@ -252,7 +251,7 @@ describeWithDb('Red de expertos (/api/network)', () => {
       const res = await request
         .default(app)
         .patch(`/api/admin/network/expertos/${id}/estado`)
-        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .set(cabeceras(admin))
         .send({ estado: 'suspendido', motivo_rechazo: 'Suspensión de prueba automatizada' });
       expect(res.body.experto.verificado).toBe(false);
     });

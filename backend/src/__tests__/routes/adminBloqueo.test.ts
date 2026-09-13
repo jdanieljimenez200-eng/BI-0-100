@@ -1,7 +1,7 @@
 import * as request from 'supertest';
 import { app, initTestDb, closeTestDb } from '../helpers/testApp';
 import { describeWithDb } from '../helpers/dbGuard';
-import { signupTestUser, TestUser } from '../helpers/authHelper';
+import { signupTestUser, TestUser, hacerAdmin, cabeceras, type AdminTestUser } from '../helpers/authHelper';
 import { AppDataSource } from '../../config/database';
 import { Usuario } from '../../models/Usuario';
 import { redisClient } from '../../config/redis';
@@ -14,17 +14,17 @@ import { redisClient } from '../../config/redis';
  * que "bloquear" a alguien que está dentro no lo sacaba.
  */
 describeWithDb('Panel de admin: bloqueo y plan', () => {
-  let admin: TestUser;
+  let admin: AdminTestUser;
   let victima: TestUser;
 
-  const auth = (t: TestUser) => ({ Authorization: `Bearer ${t.accessToken}` });
+  const auth = cabeceras;
   const usuarios = () => AppDataSource.getRepository(Usuario);
 
   beforeAll(async () => {
     await initTestDb();
-    admin = await signupTestUser();
+    admin = (await signupTestUser()) as AdminTestUser;
     victima = await signupTestUser();
-    await usuarios().update({ id: admin.userId }, { es_admin: true });
+    admin = await hacerAdmin(admin);
   });
 
   afterAll(async () => {

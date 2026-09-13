@@ -2,7 +2,7 @@ import * as request from 'supertest';
 import { randomUUID } from 'crypto';
 import { app, initTestDb, closeTestDb } from '../helpers/testApp';
 import { describeWithDb } from '../helpers/dbGuard';
-import { signupTestUser, TestUser } from '../helpers/authHelper';
+import { signupTestUser, TestUser, hacerAdmin, cabeceras, type AdminTestUser } from '../helpers/authHelper';
 import { AppDataSource } from '../../config/database';
 import { Usuario } from '../../models/Usuario';
 import { Experto } from '../../models/Experto';
@@ -31,12 +31,12 @@ const stripeService = require('../../services/billing/stripeService');
 describeWithDb('Patrocinios de expertos', () => {
   let profesional: TestUser;
   let ajeno: TestUser;
-  let admin: TestUser;
+  let admin: AdminTestUser;
   let expertoId: string;
   const CUSTOMER = `cus_test_${randomUUID().slice(0, 8)}`;
   const SUB_PATROCINIO = `sub_patro_${randomUUID().slice(0, 8)}`;
 
-  const auth = (t: TestUser) => ({ Authorization: `Bearer ${t.accessToken}` });
+  const auth = cabeceras;
   const usuarios = () => AppDataSource.getRepository(Usuario);
   const patrocinios = () => AppDataSource.getRepository(PatrocinioExperto);
 
@@ -61,8 +61,7 @@ describeWithDb('Patrocinios de expertos', () => {
     await initTestDb();
     profesional = await signupTestUser();
     ajeno = await signupTestUser();
-    admin = await signupTestUser();
-    await usuarios().update({ id: admin.userId }, { es_admin: true });
+    admin = await hacerAdmin(await signupTestUser());
 
     // El experto tiene plan pro y un cliente de Stripe: es el escenario donde
     // el bug haría daño.

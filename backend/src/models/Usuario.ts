@@ -54,6 +54,17 @@ export class Usuario {
   @Column({ type: 'varchar', length: 20, nullable: true })
   admin_rol!: AdminRol | null;
 
+  /**
+   * Secreto TOTP del panel de admin, cifrado (ver `services/admin/totp.ts`).
+   * `select: false`: no viaja en ninguna consulta que no lo pida expresamente.
+   */
+  @Column({ type: 'text', nullable: true, select: false })
+  admin_totp_secreto?: string | null;
+
+  /** `null` = sin verificación en dos pasos activa (o enrolamiento a medias). */
+  @Column({ type: 'timestamp', nullable: true })
+  admin_totp_activado_en!: Date | null;
+
   @Column({ type: 'uuid', nullable: true })
   owner_id?: string;
 

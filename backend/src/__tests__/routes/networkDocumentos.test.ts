@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { app, initTestDb, closeTestDb } from '../helpers/testApp';
 import { describeWithDb } from '../helpers/dbGuard';
-import { signupTestUser, TestUser } from '../helpers/authHelper';
+import { signupTestUser, TestUser, hacerAdmin, cabeceras, type AdminTestUser } from '../helpers/authHelper';
 import { AppDataSource } from '../../config/database';
 import { Usuario } from '../../models/Usuario';
 import { Experto } from '../../models/Experto';
@@ -36,18 +36,17 @@ const PNG = Buffer.from(
 describeWithDb('Documentos y avisos de la red', () => {
   let dueno: TestUser;
   let ajeno: TestUser;
-  let admin: TestUser;
+  let admin: AdminTestUser;
   let expertoId: string;
 
-  const auth = (t: TestUser) => ({ Authorization: `Bearer ${t.accessToken}` });
+  const auth = cabeceras;
   const expertos = () => AppDataSource.getRepository(Experto);
 
   beforeAll(async () => {
     await initTestDb();
     dueno = await signupTestUser();
     ajeno = await signupTestUser();
-    admin = await signupTestUser();
-    await AppDataSource.getRepository(Usuario).update({ id: admin.userId }, { es_admin: true });
+    admin = await hacerAdmin(await signupTestUser());
 
     const alta = await request
       .default(app)
