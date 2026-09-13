@@ -264,3 +264,22 @@ export function datosPatrocinio(
   if (categoria !== 'legal' && categoria !== 'marketing' && categoria !== 'ventas') return null;
   return { expertoId, categoria };
 }
+/**
+ * Cancela una suscripción al momento.
+ *
+ * Se usa al enviar una cuenta a la papelera: una cuenta que nadie puede usar no
+ * puede seguir cobrándose. Devuelve si Stripe confirmó la cancelación, para que
+ * el panel diga la verdad si no lo hizo. Una suscripción que ya no existe cuenta
+ * como cancelada.
+ */
+export async function cancelarSuscripcion(subscriptionId: string): Promise<boolean> {
+  if (!stripe) return false;
+  try {
+    await stripe.subscriptions.cancel(subscriptionId);
+    return true;
+  } catch (err) {
+    const codigo = (err as { code?: string }).code;
+    if (codigo === 'resource_missing') return true;
+    return false;
+  }
+}

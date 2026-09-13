@@ -147,7 +147,9 @@ function aPublico(f: FilaDirectorio): ExpertoPublico {
 export async function listarDirectorio(
   f: FiltrosDirectorio
 ): Promise<{ expertos: ExpertoPublico[]; total: number }> {
-  const where: string[] = [`e.estado = 'aprobado'`];
+  // Aprobada Y sin la cuenta del dueño en la papelera: el directorio es público
+  // y no pasa por su sesión, así que tiene que excluirla él mismo.
+  const where: string[] = [`e.estado = 'aprobado'`, `e.eliminado_en IS NULL`];
   const params: unknown[] = [];
 
   if (f.categoria) {
@@ -218,7 +220,7 @@ export async function obtenerFichaPublica(id: string): Promise<FichaPublica | nu
             pat.prioridad AS prioridad_patrocinio
        FROM expertos e
        ${PATROCINIO_VIGENTE}
-      WHERE e.id = $1 AND e.estado = 'aprobado'
+      WHERE e.id = $1 AND e.estado = 'aprobado' AND e.eliminado_en IS NULL
       LIMIT 1`,
     [id]
   );

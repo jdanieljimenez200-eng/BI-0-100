@@ -9,6 +9,7 @@ import {
   reiniciar2faAdmin,
   buscarUsuarios,
   miRolAdmin,
+  pedirCodigoTotp,
   NOMBRE_ROL,
   DESCRIPCION_ROL,
   type Administrador,
@@ -17,12 +18,6 @@ import {
 } from '@/lib/admin';
 
 const ROLES: AdminRol[] = ['soporte', 'moderador', 'superadmin'];
-
-function pedirCodigo(): string | null {
-  const codigo = window.prompt('Escribe un código nuevo de tu app de autenticación (6 cifras):');
-  const limpio = (codigo ?? '').replace(/\D/g, '');
-  return limpio.length === 6 ? limpio : null;
-}
 
 function errorDe(e: unknown, porDefecto: string) {
   return (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? porDefecto;
@@ -91,7 +86,7 @@ export default function AdministradoresPage() {
     if (!motivo || !motivo.trim()) return;
     // Cambiar roles da o quita poder: se confirma con un código nuevo de la app,
     // aunque la sesión de admin siga abierta.
-    const codigo = pedirCodigo();
+    const codigo = pedirCodigoTotp();
     if (!codigo) return;
 
     setOcupado(id);
@@ -116,7 +111,7 @@ export default function AdministradoresPage() {
 Motivo (queda en la auditoría):`
     );
     if (!motivo || !motivo.trim()) return;
-    const codigo = pedirCodigo();
+    const codigo = pedirCodigoTotp();
     if (!codigo) return;
 
     setOcupado(id);

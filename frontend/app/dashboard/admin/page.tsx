@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import api from '@/lib/api';
-import { miRolAdmin, NOMBRE_ROL, type Permiso } from '@/lib/admin';
+import { miRolAdmin, enviarAPapelera, pedirCodigoTotp, NOMBRE_ROL, type Permiso } from '@/lib/admin';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Plan = 'freemium' | 'pro' | 'business' | 'enterprise';
@@ -138,6 +138,37 @@ export default function AdminPage() {
     finally  { setChangingPlan(null); }
   };
 
+  /**
+   * Envía la cuenta a la papelera. Tres confirmaciones, a propósito: escribir el
+   * email (que sea la fila correcta), el motivo (queda en la auditoría) y un
+   * código nuevo de la app (que sea quien dice ser).
+   */
+  const handleEliminar = async (userId: string, email: string) => {
+    const confirmacion = window.prompt(
+      `Vas a enviar ${email} a la papelera: se desactiva, se cierran sus sesiones y se cancelan sus suscripciones. Se podrá restaurar durante 30 días.\n\nEscribe el email de la cuenta para confirmar:`
+    );
+    if (confirmacion === null) return;
+    if (confirmacion.trim().toLowerCase() !== email.toLowerCase()) {
+      showToast('El email no coincide: no se ha eliminado nada', false);
+      return;
+    }
+    const motivo = pedirMotivo('enviar esta cuenta a la papelera');
+    if (!motivo) return;
+    const codigo = pedirCodigoTotp();
+    if (!codigo) return;
+
+    try {
+      const r = await enviarAPapelera(userId, motivo, codigo);
+      showToast(
+        r.suscripciones_sin_cancelar.length
+          ? `En la papelera, pero ${r.suscripciones_sin_cancelar.length} suscripción(es) de Stripe NO se pudieron cancelar: revísalas en Stripe`
+          : 'Cuenta enviada a la papelera',
+        r.suscripciones_sin_cancelar.length === 0
+      );
+      fetchUsuarios();
+    } catch (e) { showToast(errorDelServidor(e, 'No se pudo enviar a la papelera'), false); }
+  };
+
   const handleToggleActivo = async (userId: string, activo: boolean) => {
     // Desactivar exige motivo; reactivar no.
     const motivo = activo ? pedirMotivo('desactivar esta cuenta') : null;
@@ -214,6 +245,14 @@ export default function AdminPage() {
               className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-white/15 text-white/70 hover:text-white hover:bg-white/5 transition-colors"
             >
               Administradores
+            </Link>
+          )}
+          {puede('gestionarPapelera') && (
+            <Link
+              href="/dashboard/admin/papelera"
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-white/15 text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              Papelera
             </Link>
           )}
           {puede('verAuditoria') && (
@@ -505,6 +544,14 @@ export default function AdminPage() {
                       >
                         {u.activo ? '● Activo' : '○ Inactivo'}
                       </button>
+                      {puede('gestionarPapelera') && u.role !== 'admin' && (
+                        <button
+                          onClick={() => handleEliminar(u.id, u.email)}
+                          className="block mx-auto mt-1 text-[10px] text-rose-300/60 hover:text-rose-300 font-semibold"
+                        >
+                          Eliminar
+                        </button>
+                      )}
                     </td>
                   </motion.tr>
                 ))}

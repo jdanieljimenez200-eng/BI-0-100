@@ -47,7 +47,8 @@ export type Permiso =
   | 'moderarRed'
   | 'cambiarPlan'
   | 'gestionarRoles'
-  | 'verAuditoria';
+  | 'verAuditoria'
+  | 'gestionarPapelera';
 
 export const NOMBRE_ROL: Record<AdminRol, string> = {
   soporte: 'Soporte',
@@ -174,4 +175,51 @@ export function expiracionSesionAdmin(): Date | null {
   const expira = sessionStorage.getItem(`${CLAVE_TOKEN_ADMIN}:expira`);
   const fecha = expira ? new Date(expira) : null;
   return fecha && fecha.getTime() > Date.now() ? fecha : null;
+}
+
+// ─── Papelera ────────────────────────────────────────────────────────────────
+
+export interface CuentaEnPapelera {
+  id: string;
+  email: string;
+  nombre: string;
+  account_role: string;
+  owner_id: string | null;
+  eliminado_en: string;
+  motivo_eliminacion: string | null;
+  eliminado_por_email: string | null;
+  purga_en: string;
+  dias_restantes: number;
+}
+
+export async function listarPapelera() {
+  const { data } = await api.get<{ cuentas: CuentaEnPapelera[]; dias: number }>('/admin/papelera');
+  return data;
+}
+
+/** Enviar a la papelera: la acción más destructiva del panel. Pide código fresco. */
+export async function enviarAPapelera(id: string, motivo: string, codigoTotp: string) {
+  const { data } = await api.post<{
+    message: string;
+    cuentas_afectadas: number;
+    suscripciones_canceladas: number;
+    suscripciones_sin_cancelar: string[];
+  }>(`/admin/usuarios/${id}/papelera`, { motivo }, { headers: { 'X-Admin-Totp': codigoTotp } });
+  return data;
+}
+
+export async function restaurarCuenta(id: string, motivo: string, codigoTotp: string) {
+  const { data } = await api.post<{ message: string; cuentas_restauradas: number }>(
+    `/admin/usuarios/${id}/restaurar`,
+    { motivo },
+    { headers: { 'X-Admin-Totp': codigoTotp } }
+  );
+  return data;
+}
+
+/** Pide un código nuevo de la app. Devuelve `null` si se cancela o no son 6 cifras. */
+export function pedirCodigoTotp(): string | null {
+  const codigo = window.prompt('Escribe un código nuevo de tu app de autenticación (6 cifras):');
+  const limpio = (codigo ?? '').replace(/\D/g, '');
+  return limpio.length === 6 ? limpio : null;
 }

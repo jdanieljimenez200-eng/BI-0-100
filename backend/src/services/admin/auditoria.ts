@@ -75,3 +75,30 @@ export async function registrarAccionAdmin(
     })
   );
 }
+
+/** Identificador con el que firman las acciones automáticas (sin persona detrás). */
+export const ID_SISTEMA = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * Acción ejecutada por el propio sistema —la purga de la papelera— y no por un
+ * admin. Queda igual de registrada, firmada como `sistema`, dentro de la
+ * transacción del cambio.
+ */
+export async function registrarAccionSistema(manager: EntityManager, datos: AccionAdmin): Promise<AuditoriaAdmin> {
+  const repo = manager.getRepository(AuditoriaAdmin);
+  return repo.save(
+    repo.create({
+      admin_id: ID_SISTEMA,
+      admin_email: 'sistema',
+      admin_rol: 'sistema',
+      accion: datos.accion,
+      recurso_tipo: datos.recursoTipo,
+      recurso_id: datos.recursoId ?? null,
+      antes: datos.antes ?? null,
+      despues: datos.despues ?? null,
+      motivo: datos.motivo?.trim() || null,
+      ip: null,
+      user_agent: null,
+    })
+  );
+}

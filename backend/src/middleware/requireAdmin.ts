@@ -23,6 +23,7 @@ import {
  * | Revisar fichas, abrir cédula, moderar reseñas |    –    |     ✓     |     ✓      |
  * | Cambiar plan                                  |    –    |     –     |     ✓      |
  * | Asignar roles, ver auditoría                  |    –    |     –     |     ✓      |
+ * | Enviar a papelera / restaurar cuentas         |    –    |     –     |     ✓      |
  *
  * Tres capas, en este orden:
  *
@@ -49,6 +50,7 @@ export const PERMISOS = {
   cambiarPlan: ['superadmin'],
   gestionarRoles: ['superadmin'],
   verAuditoria: ['superadmin'],
+  gestionarPapelera: ['superadmin'],
 } as const satisfies Record<string, readonly AdminRol[]>;
 
 export type Permiso = keyof typeof PERMISOS;

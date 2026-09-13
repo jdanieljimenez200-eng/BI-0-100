@@ -65,6 +65,19 @@ export class Usuario {
   @Column({ type: 'timestamp', nullable: true })
   admin_totp_activado_en!: Date | null;
 
+  // ─── Papelera ─────────────────────────────────────────────────────────────
+  // Una cuenta en la papelera está desactivada y se puede restaurar durante 30
+  // días; después la purga la borra. Ver `services/admin/papelera.ts`.
+
+  @Column({ type: 'timestamp', nullable: true })
+  eliminado_en!: Date | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  eliminado_por!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  motivo_eliminacion!: string | null;
+
   @Column({ type: 'uuid', nullable: true })
   owner_id?: string;
 

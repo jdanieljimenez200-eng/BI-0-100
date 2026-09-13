@@ -476,11 +476,12 @@ router.post(
 
     const experto = await AppDataSource.getRepository(Experto).findOne({
       where: { id: req.params.id },
-      select: ['id', 'estado', 'usuario_id'],
+      select: ['id', 'estado', 'usuario_id', 'eliminado_en'],
     });
-    // Mismo 404 para "no existe" y "no está aprobado": reseñar una ficha que
-    // nadie puede ver no significa nada, y el 404 no confirma que exista.
-    if (!experto || experto.estado !== 'aprobado') {
+    // Mismo 404 para "no existe", "no está aprobado" y "cuenta en la papelera":
+    // reseñar una ficha que nadie puede ver no significa nada, y el 404 no
+    // confirma que exista.
+    if (!experto || experto.estado !== 'aprobado' || experto.eliminado_en) {
       return res.status(404).json({ error: 'Experto no encontrado' });
     }
     if (experto.usuario_id && experto.usuario_id === req.userId) {

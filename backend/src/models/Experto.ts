@@ -133,4 +133,11 @@ export class Experto {
 
   @Column({ type: 'timestamp', nullable: true })
   fecha_aprobacion!: Date | null;
+
+  /**
+   * La cuenta del dueño está en la papelera. La ficha no se muestra en ningún
+   * sitio público mientras tanto, y vuelve tal cual si se restaura la cuenta.
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  eliminado_en!: Date | null;
 }

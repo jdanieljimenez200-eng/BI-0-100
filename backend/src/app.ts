@@ -28,6 +28,7 @@ import marcaRoutes from './routes/marca';
 import equipoRoutes from './routes/equipo';
 import adminRoutes from './routes/admin';
 import adminSesionRoutes from './routes/adminSesion';
+import { programarPurgaPapelera } from './services/admin/papelera';
 import eventsRoutes from './routes/events';
 import calendarioRoutes from './routes/calendario';
 import clientesRoutes from './routes/clientes';
@@ -190,6 +191,10 @@ export async function initializeApp(): Promise<void> {
     if (process.env.RUN_WORKER !== 'false') {
       startAnalysisWorker();
     }
+
+    // Purga diaria de la papelera (cuentas con más de 30 días) y de cédulas
+    // huérfanas. Un advisory lock evita que dos instancias purguen a la vez.
+    programarPurgaPapelera();
 
     // Start server
     const port = parseInt(process.env.PORT || '3001', 10);

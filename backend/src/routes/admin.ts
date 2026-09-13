@@ -14,6 +14,8 @@ import { logger } from '../utils/logger';
 import { bloquearSesiones, levantarBloqueo } from '../services/auth/bloqueoSesion';
 import { invalidatePlanCache } from '../middleware/requirePlan';
 import { AuditoriaAdmin } from '../models/AuditoriaAdmin';
+import * as papelera from '../services/admin/papelera';
+import { cancelarSuscripcion } from '../services/billing/stripeService';
 import { registrarAccionAdmin, MotivoSchema } from '../services/admin/auditoria';
 
 const router = Router();
@@ -113,7 +115,8 @@ router.get(
     const search = req.query.search as string | undefined;
 
     try {
-      const conditions: string[] = ['1=1'];
+      // Las cuentas en la papelera tienen su propia pestaña.
+      const conditions: string[] = ['u.eliminado_en IS NULL'];
       const params: unknown[] = [];
 
       if (plan) {
@@ -528,5 +531,82 @@ router.post(
     }
   },
 );
+
+
+// ─── Papelera ─────────────────────────────────────────────────────────────────
+
+/** Cuentas en la papelera, con los días que les quedan antes de la purga. */
+router.get('/papelera', requirePermiso('gestionarPapelera'), async (_req: AuthRequest, res: Response) => {
+  try {
+    return res.json({ cuentas: await papelera.listarPapelera(), dias: papelera.DIAS_PAPELERA });
+  } catch (err) {
+    logger.error('[admin] error listando la papelera:', err);
+    return res.status(500).json({ error: 'Error al leer la papelera' });
+  }
+});
+
+/**
+ * Envía una cuenta a la papelera.
+ *
+ * Es lo más destructivo del panel, así que pide lo máximo: superadmin, motivo y
+ * código fresco. Tras el commit corta las sesiones de la cuenta (y de sus
+ * trabajadores) y cancela sus suscripciones de Stripe. Si Stripe no confirma, la
+ * respuesta lo dice: una cuenta en la papelera que sigue cobrándose es un
+ * problema que el admin tiene que saber que existe.
+ */
+router.post('/usuarios/:id/papelera', requirePermiso('gestionarPapelera'), async (req: AuthRequest, res: Response) => {
+  const motivo = MotivoSchema.safeParse(req.body?.motivo);
+  if (!motivo.success) return res.status(400).json({ error: motivo.error.errors[0].message });
+
+  const { id } = req.params;
+  if (id === req.userId) return res.status(400).json({ error: 'No puedes enviar tu propia cuenta a la papelera' });
+  if (!(await exigirTotpFresco(req, res))) return;
+
+  try {
+    const r = await AppDataSource.transaction((manager) => papelera.enviarAPapelera(manager, req, id, motivo.data));
+
+    for (const afectado of r.idsAfectados) await bloquearSesiones(afectado);
+
+    const sinCancelar: string[] = [];
+    for (const sub of r.suscripciones) {
+      if (!(await cancelarSuscripcion(sub))) sinCancelar.push(sub);
+    }
+    if (sinCancelar.length) {
+      logger.error(`[admin] cuenta ${id} en papelera con suscripciones sin cancelar: ${sinCancelar.join(', ')}`);
+    }
+
+    return res.json({
+      message: 'Cuenta enviada a la papelera',
+      cuentas_afectadas: r.idsAfectados.length,
+      suscripciones_canceladas: r.suscripciones.length - sinCancelar.length,
+      suscripciones_sin_cancelar: sinCancelar,
+    });
+  } catch (err) {
+    if (err instanceof papelera.ErrorPapelera) return res.status(err.status).json({ error: err.message });
+    logger.error('[admin] error enviando a la papelera:', err);
+    return res.status(500).json({ error: 'Error al enviar a la papelera' });
+  }
+});
+
+router.post('/usuarios/:id/restaurar', requirePermiso('gestionarPapelera'), async (req: AuthRequest, res: Response) => {
+  const motivo = MotivoSchema.safeParse(req.body?.motivo);
+  if (!motivo.success) return res.status(400).json({ error: motivo.error.errors[0].message });
+  if (!(await exigirTotpFresco(req, res))) return;
+
+  try {
+    const r = await AppDataSource.transaction((manager) =>
+      papelera.restaurarDePapelera(manager, req, req.params.id, motivo.data)
+    );
+    for (const restaurado of r.idsRestaurados) await levantarBloqueo(restaurado);
+    return res.json({
+      message: 'Cuenta restaurada. Si tenía suscripción, tendrá que volver a contratarla: Stripe no la reanuda.',
+      cuentas_restauradas: r.idsRestaurados.length,
+    });
+  } catch (err) {
+    if (err instanceof papelera.ErrorPapelera) return res.status(err.status).json({ error: err.message });
+    logger.error('[admin] error restaurando de la papelera:', err);
+    return res.status(500).json({ error: 'Error al restaurar' });
+  }
+});
 
 export default router;
