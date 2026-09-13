@@ -18,7 +18,7 @@ import {
   isCapabilityKey,
   CAPABILITIES,
 } from '../services/billing/planService';
-import { revokeAllUserRefreshTokens } from './auth';
+import { bloquearSesiones } from '../services/auth/bloqueoSesion';
 
 const router = Router();
 router.use(authenticate);
@@ -206,7 +206,8 @@ router.delete(
     }
 
     await repo.delete({ id: trabajador.id });
-    await revokeAllUserRefreshTokens(trabajador.id);
+    // Revocar el refresh no basta: el access token seguiría valiendo hasta 15 min.
+    await bloquearSesiones(trabajador.id);
     res.json({ message: 'Trabajador eliminado' });
   }
 ));

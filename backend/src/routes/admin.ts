@@ -5,6 +5,8 @@ import { Usuario, Plan } from '../models/Usuario';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireAdmin } from '../middleware/requireAdmin';
 import { logger } from '../utils/logger';
+import { bloquearSesiones, levantarBloqueo } from '../services/auth/bloqueoSesion';
+import { invalidatePlanCache } from '../middleware/requirePlan';
 
 const router = Router();
 
@@ -171,7 +173,19 @@ router.patch(
       const usuario = await repo.findOneBy({ id });
       if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
 
+      // Con una suscripción de Stripe viva, el plan lo manda Stripe: el próximo
+      // evento del webhook (una renovación, un cambio de tarjeta) reescribe
+      // `plan` y el cambio manual desaparece sin avisar a nadie. Mejor decirlo
+      // ahora que dejar creer que se aplicó.
+      if (usuario.stripe_subscription_id) {
+        return res.status(409).json({
+          error:
+            'Este usuario tiene una suscripción activa en Stripe: el plan se gestiona desde Stripe. Un cambio aquí lo revertiría el siguiente evento de facturación.',
+        });
+      }
+
       await repo.update(id, { plan });
+      await invalidatePlanCache(id);
 
       return res.json({ message: `Plan actualizado a ${plan}`, plan });
     } catch (err) {
@@ -198,8 +212,23 @@ router.patch(
     }
 
     try {
-      await AppDataSource.getRepository(Usuario).update(id, { activo });
-      return res.json({ message: activo ? 'Usuario activado' : 'Usuario desactivado' });
+      const resultado = await AppDataSource.getRepository(Usuario).update(id, { activo });
+      if (!resultado.affected) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+      if (activo) {
+        await levantarBloqueo(id);
+        return res.json({ message: 'Usuario activado' });
+      }
+
+      // Desactivar en la base no saca a quien ya está dentro: su access token
+      // sigue valiendo hasta caducar. Esto corta las sesiones al momento.
+      const sesionesCortadas = await bloquearSesiones(id);
+      return res.json({
+        message: sesionesCortadas
+          ? 'Usuario desactivado y sus sesiones cerradas'
+          : 'Usuario desactivado. No se pudieron cerrar sus sesiones abiertas: caducarán solas en 15 minutos.',
+        sesiones_cerradas: sesionesCortadas,
+      });
     } catch (err) {
       return res.status(500).json({ error: 'Error al actualizar usuario' });
     }
