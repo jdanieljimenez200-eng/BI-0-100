@@ -43,6 +43,8 @@ const contarAnalisisVentas = (usuarioId: string, productoId?: string): Promise<n
       usuario_id: usuarioId,
       ...(productoId ? { producto_id: productoId } : {}),
       estado_analisis: Not('error'),
+      // Si la IA falló y se entregó plantilla, no se cobra el intento.
+      resultado_estimado: false,
     },
   });
 

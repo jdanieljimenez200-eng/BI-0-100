@@ -12,8 +12,10 @@ import type {
   ObligacionFiscal,
   PermisoCumplimiento,
 } from './types';
+import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
-const client = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+const client = process.env.ANTHROPIC_API_KEY ? new Anthropic(OPCIONES_ANTHROPIC) : null;
 
 const MODELO = 'claude-sonnet-4-6';
 const MAX_TOKENS = 8000;
@@ -920,6 +922,7 @@ export async function generarAnalisisLegal(
     const salida = LegalOutputSchema.parse(bruto);
     return ensamblar(salida, input, meta, iso, fechaISO);
   } catch (err) {
+    registrarFallbackIA('legal');
     logger.error('[legalService] LLM falló, usando mock determinista', {
       productoId: input.productoId,
       pais: iso,

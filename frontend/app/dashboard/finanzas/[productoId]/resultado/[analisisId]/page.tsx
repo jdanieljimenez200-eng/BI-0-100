@@ -43,6 +43,7 @@ import {
 import { MODULE_THEME } from '@/lib/moduleTheme';
 import { MOTION_DURATIONS, MOTION_EASINGS } from '@/lib/motion/tokens';
 import CsvImportModal from './CsvImportModal';
+import AvisoEstimacion from '@/components/ui/AvisoEstimacion';
 
 /** Acento del módulo, desde la fuente canónica (lib/moduleTheme). */
 const ACENTO = MODULE_THEME.finanzas;
@@ -230,6 +231,7 @@ interface AnalisisFinanzas {
   pais: string;
   estado_analisis: string;
   error_mensaje?: string;
+  resultado_estimado?: boolean;
   inputs_data: OverrideValues;
   overrides_data: OverrideValues | null;
   // Nullables a propósito: al recortar por plan el backend no genera estas
@@ -955,6 +957,8 @@ export default function FinanzasResultadoPage() {
           </div>
         </div>
       </Revelar>
+
+      <AvisoEstimacion visible={analisis?.resultado_estimado} className="mb-6" />
 
       {/* KPI row — los cuatro KPIs salen de resumen_data y proyeccion_data, las
           dos secciones que el gratuito no genera. Con cualquiera recortada la

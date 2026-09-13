@@ -12,6 +12,8 @@ import type { VentasAnalisisInput } from './types';
 import { notificarAnalisisCompleto } from '../email/emailService';
 import { swallowWithLog } from '../../utils/fireAndForget';
 import { emitAnalysisUpdate } from '../../events/sse';
+import { huboFallbackIA } from '../../utils/seguimientoIA';
+import { logger } from '../../utils/logger';
 
 function fechaHoyISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -86,6 +88,7 @@ export async function ejecutarAnalisisVentas(
     // Persistir el gate con el que se generó: distingue análisis recortado
     // de uno completo aunque el plan cambie después.
     analisis.secciones_bloqueadas = [...gate.bloqueadas];
+    analisis.resultado_estimado = huboFallbackIA();
     analisis.estado_analisis = 'completado';
     analisis.fecha_completado = new Date();
     await repo.save(analisis);
@@ -105,18 +108,9 @@ export async function ejecutarAnalisisVentas(
       modulo: 'ventas',
     }).catch(swallowWithLog('email:analisis_completo', { analisisId: analisis.id, modulo: 'ventas' }));
   } catch (err) {
-    analisis.estado_analisis = 'error';
-    analisis.error_mensaje = err instanceof Error ? err.message : 'Error desconocido';
-    await repo.save(analisis);
-
-    emitAnalysisUpdate(usuarioId, {
-      tipo: 'ventas',
-      estado: 'error',
-      productoId: producto.id,
-      id: analisis.id,
-      errorMessage: analisis.error_mensaje ?? undefined,
-    });
-
-    throw err; // BullMQ gestiona reintentos; al agotarse marca error definitivo
+    // Solo se registra y se relanza: la cola marca el error y avisa al usuario
+    // cuando ya no quedan reintentos (workers/analysisQueue.ts).
+    logger.error(`[ventas] Error análisis ${analisisId}:`, err);
+    throw err;
   }
 }

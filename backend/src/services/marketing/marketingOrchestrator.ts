@@ -13,6 +13,7 @@ import { generarCalendario, RECORTE_COMPLETO } from './calendarioService';
 import { getPlanGate, FREEMIUM_SEMANAS_CALENDARIO } from '../billing/gatingAnalisis';
 import { logger } from '../../utils/logger';
 import { emitAnalysisUpdate } from '../../events/sse';
+import { huboFallbackIA } from '../../utils/seguimientoIA';
 
 const VOCES_VALIDAS: VozMarca[] = ['Profesional', 'Divertido', 'Urgente', 'Emp\u00e1tico'];
 
@@ -242,6 +243,7 @@ export async function orquestarMarketing(
     analisis.presupuesto_mensual = presupuesto;
     analisis.meta_campana = payload.metaCampana ?? '';
 
+    analisis.resultado_estimado = huboFallbackIA();
     analisis.estado_analisis = 'completado';
     analisis.fecha_completado = new Date();
     await repo.save(analisis);
@@ -261,16 +263,8 @@ export async function orquestarMarketing(
       }).catch(swallowWithLog('email:marketing', { analisisId }));
     }
   } catch (error) {
-    analisis.estado_analisis = 'error';
-    analisis.error_mensaje = (error as Error).message;
-    await repo.save(analisis);
-    emitAnalysisUpdate(usuarioId, {
-      tipo: 'marketing',
-      estado: 'error',
-      productoId,
-      id: analisisId,
-      errorMessage: analisis.error_mensaje,
-    });
+    // Solo se registra y se relanza: la cola marca el error y avisa al usuario
+    // cuando ya no quedan reintentos (workers/analysisQueue.ts).
     logger.error('[marketing] Orquestación falló:', error);
     throw error;
   }

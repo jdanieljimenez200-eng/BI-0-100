@@ -24,6 +24,7 @@ import { AnalisisVentas } from '../../models/AnalisisVentas';
 import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
 import { redisClient } from '../../config/redis';
 import { logger } from '../../utils/logger';
+import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
 
 export type ModuloResumen = 'mercado' | 'marketing' | 'finanzas' | 'legal' | 'brief' | 'ventas';
 
@@ -191,7 +192,7 @@ async function construirResumenIa(modulos: ModuloResumenInfo[]): Promise<{ texto
   if (!process.env.ANTHROPIC_API_KEY) return { texto: construirResumenLocal(modulos), esMock: true };
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, ...OPCIONES_ANTHROPIC });
     const listado = modulos
       .map((m) => {
         const estado = m.tiene_analisis

@@ -19,8 +19,10 @@ import {
   TipoEstrategia,
   VozMarca,
 } from './types';
+import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
-const client = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+const client = process.env.ANTHROPIC_API_KEY ? new Anthropic(OPCIONES_ANTHROPIC) : null;
 
 const SYSTEM_PROMPT_CALENDARIO = `Eres un Social Media Strategist y Growth Hacker senior con 10+ años diseñando calendarios editoriales de alto impacto en Latinoamérica. Has escalado cuentas de 0 a 100K+ seguidores y de cero a 7 cifras en ventas usando contenido orgánico.
 
@@ -1520,6 +1522,7 @@ ${recorte.semanas === 2
       recorte
     );
   } catch (err) {
+    registrarFallbackIA('marketing.calendario');
     console.warn('Calendar Claude fallback to mock:', err instanceof Error ? err.message : err);
     return aplicarRecorte(
       alinearConPlataformasActivas(mockCalendario(nombre, estrategiaTipo, vozMarca), plataformasActivas),

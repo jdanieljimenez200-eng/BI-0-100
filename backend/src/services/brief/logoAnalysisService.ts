@@ -1,8 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { parseLLMJson } from '../../middleware/validate';
+import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
 
-const client = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+const client = process.env.ANTHROPIC_API_KEY ? new Anthropic(OPCIONES_ANTHROPIC) : null;
 
 // ─── Output types ─────────────────────────────────────────────────────────────
 

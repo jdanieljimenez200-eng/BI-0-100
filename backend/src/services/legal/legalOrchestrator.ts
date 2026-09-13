@@ -6,6 +6,7 @@ import { swallowWithLog } from '../../utils/fireAndForget';
 import { generarAnalisisLegal } from './legalService';
 import { LegalAnalisisInput } from './types';
 import { emitAnalysisUpdate } from '../../events/sse';
+import { huboFallbackIA } from '../../utils/seguimientoIA';
 import { logger } from '../../utils/logger';
 
 // ─── Ejecutar análisis completo (llamado por el Worker) ───────────────────────
@@ -25,6 +26,7 @@ export async function ejecutarAnalisisLegal(
       giro_detectado: resultado.giro_detectado,
       cumplimiento_global: resultado.cumplimiento_global,
       puntaje_cumplimiento: resultado.puntaje_cumplimiento,
+      resultado_estimado: huboFallbackIA(),
       estado_analisis: 'completado',
       fecha_completado: new Date(),
     });
@@ -49,18 +51,9 @@ export async function ejecutarAnalisisLegal(
       modulo: 'legal',
     }).catch(swallowWithLog('email:analisis_completo', { analisisId, modulo: 'legal' }));
   } catch (err) {
+    // Solo se registra y se relanza: la cola marca el error y avisa al usuario
+    // cuando ya no quedan reintentos (workers/analysisQueue.ts).
     logger.error(`❌ Error análisis legal ${analisisId}:`, err);
-    const detalle = err instanceof Error ? err.message : 'Error desconocido';
-    await repo.update(analisisId, {
-      estado_analisis: 'error',
-      error_mensaje: detalle,
-    });
-    emitAnalysisUpdate(input.usuarioId, {
-      tipo: 'legal',
-      estado: 'error',
-      productoId: input.productoId,
-      id: analisisId,
-      errorMessage: detalle,
-    });
+    throw err;
   }
 }

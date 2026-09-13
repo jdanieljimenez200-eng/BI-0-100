@@ -40,6 +40,8 @@ function dafoTemplate(
 // ─── Schema de validación del output del LLM ────────────────────────────────
 
 import { z } from 'zod';
+import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 const DafoItemSchema = z.object({
   titulo:         z.string().min(2).max(120),
@@ -215,7 +217,7 @@ async function claudeDafo(
   viabilidad: ViabilidadResult,
   contextoExtra?: DafoContextoExtra
 ): Promise<DafoResult> {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, ...OPCIONES_ANTHROPIC });
   const userPrompt = construirPromptDafo(producto, competencia, tendencias, viabilidad, contextoExtra);
 
   const msg = await client.messages.create({
@@ -254,6 +256,7 @@ export async function generarDafo(
   try {
     return await claudeDafo(producto, competencia, tendencias, viabilidad, contextoExtra);
   } catch (err) {
+    registrarFallbackIA('mercado.dafo');
     console.warn('Claude DAFO falló, usando template:', err);
     return dafoTemplate(producto, competencia, tendencias);
   }

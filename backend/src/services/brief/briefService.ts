@@ -2,10 +2,12 @@ import Anthropic from '@anthropic-ai/sdk';
 import { Producto } from '../../models/Producto';
 import { BriefAnalisisInput, BriefResultado, PaletaColores } from './types';
 import { obtenerPaleta } from './paletasService';
-import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
+import { sanitizeForLLM, sanitizeArrayForLLM } from '../../utils/sanitizeForLLM';
 import { parseLLMJson } from '../../middleware/validate';
 import { logger } from '../../utils/logger';
 import { z } from 'zod';
+import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 const BriefSchema = z.object({
   brief_identidad: z.object({
@@ -120,7 +122,7 @@ export async function generarBrief(
   }
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, ...OPCIONES_ANTHROPIC });
     const tipografias = getTipografiasDefault(input.estilo_visual);
 
     const prompt = `Eres un director de branding y estratega de marca senior.
@@ -132,16 +134,16 @@ Producto:
 - Categoría: ${sanitizeForLLM(producto.categoria || '')}
 
 Entrada del Usuario para el Brief:
-- Percepciones deseadas: ${input.percepcion?.join(', ') || 'N/A'}
-- Emoción clave: ${input.emocion || 'N/A'}
-- Anti-valores (lo que la marca NUNCA debe parecer): ${input.anti_valores?.join(', ') || 'N/A'}
-- Estilo visual seleccionado: ${input.estilo_visual || 'N/A'}
-- Tipo de logo preferido: ${input.tipo_logo || 'N/A'}
+- Percepciones deseadas: ${sanitizeArrayForLLM(input.percepcion, { maxLen: 200 }).join(', ') || 'N/A'}
+- Emoción clave: ${sanitizeForLLM(input.emocion, { maxLen: 200 }) || 'N/A'}
+- Anti-valores (lo que la marca NUNCA debe parecer): ${sanitizeArrayForLLM(input.anti_valores, { maxLen: 200 }).join(', ') || 'N/A'}
+- Estilo visual seleccionado: ${sanitizeForLLM(input.estilo_visual, { maxLen: 200 }) || 'N/A'}
+- Tipo de logo preferido: ${sanitizeForLLM(input.tipo_logo, { maxLen: 200 }) || 'N/A'}
 - Símbolo o elemento representativo: ${sanitizeForLLM(input.simbolo_representativo || '')}
 - Resultado deseado para el cliente: ${sanitizeForLLM(input.resultado_cliente || '')}
-- Tono de comunicación: ${input.tono_comunicacion || 'N/A'}
-- Posicionamiento estratégico: ${input.posicionamiento || 'N/A'}
-- Nivel de diferenciación buscado: ${input.nivel_diferenciacion || 'N/A'}
+- Tono de comunicación: ${sanitizeForLLM(input.tono_comunicacion, { maxLen: 200 }) || 'N/A'}
+- Posicionamiento estratégico: ${sanitizeForLLM(input.posicionamiento, { maxLen: 100 }) || 'N/A'}
+- Nivel de diferenciación buscado: ${sanitizeForLLM(input.nivel_diferenciacion, { maxLen: 100 }) || 'N/A'}
 
 Paleta asignada:
 - Primario: ${paleta.primario.nombre} (${paleta.primario.hex})
@@ -211,6 +213,7 @@ Responde ÚNICAMENTE un objeto JSON válido con esta estructura exacta:
       es_mock: false,
     };
   } catch (err) {
+    registrarFallbackIA('brief');
     logger.error('[briefService] Error en llamada a Anthropic Claude, recurriendo a fallback:', err);
     return generarBriefFallback(producto, input, paleta);
   }

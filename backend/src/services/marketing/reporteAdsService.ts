@@ -14,6 +14,7 @@ import {
   ResumenAgregadoReporteAds,
   ReporteAdsProcesado,
 } from './types';
+import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
 
 // ─── Error Custom ─────────────────────────────────────────────────────────────
 
@@ -705,7 +706,7 @@ export function mockReporteAds(
 
 // ─── Interpretación con IA (Claude Sonnet) ───────────────────────────────────
 
-const client = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+const client = process.env.ANTHROPIC_API_KEY ? new Anthropic(OPCIONES_ANTHROPIC) : null;
 
 const SYSTEM_PROMPT_DIAGNOSTICO = `Eres un Chief Media Officer y Growth Auditor senior con 12+ años auditando y optimizando cuentas publicitarias en Meta Ads, Google Ads, TikTok Ads y LinkedIn Ads para negocios en Latinoamérica.
 

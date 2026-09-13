@@ -107,6 +107,10 @@ export class AnalisisVentas {
   @Column({ nullable: true, type: 'text' })
   error_mensaje!: string | null;
 
+  /** Alguna sección salió de plantilla porque la IA falló: se avisa y no consume cuota. */
+  @Column({ type: 'boolean', default: false })
+  resultado_estimado!: boolean;
+
   @CreateDateColumn()
   fecha_creacion!: Date;
 

@@ -54,6 +54,8 @@ const AnalizarMercadoSchema = z
     precio_venta_m2_declarado: z.number().finite().positive().optional(),
     personal: z.number().finite().int().nonnegative().optional(),
     renta_declarada: z.number().finite().nonnegative().optional(),
+    // Lo usa el cálculo de densidad; sin declararlo aquí la validación lo borraba.
+    radioKm: z.number().finite().positive().max(500).optional(),
   })
   .refine((d) => Boolean(d.producto_id ?? d.productoId), {
     message: 'producto_id es requerido',
@@ -74,6 +76,8 @@ const contarAnalisisMercado = (usuarioId: string, productoId?: string): Promise<
       usuario_id: usuarioId,
       ...(productoId ? { producto_id: productoId } : {}),
       estado_analisis: Not('error'),
+      // Si la IA falló y se entregó plantilla, no se cobra el intento.
+      resultado_estimado: false,
     },
   });
 

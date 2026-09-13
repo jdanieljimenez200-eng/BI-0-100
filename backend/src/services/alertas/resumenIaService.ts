@@ -29,6 +29,7 @@ import { redisClient } from '../../config/redis';
 import { logger } from '../../utils/logger';
 import type { Alerta, NivelAlerta } from './types';
 import type { AlertasOperativas } from './agregadorOperativo';
+import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
 
 // ─── Salida ─────────────────────────────────────────────────────────────────
 
@@ -341,7 +342,7 @@ export async function generarResumenIaAlertas(
   if (!process.env.ANTHROPIC_API_KEY) return construirResumenLocal(datos);
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, ...OPCIONES_ANTHROPIC });
 
     const msg = await client.messages.create({
       model: 'claude-sonnet-4-6',

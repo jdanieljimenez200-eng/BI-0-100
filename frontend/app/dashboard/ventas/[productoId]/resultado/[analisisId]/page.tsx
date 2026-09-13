@@ -14,6 +14,7 @@ import PerfilClientePanel, { type PerfilCliente } from '@/components/ventas/Perf
 import ScriptScorerPanel from '@/components/ventas/ScriptScorerPanel';
 import FollowUpsCard from '@/components/ventas/FollowUpsCard';
 import CompetitorIntelPanel from '@/components/ventas/CompetitorIntelPanel';
+import AvisoEstimacion from '@/components/ui/AvisoEstimacion';
 
 interface TipNegociacion {
   titulo: string;
@@ -56,6 +57,7 @@ interface AnalisisVentas {
   porque_fallan_data?: PorqueFallan | null;
   perfil_cliente_data?: PerfilCliente | null;
   secciones_bloqueadas?: string[] | null;
+  resultado_estimado?: boolean;
   nombre_producto?: string;
   categoria?: string;
   pais?: string;
@@ -440,6 +442,7 @@ export default function ResultadoVentasPage() {
       </header>
 
       <div className="mx-auto max-w-5xl px-5 py-7">
+        <AvisoEstimacion visible={analisis?.resultado_estimado} className="mb-6 print:hidden" />
         {/* Chips resumen */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}

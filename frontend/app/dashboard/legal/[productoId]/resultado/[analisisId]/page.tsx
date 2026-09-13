@@ -10,6 +10,7 @@ import { useAnalysisLoaderGate } from '@/app/hooks/useAnalysisLoaderGate';
 import ExpertosRecomendados from '@/components/network/ExpertosRecomendados';
 import LockedSection, { SkeletonBloque, SkeletonTarjetas } from '@/components/ui/LockedSection';
 import { estaBloqueada } from '@/lib/gating';
+import AvisoEstimacion from '@/components/ui/AvisoEstimacion';
 
 // ─── Types (espejo del backend) ────────────────────────────────────────────────
 
@@ -75,6 +76,7 @@ interface AnalisisLegal {
   /** Claves recortadas por plan que declara el backend (gatingAnalisis). */
   secciones_bloqueadas?: string[] | null;
   error_mensaje?: string;
+  resultado_estimado?: boolean;
 }
 
 // ─── Normalización universal de datos legales ──────────────────────────────────
@@ -781,6 +783,7 @@ export default function LegalResultadoPage() {
       `}</style>
 
       <div className="max-w-3xl mx-auto px-4 py-8 space-y-8 print-area" id="legal-report">
+        <AvisoEstimacion visible={analisis.resultado_estimado} className="no-print" />
 
         {/* ── Breadcrumb + acciones ─────────────────────────────────────── */}
         <div className="flex items-center justify-between no-print">

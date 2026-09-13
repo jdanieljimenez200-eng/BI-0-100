@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
 import { parseLLMJson } from '../../middleware/validate';
 import { logger } from '../../utils/logger';
+import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 /**
  * Análisis de riesgo de negocio, movido aquí desde Ventas ("por qué fallan"):
@@ -38,7 +40,7 @@ export interface RiesgosContexto {
   meses_para_recuperar_inversion: number | null;
 }
 
-const client = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+const client = process.env.ANTHROPIC_API_KEY ? new Anthropic(OPCIONES_ANTHROPIC) : null;
 const MODELO = 'claude-sonnet-4-6';
 const MAX_TOKENS = 2000;
 
@@ -159,6 +161,7 @@ Formato JSON: {"patron_comun": str, "riesgos":[{"titulo","descripcion","senales_
     const parsed = RiesgosOutputSchema.parse(await llamarClaude(system, prompt));
     return parsed;
   } catch (err) {
+    registrarFallbackIA('finanzas.riesgos');
     logger.warn('[riesgosService] LLM falló, usando fallback determinista:', err);
     return generarRiesgosMock(ctx);
   }

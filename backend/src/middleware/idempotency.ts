@@ -19,7 +19,7 @@ import { logger } from '../utils/logger';
  * Se libera automáticamente por TTL. No se borra al completar el análisis
  * porque eso obligaría a propagar el lock release hasta el worker.
  */
-export function requireAnalisisLock(modulo: string) {
+export function requireAnalisisLock(modulo: string, opciones: { porCuenta?: boolean } = {}) {
   return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
     // Los routers usan tanto snake_case como camelCase
     const productoId = req.body?.producto_id ?? req.body?.productoId;
@@ -29,7 +29,10 @@ export function requireAnalisisLock(modulo: string) {
       return;
     }
 
-    const key = `analisis_lock:${modulo}:${req.userId}:${productoId}`;
+    // `porCuenta`: para módulos cuya cuota es por cuenta y no por producto.
+    const key = opciones.porCuenta
+      ? `analisis_lock:${modulo}:${req.userId}`
+      : `analisis_lock:${modulo}:${req.userId}:${productoId}`;
 
     try {
       const acquired = await redisClient.set(key, '1', { NX: true, EX: 30 });

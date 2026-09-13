@@ -10,6 +10,7 @@ import { generarRiesgosNegocio } from './riesgosService';
 import { notificarAnalisisCompleto } from '../email/emailService';
 import { swallowWithLog } from '../../utils/fireAndForget';
 import { emitAnalysisUpdate } from '../../events/sse';
+import { huboFallbackIA } from '../../utils/seguimientoIA';
 import { logger } from '../../utils/logger';
 
 export async function ejecutarAnalisisFinanzas(
@@ -56,6 +57,7 @@ export async function ejecutarAnalisisFinanzas(
       unidades_mes_inicial: input.unidades_mes_inicial,
       tasa_crecimiento_mensual: input.tasa_crecimiento_mensual,
     };
+    analisis.resultado_estimado = huboFallbackIA();
     analisis.estado_analisis = 'completado';
     analisis.fecha_completado = new Date();
     await repo.save(analisis);
@@ -78,18 +80,10 @@ export async function ejecutarAnalisisFinanzas(
       modulo: 'finanzas',
     }).catch(swallowWithLog('email:analisis_completo', { analisisId: analisis.id, modulo: 'finanzas' }));
   } catch (err) {
+    // Solo se registra y se relanza: la cola marca el error y avisa al usuario
+    // cuando ya no quedan reintentos (workers/analysisQueue.ts).
     logger.error(`❌ Error análisis finanzas ${analisisId}:`, err);
-    const detalle = err instanceof Error ? err.message : 'Error desconocido';
-    analisis.estado_analisis = 'error';
-    analisis.error_mensaje = detalle;
-    await repo.save(analisis);
-    emitAnalysisUpdate(input.usuarioId, {
-      tipo: 'finanzas',
-      estado: 'error',
-      productoId: input.productoId,
-      id: analisis.id,
-      errorMessage: detalle,
-    });
+    throw err;
   }
 }
 

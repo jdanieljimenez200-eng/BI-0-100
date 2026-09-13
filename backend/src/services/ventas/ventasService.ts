@@ -20,9 +20,11 @@ import {
   CompetidorContexto,
   ImagenParaAnalisis,
 } from './types';
+import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 
-const client = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+const client = process.env.ANTHROPIC_API_KEY ? new Anthropic(OPCIONES_ANTHROPIC) : null;
 
 const MODELO = 'claude-sonnet-4-6';
 const MAX_TOKENS = 3000;
@@ -273,6 +275,7 @@ Formato JSON: {"tips":[{"titulo","descripcion","ejemplo_practico","error_comun"}
     const parsed = TipsOutputSchema.parse(await llamarClaude(system, prompt));
     return parsed.tips;
   } catch (err) {
+    registrarFallbackIA('ventas.tips');
     console.error('[ventasService] tips LLM falló, usando mock:', err instanceof Error ? err.message : err);
     return generarTipsMock(input);
   }
@@ -311,6 +314,7 @@ Formato JSON: {"nombre","industria","pais","como_lo_logro","mentalidad_clave","o
     const parsed = HistoriaOutputSchema.parse(await llamarClaude(system, prompt));
     return { ...parsed, fecha: fechaISO } satisfies HistoriaEmprendedor;
   } catch (err) {
+    registrarFallbackIA('ventas.historia');
     console.error('[ventasService] historia LLM falló, usando mock:', err instanceof Error ? err.message : err);
     return generarHistoriaMock(input, fechaISO);
   }
@@ -459,6 +463,7 @@ Formato JSON exacto:
     const raw = await llamarClaude(system, prompt);
     return PerfilClienteSchema.parse(raw) as PerfilClienteIdeal;
   } catch (err) {
+    registrarFallbackIA('ventas.perfil_cliente');
     console.error('[ventasService] perfil_cliente LLM falló, usando mock:', err instanceof Error ? err.message : err);
     return generarPerfilClienteMock(input);
   }

@@ -20,6 +20,7 @@ import type {
 } from './types';
 import { logger } from '../../utils/logger';
 import { emitAnalysisUpdate } from '../../events/sse';
+import { huboFallbackIA } from '../../utils/seguimientoIA';
 
 /**
  * Composición del análisis de Mercado.
@@ -211,6 +212,7 @@ export async function orquestarMercado(
       )) as never;
     }
 
+    analisis.resultado_estimado = huboFallbackIA();
     analisis.estado_analisis = 'completado';
     analisis.fecha_completado = new Date();
     await repo.save(analisis);
@@ -230,16 +232,8 @@ export async function orquestarMercado(
       }).catch(swallowWithLog('email:mercado', { analisisId }));
     }
   } catch (error) {
-    analisis.estado_analisis = 'error';
-    analisis.error_mensaje = (error as Error).message;
-    await repo.save(analisis);
-    emitAnalysisUpdate(usuarioId, {
-      tipo: 'mercado',
-      estado: 'error',
-      productoId,
-      id: analisisId,
-      errorMessage: analisis.error_mensaje,
-    });
+    // Solo se registra y se relanza: la cola marca el error y avisa al usuario
+    // cuando ya no quedan reintentos (workers/analysisQueue.ts).
     logger.error('[mercado] Orquestación falló:', error);
     throw error;
   }

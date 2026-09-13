@@ -60,6 +60,8 @@ const contarAnalisisBrief = (usuarioId: string, _productoId?: string): Promise<n
     where: {
       usuario_id: usuarioId,
       estado_analisis: Not('error'),
+      // Si la IA falló y se entregó plantilla, no se cobra el intento.
+      resultado_estimado: false,
     },
   });
 
@@ -67,7 +69,9 @@ const contarAnalisisBrief = (usuarioId: string, _productoId?: string): Promise<n
 router.post(
   '/analizar',
   authenticate,
-  requireAnalisisLock('brief'),
+  // La cuota de brief es por cuenta: el candado también, o se podía lanzar a la
+  // vez sobre varios productos y pasar todos el conteo antes del primer insert.
+  requireAnalisisLock('brief', { porCuenta: true }),
   requireCanRunAnalisis(contarAnalisisBrief),
   validateBody(AnalizarBriefSchema),
   async (req: any, res: Response) => {

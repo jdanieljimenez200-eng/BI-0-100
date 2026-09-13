@@ -6,6 +6,7 @@ import { swallowWithLog } from '../../utils/fireAndForget';
 import { generarBrief } from './briefService';
 import { BriefAnalisisInput } from './types';
 import { emitAnalysisUpdate } from '../../events/sse';
+import { huboFallbackIA } from '../../utils/seguimientoIA';
 import { logger } from '../../utils/logger';
 
 // ─── Ejecutar análisis completo ──────────────────────────────────────────────
@@ -22,6 +23,7 @@ export async function ejecutarAnalisisBrief(
 
     await repo.update(analisisId, {
       resultado_data: resultado as unknown as object,
+      resultado_estimado: huboFallbackIA(),
       estado_analisis: 'completado',
       fecha_completado: new Date(),
     });
@@ -46,18 +48,9 @@ export async function ejecutarAnalisisBrief(
       modulo: 'brief',
     }).catch(swallowWithLog('email:analisis_completo', { analisisId, modulo: 'brief' }));
   } catch (err) {
+    // Solo se registra y se relanza: la cola marca el error y avisa al usuario
+    // cuando ya no quedan reintentos (workers/analysisQueue.ts).
     logger.error(`❌ Error análisis brief ${analisisId}:`, err);
-    const detalle = err instanceof Error ? err.message : 'Error desconocido';
-    await repo.update(analisisId, {
-      estado_analisis: 'error',
-      error_mensaje: detalle,
-    });
-    emitAnalysisUpdate(input.usuarioId, {
-      tipo: 'brief',
-      estado: 'error',
-      productoId: input.productoId,
-      id: analisisId,
-      errorMessage: detalle,
-    });
+    throw err;
   }
 }

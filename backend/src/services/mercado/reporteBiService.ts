@@ -43,6 +43,8 @@ export interface ReporteBi {
 // Se importa para usarla en el prompt y se re-exporta para no romper a los
 // consumidores existentes.
 import { describirFuenteCompetencia } from './fuentesCompetencia';
+import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 export { describirFuenteCompetencia };
 
@@ -194,7 +196,7 @@ export async function generarReporteBi(
   }
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, ...OPCIONES_ANTHROPIC });
 
     // Datos financieros leidos desde Producto (SSOT)
     const { puv, inversion_inicial, costos_fijos, precio_venta, estatus_proyecto, tipo_actividad } = ctx;
@@ -373,6 +375,7 @@ REGLA ABSOLUTA: Nunca des consejos genéricos. Cada frase debe referenciar un da
 
     return { ...parsed, es_mock: false } as ReporteBi;
   } catch (err) {
+    registrarFallbackIA('mercado.reporte_bi');
     console.warn('Claude Reporte BI falló, usando fallback:', err);
     return reporteBiMock(input, ctx, producto);
   }

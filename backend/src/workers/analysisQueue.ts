@@ -1,4 +1,4 @@
-import { Queue, Worker } from 'bullmq';
+import { Queue, Worker, UnrecoverableError } from 'bullmq';
 import Redis, { RedisOptions } from 'ioredis';
 import { logger } from '../utils/logger';
 import { recordError, updateJobStatus } from '../utils/metrics';
@@ -11,6 +11,7 @@ import { AnalisisLegal } from '../models/AnalisisLegal';
 import { AnalisisBrief } from '../models/AnalisisBrief';
 import { AnalisisVentas } from '../models/AnalisisVentas';
 import type { ObjectLiteral, Repository } from 'typeorm';
+import { emitAnalysisUpdate } from '../events/sse';
 
 const QUEUE_NAME = 'analysis-queue';
 
@@ -94,10 +95,23 @@ export const analysisQueue: Queue = new Proxy({} as Queue, {
   },
 });
 
-async function marcarAnalisisError(
+/**
+ * Lo que ve el usuario cuando un análisis falla de verdad. El detalle técnico
+ * (errores de base de datos, del proveedor de IA) va solo a los logs.
+ */
+export const MENSAJE_ERROR_ANALISIS =
+  'No pudimos completar el análisis. Vuelve a intentarlo: este intento no se descuenta de tu plan.';
+
+/**
+ * Único punto que marca un análisis como error y avisa al usuario. Se llama
+ * cuando ya no quedan reintentos: si se marcara en el primer fallo, la pantalla
+ * mostraría "error" aunque el segundo intento terminara bien.
+ */
+export async function marcarAnalisisError(
   moduleName: string,
   analisisId: string,
-  mensaje: string
+  usuarioId?: string,
+  productoId?: string
 ): Promise<void> {
   try {
     if (!AppDataSource.isInitialized) return;
@@ -138,8 +152,17 @@ async function marcarAnalisisError(
     // `error_mensaje`, que son las únicas columnas que se tocan aquí.
     await (repo as unknown as Repository<ObjectLiteral>).update(
       { id: analisisId },
-      { estado_analisis: 'error', error_mensaje: mensaje.slice(0, 500) }
+      { estado_analisis: 'error', error_mensaje: MENSAJE_ERROR_ANALISIS }
     );
+    if (usuarioId) {
+      emitAnalysisUpdate(usuarioId, {
+        tipo: moduleName,
+        estado: 'error',
+        productoId: productoId ?? '',
+        id: analisisId,
+        errorMessage: MENSAJE_ERROR_ANALISIS,
+      });
+    }
     updateJobStatus('failed');
     recordError(`analysis_failed_${moduleName}`);
   } catch (err) {
@@ -219,8 +242,9 @@ export function startAnalysisWorker(): Worker {
   worker.on('failed', async (job, error) => {
     logger.error(`[Worker] Job ${job?.id} falló (intento ${job?.attemptsMade}):`, error.message);
     const attempts = job?.opts.attempts ?? 1;
-    if (job && job.attemptsMade >= attempts && job.data?.moduleName && job.data?.analisisId) {
-      await marcarAnalisisError(job.data.moduleName, job.data.analisisId, error.message);
+    const definitivo = error instanceof UnrecoverableError || error.name === 'UnrecoverableError';
+    if (job && (definitivo || job.attemptsMade >= attempts) && job.data?.moduleName && job.data?.analisisId) {
+      await marcarAnalisisError(job.data.moduleName, job.data.analisisId, job.data.usuarioId, job.data.productoId);
     }
   });
 

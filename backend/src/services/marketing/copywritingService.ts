@@ -4,6 +4,8 @@ import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
 import { parseLLMJson } from '../../middleware/validate';
 import { BriefContexto, CopyEstrategia, EstrategiaMarketing, TipoEstrategia, VozMarca } from './types';
 import { getPaisNombre } from '../../utils/latam';
+import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 // ─── Schema de validación del output del LLM ────────────────────────────────
 
@@ -23,7 +25,7 @@ const CopyOutputSchema = z.object({
   copies: z.array(CopyItemSchema).min(1).max(3),
 });
 
-const client = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+const client = process.env.ANTHROPIC_API_KEY ? new Anthropic(OPCIONES_ANTHROPIC) : null;
 
 const SYSTEM_PROMPT_COPY = `Eres un Copywriter Publicitario Senior y Estratégico con portfolio en DTC, retail omnicanal, SaaS y servicios en toda Latinoamérica. Has lanzado más de 200 campañas y sabes que en mercados commoditizados donde las capacidades convergen, la narrativa es el diferenciador.
 
@@ -301,6 +303,7 @@ Devuelve exactamente 3 objetos en el array en orden: PREMIUM → VOLUMEN → ESP
     const parsed = parseLLMJson(text, CopyOutputSchema);
     return parsed.copies.map((c) => ({ ...c, es_mock: false }) as CopyEstrategia);
   } catch (err) {
+    registrarFallbackIA('marketing.copies');
     console.warn('Copy Claude fallback:', err instanceof Error ? err.message : err);
     return estrategias.map((e) => copyMock(nombre, categoria, e, vozMarca));
   }
