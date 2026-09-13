@@ -37,11 +37,6 @@ export const MotivoSchema = z
   .min(5, 'El motivo es demasiado corto: escribe por qué, queda en el registro de auditoría')
   .max(1000);
 
-/** Rol con el que queda firmada la acción. */
-function rolDe(admin: Pick<Usuario, 'es_admin'> & { admin_rol?: string | null }): string {
-  return admin.admin_rol ?? (admin.es_admin ? 'superadmin' : 'desconocido');
-}
-
 /**
  * Escribe una acción en la auditoría, dentro de la transacción del cambio.
  *
@@ -55,7 +50,7 @@ export async function registrarAccionAdmin(
 ): Promise<AuditoriaAdmin> {
   const admin = await manager.getRepository(Usuario).findOne({
     where: { id: req.userId! },
-    select: ['id', 'email', 'es_admin'],
+    select: ['id', 'email', 'admin_rol'],
   });
   if (!admin) {
     // Sin admin identificable no hay a quién atribuir la acción: se aborta la
@@ -68,7 +63,7 @@ export async function registrarAccionAdmin(
     repo.create({
       admin_id: admin.id,
       admin_email: admin.email,
-      admin_rol: rolDe(admin as Usuario & { admin_rol?: string | null }),
+      admin_rol: admin.admin_rol ?? 'sin-rol',
       accion: datos.accion,
       recurso_tipo: datos.recursoTipo,
       recurso_id: datos.recursoId ?? null,

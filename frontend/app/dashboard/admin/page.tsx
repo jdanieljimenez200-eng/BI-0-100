@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import api from '@/lib/api';
+import { miRolAdmin, NOMBRE_ROL, type Permiso } from '@/lib/admin';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Plan = 'freemium' | 'pro' | 'business' | 'enterprise';
@@ -75,6 +76,8 @@ export default function AdminPage() {
   const [loadingStats, setLoadingStats]       = useState(true);
   const [loadingUsuarios, setLoadingUsuarios] = useState(false);
   const [changingPlan, setChangingPlan]       = useState<string | null>(null);
+  const [miRol, setMiRol] = useState<Awaited<ReturnType<typeof miRolAdmin>> | null>(null);
+  const puede = (permiso: Permiso) => Boolean(miRol?.permisos[permiso]);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
   const showToast = (msg: string, ok = true) => {
@@ -92,6 +95,9 @@ export default function AdminPage() {
 
   useEffect(() => {
     refreshStats();
+    // Rol de quien mira el panel: decide qué acciones se ofrecen. El backend
+    // vuelve a comprobarlo en cada una; esto solo evita botones que fallarían.
+    miRolAdmin().then(setMiRol).catch(() => setMiRol(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -201,25 +207,37 @@ export default function AdminPage() {
             {new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/dashboard/admin/auditoria"
-            className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-white/15 text-white/70 hover:text-white hover:bg-white/5 transition-colors"
-          >
-            Auditoría
-          </Link>
-          <Link
-            href="/dashboard/admin/network"
-            className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-white/15 text-white/70 hover:text-white hover:bg-white/5 transition-colors"
-          >
-            Red de expertos
-            <span aria-hidden="true">→</span>
-          </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          {puede('gestionarRoles') && (
+            <Link
+              href="/dashboard/admin/administradores"
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-white/15 text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              Administradores
+            </Link>
+          )}
+          {puede('verAuditoria') && (
+            <Link
+              href="/dashboard/admin/auditoria"
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-white/15 text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              Auditoría
+            </Link>
+          )}
+          {puede('moderarRed') && (
+            <Link
+              href="/dashboard/admin/network"
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-white/15 text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              Red de expertos
+              <span aria-hidden="true">→</span>
+            </Link>
+          )}
           <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border bg-brand-accent/10 text-brand-accent border-brand-accent/20">
             <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
-            <span>ADMIN</span>
+            <span>{miRol ? NOMBRE_ROL[miRol.rol].toUpperCase() : 'ADMIN'}</span>
           </span>
         </div>
       </div>
@@ -465,7 +483,8 @@ export default function AdminPage() {
                     <td className="px-4 py-3">
                       <select
                         value={u.plan}
-                        disabled={changingPlan === u.id}
+                        disabled={changingPlan === u.id || !puede('cambiarPlan')}
+                        title={puede('cambiarPlan') ? undefined : 'Solo un superadmin puede cambiar planes'}
                         onChange={(e) => handlePlanChange(u.id, e.target.value as Plan)}
                         className="border border-white/10 bg-[#0F1C2A] text-white rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary disabled:opacity-40 appearance-none cursor-pointer"
                         style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.4)' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem center', paddingRight: '1.75rem' }}
@@ -476,7 +495,9 @@ export default function AdminPage() {
                     <td className="px-4 py-3 text-center">
                       <button
                         onClick={() => handleToggleActivo(u.id, u.activo)}
-                        className={`text-[10px] px-2.5 py-1 rounded-full font-semibold transition border ${
+                        disabled={!puede('gestionarActivo')}
+                        title={puede('gestionarActivo') ? undefined : 'Tu rol no permite desactivar cuentas'}
+                        className={`disabled:cursor-not-allowed disabled:opacity-60 text-[10px] px-2.5 py-1 rounded-full font-semibold transition border ${
                           u.activo
                             ? 'bg-finanzas/10 text-finanzas border-finanzas/20 hover:bg-brand-accent/10 hover:text-brand-accent hover:border-brand-accent/20'
                             : 'bg-brand-accent/10 text-brand-accent border-brand-accent/20 hover:bg-finanzas/10 hover:text-finanzas hover:border-finanzas/20'

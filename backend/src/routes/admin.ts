@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { body, query, validationResult } from 'express-validator';
 import { AppDataSource } from '../config/database';
-import { Usuario, Plan } from '../models/Usuario';
+import { Usuario, Plan, type AdminRol } from '../models/Usuario';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { requireAdmin } from '../middleware/requireAdmin';
+import { requireAdmin, requirePermiso, permisosDe, type AdminRequest } from '../middleware/requireAdmin';
 import { logger } from '../utils/logger';
 import { bloquearSesiones, levantarBloqueo } from '../services/auth/bloqueoSesion';
 import { invalidatePlanCache } from '../middleware/requirePlan';
@@ -162,6 +162,7 @@ router.get(
 
 router.patch(
   '/usuarios/:id/plan',
+  requirePermiso('cambiarPlan'),
   [body('plan').isIn(['freemium', 'pro', 'pro_plus', 'business', 'enterprise'])],
   async (req: AuthRequest, res: Response) => {
     const errors = validationResult(req);
@@ -223,6 +224,7 @@ router.patch(
 
 router.patch(
   '/usuarios/:id/activo',
+  requirePermiso('gestionarActivo'),
   [body('activo').isBoolean()],
   async (req: AuthRequest, res: Response) => {
     const errors = validationResult(req);
@@ -297,6 +299,7 @@ router.patch(
 /** Consulta del registro de auditoría. Solo lectura: la tabla no admite otra cosa. */
 router.get(
   '/auditoria',
+  requirePermiso('verAuditoria'),
   [
     query('admin_id').optional().isUUID(),
     query('recurso_id').optional().isString().isLength({ max: 64 }),
@@ -334,6 +337,124 @@ router.get(
     } catch (err) {
       logger.error('[admin] error leyendo auditoría:', err);
       return res.status(500).json({ error: 'Error al leer la auditoría' });
+    }
+  },
+);
+
+
+// ─── GET /api/admin/yo ────────────────────────────────────────────────────────
+
+/**
+ * Rol y permisos de quien está usando el panel.
+ *
+ * La interfaz lo usa para no ofrecer lo que va a fallar. No sustituye a la
+ * comprobación de cada endpoint: esconder un botón no impide la llamada.
+ */
+router.get('/yo', async (req: AdminRequest, res: Response) => {
+  const rol = req.adminRol!;
+  return res.json({ id: req.userId, rol, permisos: permisosDe(rol) });
+});
+
+// ─── GET /api/admin/administradores ───────────────────────────────────────────
+
+router.get('/administradores', requirePermiso('gestionarRoles'), async (_req: AuthRequest, res: Response) => {
+  try {
+    const admins = await AppDataSource.getRepository(Usuario).find({
+      where: { es_admin: true },
+      select: ['id', 'email', 'nombre', 'admin_rol', 'activo', 'fecha_creacion'],
+      order: { fecha_creacion: 'ASC' },
+    });
+    return res.json({ administradores: admins });
+  } catch (err) {
+    logger.error('[admin] error listando administradores:', err);
+    return res.status(500).json({ error: 'Error al listar administradores' });
+  }
+});
+
+// ─── PATCH /api/admin/usuarios/:id/rol ────────────────────────────────────────
+
+const ROLES_VALIDOS: AdminRol[] = ['soporte', 'moderador', 'superadmin'];
+
+/**
+ * Asigna, cambia o retira el rol de administración de una cuenta.
+ *
+ * Reglas fijas, comprobadas aquí y no en la interfaz:
+ *
+ *  - Nadie cambia su propio rol. Ni para subirlo (escalada) ni para bajarlo
+ *    (dejar la plataforma sin superadmin por un clic en falso).
+ *  - No se puede retirar el último superadmin: el panel quedaría sin nadie que
+ *    pueda asignar roles, y la única salida sería tocar la base a mano.
+ *  - La comprobación del último superadmin y el cambio van en la misma
+ *    transacción con bloqueo: dos superadmins degradándose el uno al otro a la
+ *    vez no pueden dejar la cuenta a cero.
+ */
+router.patch(
+  '/usuarios/:id/rol',
+  requirePermiso('gestionarRoles'),
+  [body('rol').custom((v) => v === null || ROLES_VALIDOS.includes(v))],
+  async (req: AuthRequest, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: 'El rol debe ser soporte, moderador, superadmin o null' });
+    }
+    const motivo = MotivoSchema.safeParse(req.body?.motivo);
+    if (!motivo.success) return res.status(400).json({ error: motivo.error.errors[0].message });
+
+    const { id } = req.params;
+    const rol = req.body.rol as AdminRol | null;
+
+    if (id === req.userId) {
+      return res.status(400).json({ error: 'No puedes cambiar tu propio rol de administración' });
+    }
+
+    try {
+      const resultado = await AppDataSource.transaction(async (manager) => {
+        const repo = manager.getRepository(Usuario);
+
+        // Bloqueo de todas las filas de superadmin: serializa los cambios de rol
+        // que pueden dejar la plataforma sin ninguno.
+        const superadmins = await repo.find({
+          where: { admin_rol: 'superadmin' },
+          select: ['id'],
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        const usuario = await repo.findOne({
+          where: { id },
+          select: ['id', 'email', 'admin_rol'],
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!usuario) return { status: 404, cuerpo: { error: 'Usuario no encontrado' } };
+
+        const anterior = usuario.admin_rol;
+        if (anterior === rol) {
+          return { status: 200, cuerpo: { message: 'Sin cambios', rol } };
+        }
+
+        const dejaDeSerSuperadmin = anterior === 'superadmin' && rol !== 'superadmin';
+        if (dejaDeSerSuperadmin && superadmins.length <= 1) {
+          return {
+            status: 409,
+            cuerpo: { error: 'No se puede retirar el último superadmin: asigna antes el rol a otra persona' },
+          };
+        }
+
+        await repo.update(id, { admin_rol: rol });
+        await registrarAccionAdmin(manager, req, {
+          accion: rol === null ? 'rol.retirado' : 'rol.asignado',
+          recursoTipo: 'rol',
+          recursoId: id,
+          antes: { admin_rol: anterior, email: usuario.email },
+          despues: { admin_rol: rol },
+          motivo: motivo.data,
+        });
+        return { status: 200, cuerpo: { message: rol ? `Rol asignado: ${rol}` : 'Rol retirado', rol } };
+      });
+
+      return res.status(resultado.status).json(resultado.cuerpo);
+    } catch (err) {
+      logger.error('[admin] error cambiando rol:', err);
+      return res.status(500).json({ error: 'Error al cambiar el rol' });
     }
   },
 );

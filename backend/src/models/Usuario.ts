@@ -15,6 +15,8 @@ import { HerramientaSeleccionada } from './HerramientaSeleccionada';
 
 export type Plan = 'freemium' | 'pro' | 'pro_plus' | 'business' | 'enterprise';
 export type AccountRole = 'owner' | 'trabajador';
+/** Rol de administración de la PLATAFORMA. Ver la matriz en `middleware/requireAdmin.ts`. */
+export type AdminRol = 'soporte' | 'moderador' | 'superadmin';
 
 @Entity('usuarios')
 export class Usuario {
@@ -42,6 +44,15 @@ export class Usuario {
    */
   @Column({ type: 'boolean', default: false })
   es_admin!: boolean;
+
+  /**
+   * Nivel de administración. `null` = no es admin.
+   *
+   * Un trigger de la base lo mantiene sincronizado con `es_admin` (ver la
+   * migración `AddAdminRol`): no hace falta tocar las dos columnas.
+   */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  admin_rol!: AdminRol | null;
 
   @Column({ type: 'uuid', nullable: true })
   owner_id?: string;

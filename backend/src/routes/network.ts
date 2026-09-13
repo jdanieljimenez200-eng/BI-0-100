@@ -6,7 +6,7 @@ import { Experto } from '../models/Experto';
 import { ResenaExperto } from '../models/ResenaExperto';
 import { Usuario } from '../models/Usuario';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { requireAdmin } from '../middleware/requireAdmin';
+import { requirePermiso } from '../middleware/requireAdmin';
 import { ah } from '../utils/asyncHandler';
 import * as expertosService from '../services/network/expertosService';
 import * as resenasService from '../services/network/resenasService';
@@ -653,7 +653,8 @@ router.get(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const adminNetworkRouter = Router();
-adminNetworkRouter.use(authenticate, requireAdmin);
+// Toda la revisión de la red —fichas, cédulas, reseñas— es cosa de moderación.
+adminNetworkRouter.use(authenticate, requirePermiso('moderarRed'));
 
 const EstadoAdminSchema = z.object({
   estado: z.enum(['pendiente', 'aprobado', 'rechazado', 'suspendido']),
@@ -804,7 +805,7 @@ adminNetworkRouter.patch(
  * Abre el documento de acreditación de una ficha.
  *
  * Es el ÚNICO camino para leer el documento, y por eso vive detrás de
- * `requireAdmin`. Se sirve con `no-store` —que no quede en ninguna caché
+ * `requirePermiso('moderarRed')`. Se sirve con `no-store` —que no quede en ninguna caché
  * intermedia— e `inline`, para que el revisor lo vea en el navegador sin
  * descargarlo a su disco.
  */
