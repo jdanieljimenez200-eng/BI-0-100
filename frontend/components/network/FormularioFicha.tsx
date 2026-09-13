@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   CATEGORIAS,
   NOMBRE_CATEGORIA,
@@ -26,8 +26,19 @@ const CAMPOS_QUE_VUELVEN_A_REVISION = [
   'nombre_display',
   'categoria',
   'especialidad',
-  'documento_url',
 ] as const;
+
+/** Mismos límites que el backend: rechazarlo aquí ahorra subir 8 MB para nada. */
+const DOCUMENTO_MAX = 8 * 1024 * 1024;
+const DOCUMENTO_TIPOS = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+const AVATAR_MAX = 3 * 1024 * 1024;
+const AVATAR_TIPOS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+/** Ficheros elegidos en el formulario. Se suben DESPUÉS de guardar la ficha. */
+export interface FicherosFicha {
+  documento?: File;
+  avatar?: File;
+}
 
 type Formulario = {
   nombre_comercial: string;
@@ -43,9 +54,7 @@ type Formulario = {
   telefono: string;
   mostrar_contacto: boolean;
   sitio_web: string;
-  avatar_url: string;
   video_url: string;
-  documento_url: string;
   tarifa_desde: string;
   moneda: string;
   ofrece_consulta_gratis: boolean;
@@ -66,9 +75,7 @@ function aFormulario(ficha?: FichaPropia): Formulario {
     telefono: ficha?.telefono ?? '',
     mostrar_contacto: ficha?.mostrar_contacto ?? false,
     sitio_web: ficha?.sitio_web ?? '',
-    avatar_url: ficha?.avatar_url ?? '',
     video_url: ficha?.video_url ?? '',
-    documento_url: ficha?.documento_url ?? '',
     tarifa_desde: ficha?.tarifa_desde === null || ficha?.tarifa_desde === undefined
       ? ''
       : String(ficha.tarifa_desde),
@@ -105,9 +112,7 @@ function aDatos(f: Formulario): DatosFicha {
     telefono: opcional(f.telefono),
     mostrar_contacto: f.mostrar_contacto,
     sitio_web: opcional(f.sitio_web),
-    avatar_url: opcional(f.avatar_url),
     video_url: opcional(f.video_url),
-    documento_url: opcional(f.documento_url),
     tarifa_desde: f.tarifa_desde.trim() === '' ? null : Number(f.tarifa_desde),
     moneda: texto(f.moneda) || 'USD',
     ofrece_consulta_gratis: f.ofrece_consulta_gratis,
@@ -124,10 +129,22 @@ export default function FormularioFicha({
   textoBoton,
 }: {
   ficha?: FichaPropia;
-  alGuardar: (datos: DatosFicha) => Promise<void>;
+  alGuardar: (datos: DatosFicha, ficheros: FicherosFicha) => Promise<void>;
   textoBoton: string;
 }) {
   const [f, setF] = useState<Formulario>(() => aFormulario(ficha));
+  const [documento, setDocumento] = useState<File | undefined>();
+  const [avatar, setAvatar] = useState<File | undefined>();
+  const [vistaAvatar, setVistaAvatar] = useState<string | null>(null);
+
+  // La vista previa es un objeto en memoria del navegador: se libera al
+  // cambiar de imagen o al desmontar, o se acumula en cada selección.
+  useEffect(() => {
+    if (!avatar) return;
+    const url = URL.createObjectURL(avatar);
+    setVistaAvatar(url);
+    return () => URL.revokeObjectURL(url);
+  }, [avatar]);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -137,7 +154,36 @@ export default function FormularioFicha({
   /** ¿Este cambio va a devolver una ficha ya aprobada a la cola de revisión? */
   const volveraRevision =
     ficha?.estado === 'aprobado' &&
-    CAMPOS_QUE_VUELVEN_A_REVISION.some((clave) => f[clave] !== aFormulario(ficha)[clave]);
+    (Boolean(documento) ||
+      CAMPOS_QUE_VUELVEN_A_REVISION.some((clave) => f[clave] !== aFormulario(ficha)[clave]));
+
+  const elegirDocumento = (fichero: File | undefined) => {
+    setError(null);
+    if (!fichero) return setDocumento(undefined);
+    if (!DOCUMENTO_TIPOS.includes(fichero.type)) {
+      setError('El documento debe ser un PDF o una imagen (jpg, png, webp).');
+      return;
+    }
+    if (fichero.size > DOCUMENTO_MAX) {
+      setError('El documento supera el máximo de 8 MB.');
+      return;
+    }
+    setDocumento(fichero);
+  };
+
+  const elegirAvatar = (fichero: File | undefined) => {
+    setError(null);
+    if (!fichero) return setAvatar(undefined);
+    if (!AVATAR_TIPOS.includes(fichero.type)) {
+      setError('La foto debe ser una imagen (jpg, png, webp, gif).');
+      return;
+    }
+    if (fichero.size > AVATAR_MAX) {
+      setError('La foto supera el máximo de 3 MB.');
+      return;
+    }
+    setAvatar(fichero);
+  };
 
   const enviar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,7 +194,7 @@ export default function FormularioFicha({
     setGuardando(true);
     setError(null);
     try {
-      await alGuardar(aDatos(f));
+      await alGuardar(aDatos(f), { documento, avatar });
     } catch (err) {
       setError(errorLegible(err, 'No pudimos guardar la ficha.'));
     } finally {
@@ -363,23 +409,39 @@ export default function FormularioFicha({
               className={campo}
             />
           </div>
-          <div>
-            <label className={etiqueta} htmlFor="avatar_url">
-              Foto o logo (URL)
-            </label>
-            <input
-              id="avatar_url"
-              value={f.avatar_url}
-              onChange={(e) => set('avatar_url', e.target.value)}
-              placeholder="https://…"
-              className={campo}
-            />
-          </div>
         </div>
 
         <p className="text-white/25 text-[11px]">
-          Las direcciones tienen que empezar por http:// o https://.
+          La dirección web tiene que empezar por http:// o https://.
         </p>
+
+        <div>
+          <span className={etiqueta}>Foto o logo</span>
+          <div className="flex items-center gap-4">
+            {vistaAvatar || ficha?.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={vistaAvatar ?? ficha?.avatar_url ?? ''}
+                alt=""
+                className="w-16 h-16 rounded-xl object-cover border border-white/10"
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-xl border border-dashed border-white/15 flex items-center justify-center text-white/20 text-[10px]">
+                Sin foto
+              </div>
+            )}
+            <label className="px-3 py-2 rounded-lg border border-white/15 text-white/70 text-xs font-bold hover:bg-white/5 cursor-pointer transition-colors">
+              {avatar || ficha?.avatar_url ? 'Cambiar foto' : 'Elegir foto'}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="sr-only"
+                onChange={(e) => elegirAvatar(e.target.files?.[0])}
+              />
+            </label>
+            <span className="text-white/25 text-[11px]">jpg, png, webp · máx. 3 MB</span>
+          </div>
+        </div>
       </fieldset>
 
       {/* ── Tarifa ─────────────────────────────────────────────────────── */}
@@ -439,20 +501,42 @@ export default function FormularioFicha({
         </legend>
 
         <div>
-          <label className={etiqueta} htmlFor="documento_url">
-            Cédula, licencia o acreditación (URL)
+          <span className={etiqueta}>Cédula, licencia o acreditación</span>
+
+          <label
+            className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${
+              documento
+                ? 'border-emerald-500/30 bg-emerald-500/5'
+                : 'border-dashed border-white/15 hover:border-white/30'
+            }`}
+          >
+            <span className="min-w-0 text-xs">
+              {documento ? (
+                <span className="text-emerald-300 font-semibold truncate block">{documento.name}</span>
+              ) : ficha?.tiene_documento ? (
+                <span className="text-white/60">
+                  Ya enviaste un documento. Elige otro solo si quieres sustituirlo.
+                </span>
+              ) : (
+                <span className="text-white/50">Elige un PDF o una foto del documento</span>
+              )}
+              <span className="block text-white/25 text-[11px] mt-0.5">pdf, jpg, png · máx. 8 MB</span>
+            </span>
+            <span className="px-3 py-1.5 rounded-lg border border-white/15 text-white/70 text-xs font-bold flex-shrink-0">
+              {documento || ficha?.tiene_documento ? 'Cambiar' : 'Elegir'}
+            </span>
+            <input
+              type="file"
+              accept="application/pdf,image/jpeg,image/png,image/webp"
+              className="sr-only"
+              onChange={(e) => elegirDocumento(e.target.files?.[0])}
+            />
           </label>
-          <input
-            id="documento_url"
-            value={f.documento_url}
-            onChange={(e) => set('documento_url', e.target.value)}
-            placeholder="https://…"
-            className={campo}
-          />
-          <p className="text-white/30 text-[11px] mt-1.5 leading-relaxed">
-            Este documento <strong className="text-white/50">no se publica nunca</strong>: solo lo ve
-            quien revisa tu ficha. Sin él puedes salir en el directorio, pero no con la insignia de
-            acreditación comprobada.
+
+          <p className="text-white/30 text-[11px] mt-2 leading-relaxed">
+            Este documento <strong className="text-white/50">no se publica nunca</strong>: se guarda
+            aparte y solo lo abre quien revisa tu ficha. Sin él puedes salir en el directorio, pero no
+            con la insignia de acreditación comprobada.
           </p>
         </div>
 
@@ -473,8 +557,9 @@ export default function FormularioFicha({
       {volveraRevision && (
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
           <p className="text-amber-200/80 text-xs leading-relaxed">
-            Estás cambiando datos de identidad (nombre, categoría, especialidad o acreditación). Al
-            guardar, la ficha vuelve a revisión y sale del directorio hasta que se apruebe de nuevo.
+            Estás cambiando datos de identidad (nombre, categoría, especialidad o el documento de
+            acreditación). Al guardar, la ficha vuelve a revisión y sale del directorio hasta que se
+            apruebe de nuevo.
           </p>
         </div>
       )}

@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
-import FormularioFicha from '@/components/network/FormularioFicha';
-import { crearFicha, type DatosFicha } from '@/lib/network';
+import FormularioFicha, { type FicherosFicha } from '@/components/network/FormularioFicha';
+import { crearFicha, subirAvatar, subirDocumento, type DatosFicha } from '@/lib/network';
 import { useHaySesion } from '@/lib/useSesion';
 
 /**
@@ -18,9 +18,36 @@ export default function RegistroExpertoPage() {
   const router = useRouter();
   const haySesion = useHaySesion();
 
-  const guardar = async (datos: DatosFicha) => {
-    await crearFicha(datos);
-    router.push('/network/mis-fichas?alta=ok');
+  /**
+   * Crea la ficha y DESPUÉS sube los ficheros, porque la subida necesita el id.
+   *
+   * Si la ficha se crea pero un fichero falla, no se lanza el error: el
+   * formulario diría "no pudimos guardar la ficha", el usuario la volvería a
+   * enviar y se toparía con un 409 por duplicada. La ficha existe; lo que falta
+   * se reintenta desde su panel, y allí se le dice exactamente qué.
+   */
+  const guardar = async (datos: DatosFicha, ficheros: FicherosFicha) => {
+    const { experto } = await crearFicha(datos);
+
+    const fallos: string[] = [];
+    if (ficheros.documento) {
+      try {
+        await subirDocumento(experto.id, ficheros.documento);
+      } catch {
+        fallos.push('documento');
+      }
+    }
+    if (ficheros.avatar) {
+      try {
+        await subirAvatar(experto.id, ficheros.avatar);
+      } catch {
+        fallos.push('foto');
+      }
+    }
+
+    const qs = new URLSearchParams({ alta: 'ok' });
+    if (fallos.length) qs.set('fallo', fallos.join(','));
+    router.push(`/network/mis-fichas?${qs.toString()}`);
   };
 
   return (

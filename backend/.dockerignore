@@ -24,3 +24,7 @@ src/__tests__/
 # Logs y temporales
 *.log
 npm-debug.log*
+# Ficheros subidos por usuarios: no se hornean en la imagen. En especial
+# almacen-privado/, que guarda documentos de identidad.
+uploads/
+almacen-privado/

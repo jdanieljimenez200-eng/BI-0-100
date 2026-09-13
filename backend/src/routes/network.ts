@@ -12,6 +12,10 @@ import { logger } from '../utils/logger';
 import * as expertosService from '../services/network/expertosService';
 import * as resenasService from '../services/network/resenasService';
 import * as patrociniosService from '../services/network/patrociniosService';
+import * as documentos from '../services/network/documentosService';
+import { recibirDocumentoExperto, recibirAvatarExperto } from '../middleware/upload';
+import { StorageService } from '../services/StorageService';
+import { notificarRevisionFicha } from '../services/email/emailService';
 import {
   isStripeAvailable,
   getOrCreateCustomer,
@@ -83,7 +87,9 @@ const CamposEditablesSchema = z.object({
   moneda: texto(10).default('USD'),
   ofrece_consulta_gratis: z.boolean().default(false),
   video_url: urlSegura(500).nullable().optional(),
-  documento_url: urlSegura(500).nullable().optional(),
+  // `documento_url` NO está aquí a propósito. Guarda la clave interna del
+  // documento privado y solo la escribe el endpoint de subida: si se pudiera
+  // mandar en el cuerpo, cualquiera apuntaría su ficha al documento de otro.
 });
 
 /** En la edición todo es opcional: se aplica solo lo que venga. */
@@ -140,8 +146,33 @@ const CAMPOS_QUE_EXIGEN_REVISION = [
   'nombre_display',
   'categoria',
   'especialidad',
-  'documento_url',
 ] as const;
+
+/**
+ * La ficha tal como se devuelve a su dueño o a un admin: sin la clave interna
+ * del documento, con un booleano en su lugar.
+ *
+ * La clave por sí sola no abre nada —el documento solo se sirve por el endpoint
+ * de admin—, pero no hay razón para sacar al cliente un detalle del almacén que
+ * no necesita. Lo que la interfaz necesita saber es si hay documento o no.
+ */
+function sinClaveDocumento(experto: Experto) {
+  const { documento_url, ...resto } = experto;
+  return { ...resto, tiene_documento: Boolean(documento_url) };
+}
+
+/**
+ * Devuelve una ficha a la cola de revisión y le retira la insignia.
+ *
+ * Se usa cuando cambia algo que un revisor había dado por bueno: quién dice ser
+ * el experto, o el documento con el que lo demostró.
+ */
+function devolverARevision(experto: Experto): void {
+  experto.estado = 'pendiente';
+  experto.verificado = false;
+  experto.fecha_aprobacion = null;
+  experto.motivo_rechazo = null;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Público
@@ -225,7 +256,7 @@ router.get(
       where: { usuario_id: req.userId! },
       order: { fecha_creacion: 'DESC' },
     });
-    res.json({ fichas });
+    res.json({ fichas: fichas.map(sinClaveDocumento) });
   })
 );
 
@@ -263,7 +294,7 @@ router.post(
           total_resenas: 0,
         })
       );
-      res.status(201).json({ experto, mensaje: 'Ficha enviada a revisión' });
+      res.status(201).json({ experto: sinClaveDocumento(experto), mensaje: 'Ficha enviada a revisión' });
     } catch (e) {
       // El índice único es la red de seguridad ante dos altas simultáneas.
       if ((e as { code?: string }).code === '23505') {
@@ -314,32 +345,105 @@ router.patch(
     // Una ficha rechazada que se corrige vuelve a la cola por sí sola: es la
     // forma de volver a presentarse sin pedirle nada al usuario.
     if (cambiaIdentidad || experto.estado === 'rechazado') {
-      experto.estado = 'pendiente';
-      experto.verificado = false;
-      experto.fecha_aprobacion = null;
-      experto.motivo_rechazo = null;
+      devolverARevision(experto);
     }
 
     await repo.save(experto);
     res.json({
-      experto,
+      experto: sinClaveDocumento(experto),
       mensaje: experto.estado === 'pendiente' ? 'Cambios guardados. La ficha vuelve a revisión.' : 'Cambios guardados',
     });
   })
 );
 
-/** Baja: borra la ficha y con ella sus datos personales (cascada en la BD). */
+/**
+ * Sube el documento de acreditación.
+ *
+ * Va por su propio endpoint, y no en el cuerpo de la ficha, porque el fichero no
+ * se guarda donde el resto: `documentosService` lo deja en una carpeta que no se
+ * publica, y en la ficha solo queda una clave interna. Cambiar el documento
+ * devuelve la ficha a revisión: es la prueba sobre la que un admin decidió.
+ */
+router.post(
+  '/expertos/:id/documento',
+  recibirDocumentoExperto,
+  ah(async (req: AuthRequest, res: Response) => {
+    if (!UUID.safeParse(req.params.id).success) {
+      return res.status(400).json({ error: 'Identificador inválido' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No llegó ningún documento' });
+
+    const repo = AppDataSource.getRepository(Experto);
+    const experto = await repo.findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
+    if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
+
+    const anterior = experto.documento_url;
+    experto.documento_url = await documentos.guardarDocumento(
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype
+    );
+    devolverARevision(experto);
+    await repo.save(experto);
+
+    // Solo después de guardar el nuevo: si se borrara antes y fallara la
+    // escritura, la ficha se quedaría sin acreditación ninguna.
+    await documentos.borrarDocumento(anterior);
+
+    res.json({
+      mensaje: 'Documento recibido. Tu ficha vuelve a revisión.',
+      tiene_documento: true,
+    });
+  })
+);
+
+/** Foto o logotipo de la ficha. Esta sí es pública, así que va a StorageService. */
+router.post(
+  '/expertos/:id/avatar',
+  recibirAvatarExperto,
+  ah(async (req: AuthRequest, res: Response) => {
+    if (!UUID.safeParse(req.params.id).success) {
+      return res.status(400).json({ error: 'Identificador inválido' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No llegó ninguna imagen' });
+
+    const repo = AppDataSource.getRepository(Experto);
+    const experto = await repo.findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
+    if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
+
+    const anterior = experto.avatar_url;
+    experto.avatar_url = await StorageService.uploadFile(
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype,
+      'images'
+    );
+    // La foto no es una afirmación sobre quién eres: cambiarla no exige volver
+    // a pasar por revisión.
+    await repo.save(experto);
+    await StorageService.deleteFile(anterior, 'images');
+
+    res.json({ avatar_url: experto.avatar_url });
+  })
+);
+
+/** Baja: borra la ficha, sus reseñas (cascada) y el documento del almacén. */
 router.delete(
   '/expertos/:id',
   ah(async (req: AuthRequest, res: Response) => {
     if (!UUID.safeParse(req.params.id).success) {
       return res.status(400).json({ error: 'Identificador inválido' });
     }
-    const resultado = await AppDataSource.getRepository(Experto).delete({
-      id: req.params.id,
-      usuario_id: req.userId!,
-    });
-    if (!resultado.affected) return res.status(404).json({ error: 'Ficha no encontrada' });
+    const repo = AppDataSource.getRepository(Experto);
+    const experto = await repo.findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
+    if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
+
+    await repo.delete(experto.id);
+    // Darse de baja tiene que llevarse también la cédula. Un documento de
+    // identidad que sobrevive al borrado de la cuenta es una fuga en diferido.
+    await documentos.borrarDocumento(experto.documento_url);
+    await StorageService.deleteFile(experto.avatar_url, 'images');
+
     res.json({ mensaje: 'Ficha eliminada' });
   })
 );
@@ -559,7 +663,11 @@ const EstadoAdminSchema = z.object({
   motivo_rechazo: texto(1000).nullable().optional(),
 });
 
-/** Cola de revisión. Aquí SÍ se ve `documento_url`: es lo que hay que revisar. */
+/**
+ * Cola de revisión. El documento no viaja en el listado: se abre con
+ * `GET /expertos/:id/documento`, que vuelve a comprobar que quien lo pide es
+ * admin antes de devolver el fichero.
+ */
 adminNetworkRouter.get(
   '/pendientes',
   ah(async (_req: AuthRequest, res: Response) => {
@@ -568,7 +676,7 @@ adminNetworkRouter.get(
       order: { fecha_creacion: 'ASC' },
       take: 100,
     });
-    res.json({ fichas, total: fichas.length });
+    res.json({ fichas: fichas.map(sinClaveDocumento), total: fichas.length });
   })
 );
 
@@ -585,7 +693,7 @@ adminNetworkRouter.get(
       order: { fecha_creacion: 'DESC' },
       take: 200,
     });
-    res.json({ fichas, total: fichas.length });
+    res.json({ fichas: fichas.map(sinClaveDocumento), total: fichas.length });
   })
 );
 
@@ -610,6 +718,15 @@ adminNetworkRouter.patch(
     const experto = await repo.findOne({ where: { id: req.params.id } });
     if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
 
+    // La insignia dice "acreditación comprobada". Sin documento no hay nada que
+    // se haya comprobado, así que concederla sería afirmar algo falso.
+    if (estado === 'aprobado' && verificado === true && !experto.documento_url) {
+      return res.status(409).json({
+        error: 'No se puede marcar como verificada una ficha sin documento de acreditación',
+      });
+    }
+
+    const estadoAnterior = experto.estado;
     experto.estado = estado;
     experto.motivo_rechazo = estado === 'rechazado' ? motivo_rechazo!.trim() : null;
     experto.fecha_aprobacion = estado === 'aprobado' ? new Date() : null;
@@ -621,20 +738,101 @@ adminNetworkRouter.patch(
     logger.info(
       `[network] admin ${req.userId} puso la ficha ${experto.id} en '${estado}' (verificado=${experto.verificado})`
     );
-    res.json({ experto });
+
+    // Se avisa solo si cambió algo que el experto necesita saber. Volver a
+    // guardar el mismo estado no debe llenarle la bandeja de correos repetidos.
+    const hayQueAvisar =
+      estado !== 'pendiente' && (estado !== estadoAnterior || estado === 'rechazado');
+    let avisado = false;
+    if (hayQueAvisar && experto.usuario_id) {
+      const dueno = await AppDataSource.getRepository(Usuario).findOne({
+        where: { id: experto.usuario_id },
+        select: ['id', 'email'],
+      });
+      if (dueno?.email) {
+        avisado = await notificarRevisionFicha({
+          email: dueno.email,
+          nombreComercial: experto.nombre_comercial,
+          estado,
+          verificado: experto.verificado,
+          motivo: experto.motivo_rechazo,
+          expertoId: experto.id,
+        });
+      }
+    }
+
+    res.json({ experto: sinClaveDocumento(experto), avisado });
   })
 );
 
-/** Reseñas para moderar, filtrables por estado. */
+/**
+ * Abre el documento de acreditación de una ficha.
+ *
+ * Es el ÚNICO camino para leer el documento, y por eso vive detrás de
+ * `requireAdmin`. Se sirve con `no-store` —que no quede en ninguna caché
+ * intermedia— e `inline`, para que el revisor lo vea en el navegador sin
+ * descargarlo a su disco.
+ */
+adminNetworkRouter.get(
+  '/expertos/:id/documento',
+  ah(async (req: AuthRequest, res: Response) => {
+    if (!UUID.safeParse(req.params.id).success) {
+      return res.status(400).json({ error: 'Identificador inválido' });
+    }
+    const experto = await AppDataSource.getRepository(Experto).findOne({
+      where: { id: req.params.id },
+      select: ['id', 'documento_url'],
+    });
+    if (!experto?.documento_url) {
+      return res.status(404).json({ error: 'Esta ficha no tiene documento' });
+    }
+
+    const doc = await documentos.leerDocumento(experto.documento_url);
+    if (!doc) return res.status(404).json({ error: 'El documento ya no está disponible' });
+
+    logger.info(`[network] admin ${req.userId} abrió el documento de la ficha ${experto.id}`);
+    res.setHeader('Content-Type', doc.tipo);
+    res.setHeader('Content-Disposition', `inline; filename="${doc.nombre}"`);
+    res.setHeader('Cache-Control', 'no-store, private');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(doc.buffer);
+  })
+);
+
+/**
+ * Reseñas para moderar, filtrables por estado.
+ *
+ * Trae el nombre del experto y del autor: moderar exige saber de quién se habla
+ * y quién lo dice —una reseña de 1 estrella escrita por un competidor directo no
+ * se juzga igual que la de un cliente—, y un par de UUID no dice ninguna de las
+ * dos cosas. El email del autor sí va: es un panel de admin, y es lo que permite
+ * contactarle o ver si una misma persona está atacando a varios expertos.
+ */
 adminNetworkRouter.get(
   '/resenas',
   ah(async (req: AuthRequest, res: Response) => {
     const estado = z.enum(['publicada', 'oculta']).safeParse(req.query.estado);
-    const resenas = await AppDataSource.getRepository(ResenaExperto).find({
-      where: estado.success ? { estado: estado.data } : {},
-      order: { fecha_creacion: 'DESC' },
-      take: 200,
-    });
+    const params: unknown[] = [];
+    let filtro = '';
+    if (estado.success) {
+      params.push(estado.data);
+      filtro = `WHERE r.estado = $1`;
+    }
+
+    const resenas = await AppDataSource.query(
+      `SELECT r.id, r.experto_id, r.usuario_id, r.puntuacion, r.comentario, r.estado,
+              r.fecha_creacion,
+              e.nombre_comercial AS experto_nombre,
+              u.nombre           AS autor_nombre,
+              u.email            AS autor_email
+         FROM resenas_experto r
+         JOIN expertos e ON e.id = r.experto_id
+         JOIN usuarios u ON u.id = r.usuario_id
+         ${filtro}
+        ORDER BY r.fecha_creacion DESC
+        LIMIT 200`,
+      params
+    );
     res.json({ resenas, total: resenas.length });
   })
 );

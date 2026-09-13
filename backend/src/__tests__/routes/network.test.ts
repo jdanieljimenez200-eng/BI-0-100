@@ -34,8 +34,21 @@ describeWithDb('Red de expertos (/api/network)', () => {
     ciudad: 'CDMX',
     email_contacto: 'contacto@prueba.local',
     telefono: '+52 55 1111 2222',
-    documento_url: 'https://ejemplo.local/cedula.pdf',
   };
+
+  /** PDF mínimo: lo justo para que tipo y extensión cuadren. */
+  const PDF = Buffer.from(['%PDF-1.4', '1 0 obj<<>>endobj', 'trailer<<>>', '%%EOF', ''].join('\n'));
+
+  /**
+   * Sube un documento a la ficha. Hace falta antes de verificar: la insignia
+   * dice "acreditación comprobada", y sin documento el backend responde 409.
+   */
+  const subirDocumento = (token: string, id: string) =>
+    request
+      .default(app)
+      .post(`/api/network/expertos/${id}/documento`)
+      .set('Authorization', `Bearer ${token}`)
+      .attach('documento', PDF, { filename: 'cedula.pdf', contentType: 'application/pdf' });
 
   const aprobar = (id: string, verificado = false) =>
     request
@@ -133,6 +146,7 @@ describeWithDb('Red de expertos (/api/network)', () => {
     });
 
     it('no filtra la cédula ni el contacto de un experto aprobado', async () => {
+      await subirDocumento(ajeno.accessToken, idPendiente);
       await aprobar(idPendiente, true);
 
       const dir = await request.default(app).get('/api/network/expertos?categoria=marketing');
@@ -201,16 +215,20 @@ describeWithDb('Red de expertos (/api/network)', () => {
     beforeAll(async () => {
       const res = await crearFicha(admin.accessToken, { ...baseLegal, nombre_comercial: 'Revisable SA' });
       id = res.body.experto.id;
+      await subirDocumento(admin.accessToken, id);
     });
 
-    it('la cola muestra el documento, que es justo lo que hay que revisar', async () => {
+    it('la cola indica que hay documento, sin exponer dónde está guardado', async () => {
       const res = await request
         .default(app)
         .get('/api/admin/network/pendientes')
         .set('Authorization', `Bearer ${admin.accessToken}`);
       expect(res.status).toBe(200);
       const ficha = res.body.fichas.find((f: { id: string }) => f.id === id);
-      expect(ficha?.documento_url).toBe('https://ejemplo.local/cedula.pdf');
+      // El documento se abre por su endpoint, que vuelve a exigir admin; el
+      // listado solo dice si existe.
+      expect(ficha?.tiene_documento).toBe(true);
+      expect(ficha?.documento_url).toBeUndefined();
     });
 
     it('no permite rechazar sin motivo', async () => {
@@ -250,6 +268,7 @@ describeWithDb('Red de expertos (/api/network)', () => {
         nombre_display: 'Editable',
       });
       id = res.body.experto.id;
+      await subirDocumento(ajeno.accessToken, id);
       await aprobar(id, true);
     });
 

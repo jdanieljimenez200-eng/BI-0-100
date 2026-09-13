@@ -88,7 +88,11 @@ export interface FichaPropia {
   video_url: string | null;
   estado: EstadoExperto;
   verificado: boolean;
-  documento_url: string | null;
+  /**
+   * Si hay documento de acreditación. La ubicación del fichero no sale nunca
+   * del backend: el documento solo se abre con `abrirDocumento`, como admin.
+   */
+  tiene_documento: boolean;
   motivo_rechazo: string | null;
   rating_promedio: number | string;
   total_resenas: number;
@@ -156,7 +160,6 @@ export type DatosFicha = Partial<{
   moneda: string;
   ofrece_consulta_gratis: boolean;
   video_url: string | null;
-  documento_url: string | null;
 }>;
 
 export async function misFichas() {
@@ -182,6 +185,28 @@ export async function editarFicha(id: string, datos: DatosFicha) {
 
 export async function borrarFicha(id: string) {
   await api.delete(`/network/expertos/${id}`);
+}
+
+/**
+ * Sube el documento de acreditación. Devuelve la ficha a revisión: el documento
+ * es la prueba sobre la que decide quien revisa.
+ */
+export async function subirDocumento(id: string, fichero: File) {
+  const datos = new FormData();
+  datos.append('documento', fichero);
+  const { data } = await api.post<{ mensaje: string }>(`/network/expertos/${id}/documento`, datos, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
+export async function subirAvatar(id: string, fichero: File) {
+  const datos = new FormData();
+  datos.append('avatar', fichero);
+  const { data } = await api.post<{ avatar_url: string }>(`/network/expertos/${id}/avatar`, datos, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data.avatar_url;
 }
 
 // ─── Reseñas ─────────────────────────────────────────────────────────────────
@@ -234,16 +259,73 @@ export async function fichasAdmin(estado?: EstadoExperto) {
   return data.fichas;
 }
 
+/**
+ * Abre el documento de acreditación de una ficha en una pestaña nueva.
+ *
+ * No existe una URL del documento que se pueda pegar en un `href`: el endpoint
+ * exige la sesión de admin en cada petición. Así que se descarga con el token,
+ * se convierte en un objeto local del navegador y se abre ese. El enlace
+ * resultante solo vale en esta pestaña y muere al cerrarla.
+ */
+export async function abrirDocumento(id: string) {
+  // La pestaña se abre YA, dentro del clic. Abrirla después del `await` la
+  // convierte en una ventana emergente que el navegador bloquea sin avisar.
+  const ventana = window.open('', '_blank');
+  try {
+    const { data, headers } = await api.get<Blob>(`/admin/network/expertos/${id}/documento`, {
+      responseType: 'blob',
+    });
+    const tipo = String(headers['content-type'] ?? data.type ?? 'application/octet-stream');
+    const url = URL.createObjectURL(new Blob([data], { type: tipo }));
+    if (ventana) {
+      ventana.location.href = url;
+    } else {
+      window.location.href = url;
+    }
+    // Da tiempo a la pestaña a leerlo antes de liberar la memoria.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (e) {
+    ventana?.close();
+    throw e;
+  }
+}
+
 export async function cambiarEstadoFicha(
   id: string,
   estado: EstadoExperto,
   extras: { verificado?: boolean; motivo_rechazo?: string } = {}
 ) {
-  const { data } = await api.patch<{ experto: FichaPropia }>(
+  const { data } = await api.patch<{ experto: FichaPropia; avisado: boolean }>(
     `/admin/network/expertos/${id}/estado`,
     { estado, ...extras }
   );
-  return data.experto;
+  return data;
+}
+
+// ─── Moderación de reseñas (admin) ──────────────────────────────────────────
+
+export interface ResenaAdmin {
+  id: string;
+  experto_id: string;
+  usuario_id: string;
+  puntuacion: number;
+  comentario: string | null;
+  estado: 'publicada' | 'oculta';
+  fecha_creacion: string;
+}
+
+export async function resenasAdmin(estado?: 'publicada' | 'oculta') {
+  const { data } = await api.get<{ resenas: ResenaAdmin[] }>('/admin/network/resenas', {
+    params: estado ? { estado } : undefined,
+  });
+  return data.resenas;
+}
+
+export async function moderarResena(id: string, estado: 'publicada' | 'oculta') {
+  const { data } = await api.patch<{ resena: ResenaAdmin }>(`/admin/network/resenas/${id}/estado`, {
+    estado,
+  });
+  return data.resena;
 }
 
 // ─── Utilidades de presentación ──────────────────────────────────────────────

@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import ModeracionResenas from '@/components/network/ModeracionResenas';
 import {
   fichasAdmin,
   cambiarEstadoFicha,
+  abrirDocumento,
   errorLegible,
   formatearTarifa,
   NOMBRE_CATEGORIA,
@@ -13,11 +15,14 @@ import {
   type FichaPropia,
 } from '@/lib/network';
 
-const PESTANAS: { clave: EstadoExperto; texto: string }[] = [
+type Pestana = EstadoExperto | 'resenas';
+
+const PESTANAS: { clave: Pestana; texto: string }[] = [
   { clave: 'pendiente', texto: 'Por revisar' },
   { clave: 'aprobado', texto: 'Publicadas' },
   { clave: 'rechazado', texto: 'Rechazadas' },
   { clave: 'suspendido', texto: 'Suspendidas' },
+  { clave: 'resenas', texto: 'Reseñas' },
 ];
 
 const FECHA = new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
@@ -43,7 +48,8 @@ function Dato({ etiqueta, children }: { etiqueta: string; children: React.ReactN
  */
 export default function AdminNetworkPage() {
   const router = useRouter();
-  const [pestana, setPestana] = useState<EstadoExperto>('pendiente');
+  const [pestana, setPestana] = useState<Pestana>('pendiente');
+  const [aviso, setAviso] = useState<string | null>(null);
   const [fichas, setFichas] = useState<FichaPropia[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
@@ -51,6 +57,7 @@ export default function AdminNetworkPage() {
   const [verificar, setVerificar] = useState<Record<string, boolean>>({});
 
   const cargar = useCallback(async () => {
+    if (pestana === 'resenas') return;
     setFichas(null);
     setError(null);
     try {
@@ -73,11 +80,19 @@ export default function AdminNetworkPage() {
   const actuar = async (ficha: FichaPropia, estado: EstadoExperto) => {
     setOcupado(ficha.id);
     setError(null);
+    setAviso(null);
     try {
-      await cambiarEstadoFicha(ficha.id, estado, {
+      const { avisado } = await cambiarEstadoFicha(ficha.id, estado, {
         verificado: estado === 'aprobado' ? Boolean(verificar[ficha.id]) : undefined,
         motivo_rechazo: estado === 'rechazado' ? motivos[ficha.id] : undefined,
       });
+      // Si el correo no salió, quien revisa tiene que saberlo: el experto no se
+      // va a enterar por sí solo de que su ficha cambió.
+      setAviso(
+        avisado
+          ? `«${ficha.nombre_comercial}»: hecho, y se ha avisado al experto por correo.`
+          : `«${ficha.nombre_comercial}»: hecho, pero NO se pudo enviar el aviso por correo. Conviene avisarle por otro medio.`
+      );
       await cargar();
     } catch (e) {
       setError(errorLegible(e, 'No pudimos cambiar el estado.'));
@@ -114,13 +129,20 @@ export default function AdminNetworkPage() {
         ))}
       </div>
 
+      {aviso && (
+        <div className="mb-5 rounded-xl border border-white/15 bg-white/[0.04] p-4">
+          <p className="text-white/70 text-sm">{aviso}</p>
+        </div>
+      )}
       {error && (
         <div className="mb-5 rounded-xl border border-rose-500/20 bg-rose-500/5 p-4">
           <p className="text-rose-300 text-sm">{error}</p>
         </div>
       )}
 
-      {fichas === null ? (
+      {pestana === 'resenas' ? (
+        <ModeracionResenas />
+      ) : fichas === null ? (
         <p className="text-white/40 text-sm">Cargando…</p>
       ) : fichas.length === 0 ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-8 text-center">
@@ -185,15 +207,18 @@ export default function AdminNetworkPage() {
                   )}
                 </Dato>
                 <Dato etiqueta="Acreditación">
-                  {ficha.documento_url ? (
-                    <a
-                      href={ficha.documento_url}
-                      target="_blank"
-                      rel="noopener noreferrer nofollow"
+                  {ficha.tiene_documento ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        abrirDocumento(ficha.id).catch((e) =>
+                          setError(errorLegible(e, 'No se pudo abrir el documento.'))
+                        )
+                      }
                       className="underline decoration-white/20 hover:text-white"
                     >
                       Abrir documento ↗
-                    </a>
+                    </button>
                   ) : (
                     <span className="text-amber-300/70">Sin documento</span>
                   )}
@@ -236,10 +261,13 @@ export default function AdminNetworkPage() {
               {/* ── Acciones ─────────────────────────────────────────────── */}
               <div className="border-t border-white/5 pt-4 space-y-3">
                 {ficha.estado !== 'aprobado' && (
-                  <label className="flex items-start gap-3 cursor-pointer">
+                  <label
+                    className={`flex items-start gap-3 ${ficha.tiene_documento ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
+                  >
                     <input
                       type="checkbox"
-                      checked={Boolean(verificar[ficha.id])}
+                      disabled={!ficha.tiene_documento}
+                      checked={Boolean(verificar[ficha.id]) && ficha.tiene_documento}
                       onChange={(e) =>
                         setVerificar((v) => ({ ...v, [ficha.id]: e.target.checked }))
                       }
@@ -248,8 +276,9 @@ export default function AdminNetworkPage() {
                     <span className="text-white/60 text-xs leading-relaxed">
                       Marcar como <strong className="text-white/80">acreditación comprobada</strong>
                       <span className="block text-white/30 mt-0.5">
-                        Solo si has abierto el documento y respalda lo que dice la ficha. Esta
-                        insignia es lo que hace que alguien confíe su asunto a un desconocido.
+                        {ficha.tiene_documento
+                          ? 'Solo si has abierto el documento y respalda lo que dice la ficha. Esta insignia es lo que hace que alguien confíe su asunto a un desconocido.'
+                          : 'No disponible: la ficha no tiene documento. Se puede publicar, pero no verificar.'}
                       </span>
                     </span>
                   </label>

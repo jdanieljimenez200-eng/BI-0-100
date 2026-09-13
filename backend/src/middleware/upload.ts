@@ -329,3 +329,82 @@ export function recibirReporteAds(req: Request, res: Response, next: NextFunctio
     });
   });
 }
+// ─── Red de expertos ─────────────────────────────────────────────────────────
+
+/**
+ * Documento de acreditación (cédula, licencia, colegiación).
+ *
+ * Acepta PDF además de imagen, que es como viene una cédula de verdad. El
+ * fichero no va a `StorageService`: lo guarda `documentosService` en una carpeta
+ * que NO se publica como estática, porque esto es un documento de identidad y no
+ * puede quedar accesible a quien tenga el enlace.
+ */
+const ALLOWED_DOCUMENTO_EXTENSIONS = new Set(['.pdf', '.jpg', '.jpeg', '.png', '.webp']);
+const ALLOWED_DOCUMENTO_MIMES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
+
+const MENSAJE_DOCUMENTO = 'El documento debe ser un PDF o una imagen (jpg, png, webp)';
+
+export const uploadDocumentoExperto = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const mime = file.mimetype.split(';')[0].trim().toLowerCase();
+    // Extensión Y tipo declarado: cualquiera de los dos por separado se falsea
+    // renombrando el fichero o tocando la cabecera.
+    if (!ALLOWED_DOCUMENTO_EXTENSIONS.has(ext) || !ALLOWED_DOCUMENTO_MIMES.has(mime)) {
+      cb(new Error(MENSAJE_DOCUMENTO));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+const subirDocumentoSingle = uploadDocumentoExperto.single('documento');
+
+export function recibirDocumentoExperto(req: Request, res: Response, next: NextFunction): void {
+  subirDocumentoSingle(req, res, (err: unknown) => {
+    if (!err) {
+      next();
+      return;
+    }
+    if (err instanceof multer.MulterError) {
+      const esTamano = err.code === 'LIMIT_FILE_SIZE';
+      res.status(esTamano ? 413 : 400).json({
+        error: esTamano ? 'El documento supera el máximo de 8 MB' : MENSAJE_DOCUMENTO,
+      });
+      return;
+    }
+    res.status(400).json({ error: err instanceof Error ? err.message : MENSAJE_DOCUMENTO });
+  });
+}
+
+/** Foto o logotipo de la ficha. Esta sí es pública: va a StorageService. */
+const subirAvatarSingle = crearUploader({
+  tipoBase: 'image',
+  extensiones: ALLOWED_IMAGE_EXTENSIONS,
+  maxBytes: 3 * 1024 * 1024,
+  mensajeError: 'La foto debe ser una imagen (jpg, png, webp, gif)',
+}).single('avatar');
+
+export function recibirAvatarExperto(req: Request, res: Response, next: NextFunction): void {
+  subirAvatarSingle(req, res, (err: unknown) => {
+    if (!err) {
+      next();
+      return;
+    }
+    if (err instanceof multer.MulterError) {
+      const esTamano = err.code === 'LIMIT_FILE_SIZE';
+      res.status(esTamano ? 413 : 400).json({
+        error: esTamano ? 'La imagen supera el máximo de 3 MB' : 'Imagen inválida',
+      });
+      return;
+    }
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Imagen inválida' });
+  });
+}

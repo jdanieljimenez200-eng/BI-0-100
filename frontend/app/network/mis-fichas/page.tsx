@@ -6,13 +6,15 @@ import { useSearchParams } from 'next/navigation';
 import { useHaySesion } from '@/lib/useSesion';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
-import FormularioFicha from '@/components/network/FormularioFicha';
+import FormularioFicha, { type FicherosFicha } from '@/components/network/FormularioFicha';
 import {
   misFichas,
   misPatrocinios,
   editarFicha,
   borrarFicha,
   iniciarPatrocinio,
+  subirAvatar,
+  subirDocumento,
   errorLegible,
   formatearTarifa,
   NOMBRE_CATEGORIA,
@@ -79,8 +81,13 @@ export default function MisFichasPage() {
   }, [haySesion, cargar]);
 
   useEffect(() => {
-    if (params.get('alta') === 'ok') {
-      setAviso('Ficha enviada. La revisamos y te avisamos: hasta entonces no aparece en el directorio.');
+    if (params.get('alta') === 'ok' && params.get('fallo')) {
+      const que = params.get('fallo')!.split(',').join(' ni la ');
+      setAviso(
+        `Ficha enviada, pero no se pudo subir el ${que}. Ábrela con "Editar" y vuelve a intentarlo: la ficha no se ha perdido.`
+      );
+    } else if (params.get('alta') === 'ok') {
+      setAviso('Ficha enviada. La revisamos y te avisamos por correo: hasta entonces no aparece en el directorio.');
     } else if (params.get('patrocinio') === 'ok') {
       setAviso(
         'Pago recibido. El patrocinio se activa en cuanto Stripe nos confirma el cobro; puede tardar unos segundos en aparecer aquí.'
@@ -98,9 +105,36 @@ export default function MisFichasPage() {
         (!p.fecha_fin || new Date(p.fecha_fin) > new Date())
     );
 
-  const guardar = (id: string) => async (datos: DatosFicha) => {
+  const guardar = (id: string) => async (datos: DatosFicha, ficheros: FicherosFicha) => {
     const { mensaje } = await editarFicha(id, datos);
-    setAviso(mensaje);
+
+    // Los datos ya están guardados: un fichero que falle se dice, no se lanza,
+    // para no hacer creer que tampoco se guardó lo demás.
+    const fallos: string[] = [];
+    let volvioARevision = false;
+    if (ficheros.documento) {
+      try {
+        await subirDocumento(id, ficheros.documento);
+        volvioARevision = true;
+      } catch (e) {
+        fallos.push(`el documento (${errorLegible(e, 'error de subida')})`);
+      }
+    }
+    if (ficheros.avatar) {
+      try {
+        await subirAvatar(id, ficheros.avatar);
+      } catch (e) {
+        fallos.push(`la foto (${errorLegible(e, 'error de subida')})`);
+      }
+    }
+
+    setAviso(
+      fallos.length
+        ? `Cambios guardados, pero no se pudo subir ${fallos.join(' ni ')}. Vuelve a intentarlo.`
+        : volvioARevision
+          ? 'Documento recibido. La ficha vuelve a revisión.'
+          : mensaje
+    );
     setEditando(null);
     await cargar();
   };

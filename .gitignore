@@ -64,3 +64,8 @@ agency-agents/
 gsap-skills/
 ui-ux-pro-max-skill/
 5/
+# Ficheros subidos por usuarios en desarrollo. Nunca al repositorio: son datos
+# de terceros. `almacen-privado` guarda documentos de identidad (cédulas de la
+# red de expertos); un `git add -A` no puede llevárselos a un commit.
+backend/uploads/
+backend/almacen-privado/

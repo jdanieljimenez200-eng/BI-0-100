@@ -196,3 +196,76 @@ export const notificarAnalisisCompleto = async (params: {
     estado: 'completado',
   });
 };
+// ─── Red de expertos ─────────────────────────────────────────────────────────
+
+/**
+ * Avisa al experto del resultado de la revisión de su ficha.
+ *
+ * Sin esto, quien presenta una ficha no se entera de nada: tiene que volver a
+ * entrar por su cuenta a ver si le han contestado. Y un rechazo sin aviso es un
+ * rechazo que nadie corrige.
+ *
+ * Nunca lanza: que el correo no salga no puede tumbar la aprobación, que ya está
+ * guardada. Devuelve si se entregó, para poder registrarlo.
+ */
+export const notificarRevisionFicha = async (params: {
+  email: string;
+  nombreComercial: string;
+  estado: 'aprobado' | 'rechazado' | 'suspendido';
+  verificado: boolean;
+  motivo?: string | null;
+  expertoId: string;
+}): Promise<boolean> => {
+  const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const ficha = `${base}/network/${params.expertoId}`;
+  const misFichas = `${base}/network/mis-fichas`;
+
+  let asunto: string;
+  let cuerpo: string;
+
+  if (params.estado === 'aprobado') {
+    asunto = `Tu ficha "${params.nombreComercial}" ya está publicada`;
+    cuerpo = `
+      <h1>Tu ficha ya está en el directorio</h1>
+      <p>Hemos revisado <strong>${params.nombreComercial}</strong> y ya aparece en la red de expertos de 0 a 100.</p>
+      ${
+        params.verificado
+          ? '<p>Además, comprobamos tu acreditación: tu ficha lleva la insignia de acreditación comprobada.</p>'
+          : '<p>Tu ficha está publicada sin la insignia de acreditación comprobada. Si quieres obtenerla, sube tu cédula o licencia desde tu panel y volveremos a revisarla.</p>'
+      }
+      <p><a href="${ficha}">Ver tu ficha</a></p>
+      <p style="color:#666;font-size:13px">Recuerda que el trato y el cobro los acuerdas directamente con cada cliente: la plataforma no interviene en la contratación.</p>
+    `;
+  } else if (params.estado === 'rechazado') {
+    asunto = `Necesitamos que corrijas tu ficha "${params.nombreComercial}"`;
+    cuerpo = `
+      <h1>Tu ficha necesita cambios</h1>
+      <p>Hemos revisado <strong>${params.nombreComercial}</strong> y todavía no podemos publicarla.</p>
+      <p><strong>Motivo:</strong> ${params.motivo ?? 'No se indicó un motivo.'}</p>
+      <p>Puedes corregirlo desde tu panel: al guardar, la ficha vuelve a la cola de revisión automáticamente.</p>
+      <p><a href="${misFichas}">Corregir mi ficha</a></p>
+    `;
+  } else {
+    asunto = `Tu ficha "${params.nombreComercial}" se ha retirado del directorio`;
+    cuerpo = `
+      <h1>Tu ficha se ha retirado</h1>
+      <p><strong>${params.nombreComercial}</strong> ya no aparece en el directorio.</p>
+      ${params.motivo ? `<p><strong>Motivo:</strong> ${params.motivo}</p>` : ''}
+      <p>Si crees que es un error, responde a este correo.</p>
+      <p><a href="${misFichas}">Ver mis fichas</a></p>
+    `;
+  }
+
+  try {
+    const enviado = await sendEmail({ to: params.email, subject: asunto, html: cuerpo });
+    if (!enviado) {
+      logger.warn(`[network] no se pudo avisar a ${params.email} del estado '${params.estado}'`);
+    }
+    return enviado;
+  } catch (err) {
+    // El estado ya está guardado en la base: un fallo de correo no puede
+    // propagarse y hacer que parezca que la revisión no se aplicó.
+    logger.error('[network] error enviando el aviso de revisión:', err);
+    return false;
+  }
+};
