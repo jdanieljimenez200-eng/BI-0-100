@@ -51,8 +51,8 @@ const INTERVALO_SQL: Record<Granularidad, string> = {
   anio: '1 year',
 };
 
-const n = (v: unknown) => Number(v ?? 0);
-const r2 = (v: number) => Math.round(v * 100) / 100;
+export const n = (v: unknown) => Number(v ?? 0);
+export const r2 = (v: number) => Math.round(v * 100) / 100;
 
 /**
  * Construye el filtro común de ventas.
@@ -60,7 +60,7 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
  * Devuelve el fragmento SQL y los parámetros, numerados a partir de `desde`
  * para poder concatenarlos con el resto de la consulta sin desalinearlos.
  */
-function filtroVentas(f: FiltrosReporte, primerIndice: number) {
+export function filtroVentas(f: FiltrosReporte, primerIndice: number) {
   const params: unknown[] = [f.usuarioId, f.desde, f.hasta];
   let sql = `v.usuario_id = $${primerIndice}
              AND v.fecha BETWEEN $${primerIndice + 1} AND $${primerIndice + 2}
@@ -125,7 +125,7 @@ export function variacion(actual: number, previo: number): number | null {
 // RESUMEN
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function totalesVentas(f: FiltrosReporte) {
+export async function totalesVentas(f: FiltrosReporte) {
   const { sql, params } = filtroVentas(f, 1);
   const [row] = await AppDataSource.query(
     `SELECT
@@ -154,7 +154,7 @@ async function totalesVentas(f: FiltrosReporte) {
  * Es tan importante como el margen: sin él, un catálogo a medio configurar
  * produce un margen del 90% que parece real y no lo es.
  */
-async function costoYMargen(f: FiltrosReporte) {
+export async function costoYMargen(f: FiltrosReporte) {
   const { sql, params } = filtroVentas(f, 1);
   const [row] = await AppDataSource.query(
     `SELECT
@@ -187,7 +187,7 @@ async function costoYMargen(f: FiltrosReporte) {
  * `=` estricto, el balance de Reportes y el de Movimientos no cuadrarían entre
  * sí dentro de la misma página.
  */
-async function flujoContable(f: FiltrosReporte) {
+export async function flujoContable(f: FiltrosReporte) {
   const params: unknown[] = [f.usuarioId, f.desde, f.hasta];
   let sql = `m.usuario_id = $1 AND m.fecha BETWEEN $2 AND $3`;
   if (f.productoId) {

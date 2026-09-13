@@ -8,6 +8,8 @@ import { ah } from '../utils/asyncHandler';
 import { timezoneDePais } from '../utils/timezones';
 import * as reportes from '../services/reportes/reportesService';
 import type { FiltrosReporte, Granularidad } from '../services/reportes/reportesService';
+import * as areas from '../services/reportes/reportesAreas';
+import type { Area } from '../services/reportes/reportesAreas';
 
 const router = Router();
 router.use(authenticate);
@@ -91,6 +93,30 @@ async function resolverFiltros(req: AuthRequest): Promise<Resuelto> {
   };
 }
 
+/**
+ * Áreas visibles para quien pide: las herramientas contratadas por la cuenta,
+ * recortadas por los permisos si es un trabajador. `requireHerramientaAccess`
+ * ya dejó `req.userId` apuntando a la cuenta y `trabajadorRealId` a la persona.
+ */
+function areasVisibles(req: AuthRequest) {
+  return areas.areasDisponibles(req.userId!, req.trabajadorRealId);
+}
+
+/**
+ * Exige que el área esté visible. 403 con `area_no_disponible` para que la
+ * interfaz enseñe "herramienta no contratada" en vez de un error genérico.
+ */
+function requiereArea(area: Area) {
+  return ah(async (req: AuthRequest, res: Response, next: () => void) => {
+    const visibles = await areasVisibles(req);
+    if (!visibles[area]) {
+      res.status(403).json({ error: 'Esta área corresponde a una herramienta que no tienes disponible', codigo: 'area_no_disponible', area });
+      return;
+    }
+    next();
+  });
+}
+
 /** Envuelve un handler resolviendo antes los filtros comunes. */
 function conFiltros(fn: (f: FiltrosReporte, req: AuthRequest) => Promise<unknown>) {
   return ah(async (req: AuthRequest, res: Response) => {
@@ -107,33 +133,33 @@ function conFiltros(fn: (f: FiltrosReporte, req: AuthRequest) => Promise<unknown
 router.get('/resumen', conFiltros((f) => reportes.resumen(f)));
 
 // GET /api/reportes/serie?granularidad=dia|semana|mes|anio
-router.get('/serie', conFiltros(async (f, req) => {
+router.get('/serie', requiereArea('ventas'), conFiltros(async (f, req) => {
   const g = String(req.query.granularidad ?? 'dia') as Granularidad;
   const granularidad = GRANULARIDADES.includes(g) ? g : 'dia';
   return { granularidad, puntos: await reportes.serie(f, granularidad) };
 }));
 
 // GET /api/reportes/productos — ranking de lo más vendido
-router.get('/productos', conFiltros(async (f, req) => {
+router.get('/productos', requiereArea('ventas'), conFiltros(async (f, req) => {
   const limiteRaw = Number(req.query.limite ?? 20);
   const limite = Number.isFinite(limiteRaw) ? Math.min(Math.max(1, limiteRaw), 100) : 20;
   return { productos: await reportes.topProductos(f, limite) };
 }));
 
 // GET /api/reportes/almacen — entradas, salidas, mermas y alertas de stock
-router.get('/almacen', conFiltros((f) => reportes.almacen(f)));
+router.get('/almacen', requiereArea('inventario'), conFiltros((f) => reportes.almacen(f)));
 
 // GET /api/reportes/clientes — nuevos vs recurrentes y top por facturación
-router.get('/clientes', conFiltros((f) => reportes.clientes(f)));
+router.get('/clientes', requiereArea('clientes'), conFiltros((f) => reportes.clientes(f)));
 
 // GET /api/reportes/horarios — heatmap día × hora
-router.get('/horarios', conFiltros((f) => reportes.horarios(f)));
+router.get('/horarios', requiereArea('ventas'), conFiltros((f) => reportes.horarios(f)));
 
 // GET /api/reportes/metodos-pago
-router.get('/metodos-pago', conFiltros(async (f) => ({ metodos: await reportes.metodosPago(f) })));
+router.get('/metodos-pago', requiereArea('ventas'), conFiltros(async (f) => ({ metodos: await reportes.metodosPago(f) })));
 
 // GET /api/reportes/cotizaciones — tasa de conversión
-router.get('/cotizaciones', conFiltros((f) => reportes.cotizaciones(f)));
+router.get('/cotizaciones', requiereArea('cotizaciones'), conFiltros((f) => reportes.cotizaciones(f)));
 
 /**
  * GET /api/reportes/panel — todo lo del panel en una sola respuesta.
@@ -146,15 +172,16 @@ router.get('/panel', conFiltros(async (f, req) => {
   const g = String(req.query.granularidad ?? 'dia') as Granularidad;
   const granularidad = GRANULARIDADES.includes(g) ? g : 'dia';
 
+  const visibles = await areasVisibles(req);
   const [res_, puntos, productos, alm, cli, hor, met, cot] = await Promise.all([
     reportes.resumen(f),
-    reportes.serie(f, granularidad),
-    reportes.topProductos(f, 10),
-    reportes.almacen(f),
-    reportes.clientes(f),
-    reportes.horarios(f),
-    reportes.metodosPago(f),
-    reportes.cotizaciones(f),
+    visibles.ventas ? reportes.serie(f, granularidad) : [],
+    visibles.ventas ? reportes.topProductos(f, 10) : [],
+    visibles.inventario ? reportes.almacen(f) : null,
+    visibles.clientes ? reportes.clientes(f) : null,
+    visibles.ventas ? reportes.horarios(f) : null,
+    visibles.ventas ? reportes.metodosPago(f) : [],
+    visibles.cotizaciones ? reportes.cotizaciones(f) : null,
   ]);
 
   return {
@@ -167,6 +194,45 @@ router.get('/panel', conFiltros(async (f, req) => {
     metodos_pago: met,
     cotizaciones: cot,
   };
+}));
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Reportes por área
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GET /api/reportes/areas — qué áreas puede ver esta persona
+router.get('/areas', ah(async (req: AuthRequest, res: Response) => {
+  res.json({ areas: await areasVisibles(req) });
+}));
+
+// GET /api/reportes/panorama — KPIs de todas las áreas visibles y alertas
+router.get('/panorama', conFiltros(async (f, req) => areas.panorama(f, await areasVisibles(req))));
+
+// GET /api/reportes/completo — todas las áreas visibles, para el PDF
+router.get('/completo', conFiltros(async (f, req) => ({
+  periodo: { desde: f.desde, hasta: f.hasta },
+  generado_en: new Date().toISOString(),
+  ...(await areas.completo(f, await areasVisibles(req))),
+})));
+
+// GET /api/reportes/area/:area — detalle de un área
+router.get('/area/:area', ah(async (req: AuthRequest, res: Response) => {
+  const area = req.params.area;
+  if (!areas.esArea(area)) {
+    res.status(404).json({ error: 'Área de reporte desconocida' });
+    return;
+  }
+  const visibles = await areasVisibles(req);
+  if (!visibles[area]) {
+    res.status(403).json({ error: 'Esta área corresponde a una herramienta que no tienes disponible', codigo: 'area_no_disponible', area });
+    return;
+  }
+  const r = await resolverFiltros(req);
+  if (!r.ok) {
+    res.status(r.status).json({ error: r.error });
+    return;
+  }
+  res.json({ area, ...(await areas.CALCULAR_AREA[area](r.filtros) as object) });
 }));
 
 export default router;
