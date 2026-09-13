@@ -51,7 +51,7 @@ describeWithDb('Panel de admin: bloqueo y plan', () => {
         .default(app)
         .patch(`/api/admin/usuarios/${victima.userId}/activo`)
         .set(auth(admin))
-        .send({ activo: false });
+        .send({ activo: false, motivo: 'Prueba automatizada de bloqueo' });
       expect(res.status).toBe(200);
       expect(res.body.sesiones_cerradas).toBe(true);
 
@@ -92,7 +92,7 @@ describeWithDb('Panel de admin: bloqueo y plan', () => {
         .default(app)
         .patch('/api/admin/usuarios/00000000-0000-4000-8000-000000000000/activo')
         .set(auth(admin))
-        .send({ activo: false });
+        .send({ activo: false, motivo: 'Prueba automatizada de bloqueo' });
       expect(res.status).toBe(404);
     });
   });
@@ -103,7 +103,7 @@ describeWithDb('Panel de admin: bloqueo y plan', () => {
         .default(app)
         .patch(`/api/admin/usuarios/${victima.userId}/plan`)
         .set(auth(admin))
-        .send({ plan: 'pro' });
+        .send({ plan: 'pro', motivo: 'Cortesía de prueba automatizada' });
       expect(res.status).toBe(200);
       expect((await usuarios().findOneByOrFail({ id: victima.userId })).plan).toBe('pro');
     });
@@ -115,7 +115,7 @@ describeWithDb('Panel de admin: bloqueo y plan', () => {
         .default(app)
         .patch(`/api/admin/usuarios/${victima.userId}/plan`)
         .set(auth(admin))
-        .send({ plan: 'business' });
+        .send({ plan: 'business', motivo: 'Cortesía de prueba automatizada' });
       expect(res.status).toBe(409);
       expect((await usuarios().findOneByOrFail({ id: victima.userId })).plan).toBe('pro');
 

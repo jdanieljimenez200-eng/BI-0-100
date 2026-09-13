@@ -92,7 +92,7 @@ describeWithDb('Reseñas de expertos (/api/network)', () => {
         .default(app)
         .patch(`/api/admin/network/resenas/${segunda.body.resena.id}/estado`)
         .set(auth(admin))
-        .send({ estado: 'oculta' });
+        .send({ estado: 'oculta', motivo: 'Ocultada en prueba automatizada' });
       expect(oculta.status).toBe(200);
       // Esconder la reseña y dejarle la estrella puesta no arreglaría nada.
       await expect(leerRating(expertoId)).resolves.toEqual({ rating: 4, total: 1 });

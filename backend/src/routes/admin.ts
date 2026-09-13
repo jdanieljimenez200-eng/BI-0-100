@@ -7,6 +7,8 @@ import { requireAdmin } from '../middleware/requireAdmin';
 import { logger } from '../utils/logger';
 import { bloquearSesiones, levantarBloqueo } from '../services/auth/bloqueoSesion';
 import { invalidatePlanCache } from '../middleware/requirePlan';
+import { AuditoriaAdmin } from '../models/AuditoriaAdmin';
+import { registrarAccionAdmin, MotivoSchema } from '../services/admin/auditoria';
 
 const router = Router();
 
@@ -165,30 +167,53 @@ router.patch(
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
+    const motivo = MotivoSchema.safeParse(req.body?.motivo);
+    if (!motivo.success) return res.status(400).json({ error: motivo.error.errors[0].message });
+
     const { id } = req.params;
     const { plan } = req.body as { plan: Plan };
 
     try {
-      const repo = AppDataSource.getRepository(Usuario);
-      const usuario = await repo.findOneBy({ id });
-      if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
-
-      // Con una suscripción de Stripe viva, el plan lo manda Stripe: el próximo
-      // evento del webhook (una renovación, un cambio de tarjeta) reescribe
-      // `plan` y el cambio manual desaparece sin avisar a nadie. Mejor decirlo
-      // ahora que dejar creer que se aplicó.
-      if (usuario.stripe_subscription_id) {
-        return res.status(409).json({
-          error:
-            'Este usuario tiene una suscripción activa en Stripe: el plan se gestiona desde Stripe. Un cambio aquí lo revertiría el siguiente evento de facturación.',
+      const resultado = await AppDataSource.transaction(async (manager) => {
+        const repo = manager.getRepository(Usuario);
+        const usuario = await repo.findOne({
+          where: { id },
+          select: ['id', 'plan', 'stripe_subscription_id'],
+          lock: { mode: 'pessimistic_write' },
         });
-      }
+        if (!usuario) return { status: 404, cuerpo: { error: 'Usuario no encontrado' } };
 
-      await repo.update(id, { plan });
-      await invalidatePlanCache(id);
+        // Con una suscripción de Stripe viva, el plan lo manda Stripe: el próximo
+        // evento del webhook (una renovación, un cambio de tarjeta) reescribe
+        // `plan` y el cambio manual desaparece sin avisar a nadie. Mejor decirlo
+        // ahora que dejar creer que se aplicó.
+        if (usuario.stripe_subscription_id) {
+          return {
+            status: 409,
+            cuerpo: {
+              error:
+                'Este usuario tiene una suscripción activa en Stripe: el plan se gestiona desde Stripe. Un cambio aquí lo revertiría el siguiente evento de facturación.',
+            },
+          };
+        }
 
-      return res.json({ message: `Plan actualizado a ${plan}`, plan });
+        const anterior = usuario.plan;
+        await repo.update(id, { plan });
+        await registrarAccionAdmin(manager, req, {
+          accion: 'usuario.plan_cambiado',
+          recursoTipo: 'usuario',
+          recursoId: id,
+          antes: { plan: anterior },
+          despues: { plan },
+          motivo: motivo.data,
+        });
+        return { status: 200, cuerpo: { message: `Plan actualizado a ${plan}`, plan } };
+      });
+
+      if (resultado.status === 200) await invalidatePlanCache(id);
+      return res.status(resultado.status).json(resultado.cuerpo);
     } catch (err) {
+      logger.error('[admin] error al cambiar plan:', err);
       return res.status(500).json({ error: 'Error al actualizar plan' });
     }
   },
@@ -206,15 +231,46 @@ router.patch(
     const { id } = req.params;
     const { activo } = req.body as { activo: boolean };
 
+    // Desactivar es destructivo y exige motivo; reactivar lo acepta si viene.
+    let motivoTexto: string | null = null;
+    if (activo) {
+      motivoTexto = typeof req.body?.motivo === 'string' ? req.body.motivo : null;
+    } else {
+      const motivo = MotivoSchema.safeParse(req.body?.motivo);
+      if (!motivo.success) return res.status(400).json({ error: motivo.error.errors[0].message });
+      motivoTexto = motivo.data;
+    }
+
     // No permitir que un admin se desactive a sí mismo
     if (id === req.userId) {
       return res.status(400).json({ error: 'No puedes desactivarte a ti mismo' });
     }
 
     try {
-      const resultado = await AppDataSource.getRepository(Usuario).update(id, { activo });
-      if (!resultado.affected) return res.status(404).json({ error: 'Usuario no encontrado' });
+      const encontrado = await AppDataSource.transaction(async (manager) => {
+        const repo = manager.getRepository(Usuario);
+        const usuario = await repo.findOne({
+          where: { id },
+          select: ['id', 'activo'],
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!usuario) return false;
 
+        await repo.update(id, { activo });
+        await registrarAccionAdmin(manager, req, {
+          accion: activo ? 'usuario.reactivado' : 'usuario.desactivado',
+          recursoTipo: 'usuario',
+          recursoId: id,
+          antes: { activo: usuario.activo },
+          despues: { activo },
+          motivo: motivoTexto,
+        });
+        return true;
+      });
+      if (!encontrado) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+      // Redis va DESPUÉS del commit: si la transacción se hubiera revertido, no
+      // hay que dejar a nadie bloqueado por un cambio que no ocurrió.
       if (activo) {
         await levantarBloqueo(id);
         return res.json({ message: 'Usuario activado' });
@@ -230,7 +286,54 @@ router.patch(
         sesiones_cerradas: sesionesCortadas,
       });
     } catch (err) {
+      logger.error('[admin] error al cambiar activo:', err);
       return res.status(500).json({ error: 'Error al actualizar usuario' });
+    }
+  },
+);
+
+// ─── GET /api/admin/auditoria ─────────────────────────────────────────────────
+
+/** Consulta del registro de auditoría. Solo lectura: la tabla no admite otra cosa. */
+router.get(
+  '/auditoria',
+  [
+    query('admin_id').optional().isUUID(),
+    query('recurso_id').optional().isString().isLength({ max: 64 }),
+    query('accion').optional().isString().isLength({ max: 60 }),
+    query('desde').optional().isISO8601(),
+    query('hasta').optional().isISO8601(),
+    query('page').optional().isInt({ min: 1 }),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const POR_PAGINA = 50;
+    const page = Number(req.query.page ?? 1);
+
+    try {
+      const qb = AppDataSource.getRepository(AuditoriaAdmin)
+        .createQueryBuilder('a')
+        .orderBy('a.fecha', 'DESC')
+        .skip((page - 1) * POR_PAGINA)
+        .take(POR_PAGINA);
+
+      if (req.query.admin_id) qb.andWhere('a.admin_id = :adminId', { adminId: req.query.admin_id });
+      if (req.query.recurso_id) qb.andWhere('a.recurso_id = :recursoId', { recursoId: req.query.recurso_id });
+      // Prefijo: "usuario." trae todas las acciones sobre usuarios. Los comodines
+      // que escriba el admin se quitan: el prefijo es literal.
+      if (req.query.accion) {
+        qb.andWhere('a.accion LIKE :accion', { accion: `${String(req.query.accion).replace(/[%_\\]/g, '')}%` });
+      }
+      if (req.query.desde) qb.andWhere('a.fecha >= :desde', { desde: req.query.desde });
+      if (req.query.hasta) qb.andWhere('a.fecha <= :hasta', { hasta: req.query.hasta });
+
+      const [registros, total] = await qb.getManyAndCount();
+      return res.json({ registros, total, page, pages: Math.max(1, Math.ceil(total / POR_PAGINA)) });
+    } catch (err) {
+      logger.error('[admin] error leyendo auditoría:', err);
+      return res.status(500).json({ error: 'Error al leer la auditoría' });
     }
   },
 );

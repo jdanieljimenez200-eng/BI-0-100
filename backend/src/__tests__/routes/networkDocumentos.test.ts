@@ -280,7 +280,7 @@ describeWithDb('Documentos y avisos de la red', () => {
         .default(app)
         .patch(`/api/admin/network/expertos/${expertoId}/estado`)
         .set(auth(admin))
-        .send({ estado: 'suspendido' });
+        .send({ estado: 'suspendido', motivo_rechazo: 'Suspensión de prueba automatizada' });
 
       expect(res.status).toBe(200);
       expect(res.body.avisado).toBe(false);

@@ -50,10 +50,20 @@ export default function ModeracionResenas() {
   }, [cargar]);
 
   const cambiar = async (r: ResenaModerable) => {
+    const ocultar = r.estado === 'publicada';
+    // Ocultar es retirar lo que alguien dijo: se pide el motivo, que queda en la
+    // auditoría. Volver a publicar no lo necesita.
+    let motivo: string | undefined;
+    if (ocultar) {
+      const escrito = window.prompt('Motivo para ocultar esta reseña (queda en el registro de auditoría):');
+      if (!escrito || !escrito.trim()) return;
+      motivo = escrito.trim();
+    }
+
     setOcupado(r.id);
     setError(null);
     try {
-      await moderarResena(r.id, r.estado === 'publicada' ? 'oculta' : 'publicada');
+      await moderarResena(r.id, ocultar ? 'oculta' : 'publicada', motivo);
       await cargar();
     } catch (e) {
       setError(errorLegible(e, 'No se pudo cambiar la reseña.'));

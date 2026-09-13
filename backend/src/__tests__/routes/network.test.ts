@@ -253,7 +253,7 @@ describeWithDb('Red de expertos (/api/network)', () => {
         .default(app)
         .patch(`/api/admin/network/expertos/${id}/estado`)
         .set('Authorization', `Bearer ${admin.accessToken}`)
-        .send({ estado: 'suspendido' });
+        .send({ estado: 'suspendido', motivo_rechazo: 'Suspensión de prueba automatizada' });
       expect(res.body.experto.verificado).toBe(false);
     });
   });

@@ -84,7 +84,8 @@ export default function AdminNetworkPage() {
     try {
       const { avisado } = await cambiarEstadoFicha(ficha.id, estado, {
         verificado: estado === 'aprobado' ? Boolean(verificar[ficha.id]) : undefined,
-        motivo_rechazo: estado === 'rechazado' ? motivos[ficha.id] : undefined,
+        // Rechazar y suspender exigen motivo: lo lee el experto y queda en la auditoría.
+        motivo_rechazo: estado === 'rechazado' || estado === 'suspendido' ? motivos[ficha.id] : undefined,
       });
       // Si el correo no salió, quien revisa tiene que saberlo: el experto no se
       // va a enterar por sí solo de que su ficha cambió.
@@ -297,8 +298,13 @@ export default function AdminNetworkPage() {
                   {ficha.estado === 'aprobado' && (
                     <button
                       onClick={() => actuar(ficha, 'suspendido')}
-                      disabled={ocupado === ficha.id}
-                      className="px-4 py-2 rounded-lg border border-white/15 text-white/70 text-xs font-bold hover:bg-white/5 disabled:opacity-50"
+                      disabled={ocupado === ficha.id || (motivos[ficha.id] ?? '').trim().length < 5}
+                      title={
+                        (motivos[ficha.id] ?? '').trim().length >= 5
+                          ? undefined
+                          : 'Escribe abajo el motivo de la suspensión'
+                      }
+                      className="px-4 py-2 rounded-lg border border-white/15 text-white/70 text-xs font-bold hover:bg-white/5 disabled:opacity-40"
                     >
                       Suspender
                     </button>
@@ -310,12 +316,16 @@ export default function AdminNetworkPage() {
                     <input
                       value={motivos[ficha.id] ?? ''}
                       onChange={(e) => setMotivos((m) => ({ ...m, [ficha.id]: e.target.value }))}
-                      placeholder="Motivo del rechazo: el experto lo va a leer y tiene que poder corregirlo"
+                      placeholder={
+                        ficha.estado === 'aprobado'
+                          ? 'Motivo para rechazar o suspender: lo lee el experto y queda en la auditoría'
+                          : 'Motivo del rechazo: el experto lo va a leer y tiene que poder corregirlo'
+                      }
                       className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-white/30"
                     />
                     <button
                       onClick={() => actuar(ficha, 'rechazado')}
-                      disabled={ocupado === ficha.id || !(motivos[ficha.id] ?? '').trim()}
+                      disabled={ocupado === ficha.id || (motivos[ficha.id] ?? '').trim().length < 5}
                       title={
                         (motivos[ficha.id] ?? '').trim()
                           ? undefined

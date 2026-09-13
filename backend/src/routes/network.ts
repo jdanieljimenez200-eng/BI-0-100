@@ -8,7 +8,6 @@ import { Usuario } from '../models/Usuario';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireAdmin } from '../middleware/requireAdmin';
 import { ah } from '../utils/asyncHandler';
-import { logger } from '../utils/logger';
 import * as expertosService from '../services/network/expertosService';
 import * as resenasService from '../services/network/resenasService';
 import * as patrociniosService from '../services/network/patrociniosService';
@@ -16,6 +15,7 @@ import * as documentos from '../services/network/documentosService';
 import { recibirDocumentoExperto, recibirAvatarExperto } from '../middleware/upload';
 import { StorageService } from '../services/StorageService';
 import { notificarRevisionFicha } from '../services/email/emailService';
+import { registrarAccionAdmin, MotivoSchema } from '../services/admin/auditoria';
 import {
   isStripeAvailable,
   getOrCreateCustomer,
@@ -710,34 +710,69 @@ adminNetworkRouter.patch(
     }
     const { estado, verificado, motivo_rechazo } = parsed.data;
 
-    if (estado === 'rechazado' && !motivo_rechazo?.trim()) {
-      return res.status(400).json({ error: 'Un rechazo necesita motivo: el experto tiene que saber qué corregir' });
+    // Rechazar y suspender apartan a alguien del directorio: el experto tiene
+    // que saber por qué, y la auditoría también.
+    let motivo: string | null = null;
+    if (estado === 'rechazado' || estado === 'suspendido') {
+      const m = MotivoSchema.safeParse(motivo_rechazo);
+      if (!m.success) {
+        return res.status(400).json({
+          error:
+            estado === 'rechazado'
+              ? 'Un rechazo necesita motivo: el experto tiene que saber qué corregir'
+              : 'Una suspensión necesita motivo: queda en el registro y se le comunica al experto',
+        });
+      }
+      motivo = m.data;
     }
 
-    const repo = AppDataSource.getRepository(Experto);
-    const experto = await repo.findOne({ where: { id: req.params.id } });
-    if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
+    type Resultado =
+      | { tipo: 'no-existe' }
+      | { tipo: 'sin-documento' }
+      | { tipo: 'ok'; experto: Experto; estadoAnterior: string };
 
-    // La insignia dice "acreditación comprobada". Sin documento no hay nada que
-    // se haya comprobado, así que concederla sería afirmar algo falso.
-    if (estado === 'aprobado' && verificado === true && !experto.documento_url) {
+    const resultado: Resultado = await AppDataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(Experto);
+      const experto = await repo.findOne({
+        where: { id: req.params.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!experto) return { tipo: 'no-existe' };
+
+      // La insignia dice "acreditación comprobada". Sin documento no hay nada que
+      // se haya comprobado, así que concederla sería afirmar algo falso.
+      if (estado === 'aprobado' && verificado === true && !experto.documento_url) {
+        return { tipo: 'sin-documento' };
+      }
+
+      const antes = { estado: experto.estado, verificado: experto.verificado };
+      const estadoAnterior = experto.estado;
+      experto.estado = estado;
+      experto.motivo_rechazo = motivo;
+      experto.fecha_aprobacion = estado === 'aprobado' ? new Date() : null;
+      // Suspender o rechazar retira la insignia: dejarla puesta sería seguir
+      // afirmando algo sobre alguien a quien acabas de apartar del directorio.
+      experto.verificado = estado === 'aprobado' ? (verificado ?? experto.verificado) : false;
+
+      await repo.save(experto);
+      await registrarAccionAdmin(manager, req, {
+        accion: `experto.${estado}`,
+        recursoTipo: 'experto',
+        recursoId: experto.id,
+        antes,
+        despues: { estado: experto.estado, verificado: experto.verificado },
+        motivo,
+      });
+      return { tipo: 'ok', experto, estadoAnterior };
+    });
+
+    if (resultado.tipo === 'no-existe') return res.status(404).json({ error: 'Ficha no encontrada' });
+    if (resultado.tipo === 'sin-documento') {
       return res.status(409).json({
         error: 'No se puede marcar como verificada una ficha sin documento de acreditación',
       });
     }
-
-    const estadoAnterior = experto.estado;
-    experto.estado = estado;
-    experto.motivo_rechazo = estado === 'rechazado' ? motivo_rechazo!.trim() : null;
-    experto.fecha_aprobacion = estado === 'aprobado' ? new Date() : null;
-    // Suspender o rechazar retira la insignia: dejarla puesta sería seguir
-    // afirmando algo sobre alguien a quien acabas de apartar del directorio.
-    experto.verificado = estado === 'aprobado' ? (verificado ?? experto.verificado) : false;
-
-    await repo.save(experto);
-    logger.info(
-      `[network] admin ${req.userId} puso la ficha ${experto.id} en '${estado}' (verificado=${experto.verificado})`
-    );
+    const { experto, estadoAnterior } = resultado;
 
     // Se avisa solo si cambió algo que el experto necesita saber. Volver a
     // guardar el mismo estado no debe llenarle la bandeja de correos repetidos.
@@ -790,7 +825,17 @@ adminNetworkRouter.get(
     const doc = await documentos.leerDocumento(experto.documento_url);
     if (!doc) return res.status(404).json({ error: 'El documento ya no está disponible' });
 
-    logger.info(`[network] admin ${req.userId} abrió el documento de la ficha ${experto.id}`);
+    // Abrir una cédula es leer un documento de identidad de un tercero: queda
+    // registrado quién la abrió y cuándo. Si el registro falla, no se entrega el
+    // documento — un acceso sin rastro es justo lo que no puede pasar aquí.
+    await AppDataSource.transaction((manager) =>
+      registrarAccionAdmin(manager, req, {
+        accion: 'documento.abierto',
+        recursoTipo: 'documento',
+        recursoId: experto.id,
+      })
+    );
+
     res.setHeader('Content-Type', doc.tipo);
     res.setHeader('Content-Disposition', `inline; filename="${doc.nombre}"`);
     res.setHeader('Cache-Control', 'no-store, private');
@@ -855,15 +900,36 @@ adminNetworkRouter.patch(
       return res.status(400).json({ error: 'El estado debe ser publicada u oculta' });
     }
 
-    const repo = AppDataSource.getRepository(ResenaExperto);
-    const resena = await repo.findOne({ where: { id: req.params.id } });
+    // Ocultar la opinión de alguien es retirar lo que dijo: exige motivo.
+    let motivo: string | null = null;
+    if (parsed.data.estado === 'oculta') {
+      const m = MotivoSchema.safeParse(req.body?.motivo);
+      if (!m.success) return res.status(400).json({ error: m.error.errors[0].message });
+      motivo = m.data;
+    }
+
+    const resena = await AppDataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(ResenaExperto);
+      const r = await repo.findOne({ where: { id: req.params.id }, lock: { mode: 'pessimistic_write' } });
+      if (!r) return null;
+
+      const antes = { estado: r.estado };
+      r.estado = parsed.data.estado;
+      await repo.save(r);
+      await registrarAccionAdmin(manager, req, {
+        accion: parsed.data.estado === 'oculta' ? 'resena.ocultada' : 'resena.publicada',
+        recursoTipo: 'resena',
+        recursoId: r.id,
+        antes,
+        despues: { estado: r.estado, experto_id: r.experto_id },
+        motivo,
+      });
+      return r;
+    });
     if (!resena) return res.status(404).json({ error: 'Reseña no encontrada' });
 
-    resena.estado = parsed.data.estado;
-    await repo.save(resena);
+    // Tras el commit: el recálculo lee las reseñas ya confirmadas.
     await resenasService.recalcularRating(resena.experto_id);
-
-    logger.info(`[network] admin ${req.userId} puso la reseña ${resena.id} en '${resena.estado}'`);
     res.json({ resena });
   })
 );

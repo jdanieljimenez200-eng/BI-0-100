@@ -109,23 +109,38 @@ export default function AdminPage() {
   useEffect(() => { fetchUsuarios(); }, [fetchUsuarios]);
   useEffect(() => { setPage(1); }, [search, planFilter]);
 
+  // El motivo queda en el registro de auditoría: es lo que permite responder
+  // después a "¿por qué me cambiaron esto?". El backend lo exige.
+  const pedirMotivo = (accion: string): string | null => {
+    const motivo = window.prompt(`Motivo para ${accion} (queda en el registro de auditoría):`);
+    return motivo && motivo.trim() ? motivo.trim() : null;
+  };
+
+  const errorDelServidor = (e: unknown, porDefecto: string) =>
+    (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? porDefecto;
+
   const handlePlanChange = async (userId: string, plan: Plan) => {
+    const motivo = pedirMotivo(`cambiar el plan a ${plan}`);
+    if (!motivo) return;
     setChangingPlan(userId);
     try {
-      await api.patch(`/admin/usuarios/${userId}/plan`, { plan });
+      await api.patch(`/admin/usuarios/${userId}/plan`, { plan, motivo });
       showToast(`Plan → ${plan}`);
       fetchUsuarios();
       refreshStats();
-    } catch { showToast('Error al cambiar plan', false); }
+    } catch (e) { showToast(errorDelServidor(e, 'Error al cambiar plan'), false); }
     finally  { setChangingPlan(null); }
   };
 
   const handleToggleActivo = async (userId: string, activo: boolean) => {
+    // Desactivar exige motivo; reactivar no.
+    const motivo = activo ? pedirMotivo('desactivar esta cuenta') : null;
+    if (activo && !motivo) return;
     try {
-      await api.patch(`/admin/usuarios/${userId}/activo`, { activo: !activo });
-      showToast(activo ? 'Usuario desactivado' : 'Usuario activado');
+      await api.patch(`/admin/usuarios/${userId}/activo`, { activo: !activo, motivo });
+      showToast(activo ? 'Usuario desactivado y sus sesiones cerradas' : 'Usuario activado');
       fetchUsuarios();
-    } catch { showToast('Error al actualizar', false); }
+    } catch (e) { showToast(errorDelServidor(e, 'Error al actualizar'), false); }
   };
 
   if (loadingStats) {
@@ -187,6 +202,12 @@ export default function AdminPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            href="/dashboard/admin/auditoria"
+            className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-white/15 text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            Auditoría
+          </Link>
           <Link
             href="/dashboard/admin/network"
             className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-white/15 text-white/70 hover:text-white hover:bg-white/5 transition-colors"

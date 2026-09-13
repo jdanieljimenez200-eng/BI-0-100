@@ -321,9 +321,11 @@ export async function resenasAdmin(estado?: 'publicada' | 'oculta') {
   return data.resenas;
 }
 
-export async function moderarResena(id: string, estado: 'publicada' | 'oculta') {
+/** Ocultar exige motivo (queda en la auditoría); volver a publicar, no. */
+export async function moderarResena(id: string, estado: 'publicada' | 'oculta', motivo?: string) {
   const { data } = await api.patch<{ resena: ResenaAdmin }>(`/admin/network/resenas/${id}/estado`, {
     estado,
+    motivo,
   });
   return data.resena;
 }
