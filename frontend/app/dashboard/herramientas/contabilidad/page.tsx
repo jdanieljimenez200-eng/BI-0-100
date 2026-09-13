@@ -138,8 +138,8 @@ export default function ContabilidadPage() {
   if (!ready) return null;
 
   return (
-    <HerramientaGate herramienta="contabilidad" nombre="Contabilidad" acento="teal">
-    <ProductoGate herramienta="Contabilidad" acento="emerald">
+    <HerramientaGate herramienta="contabilidad" nombre="Reportes" acento="teal">
+    <ProductoGate herramienta="Reportes" acento="emerald">
       {({ producto, cambiarProducto }) => (
         <ContabilidadInner producto={producto} cambiarProducto={cambiarProducto} />
       )}
@@ -403,14 +403,14 @@ function ContabilidadInner({
         <span className="text-white/20">›</span>
         <Link href="/dashboard/herramientas" className="text-white/40 hover:text-white">Herramientas</Link>
         <span className="text-white/20">›</span>
-        <span className="text-white/80 font-medium">Contabilidad</span>
+        <span className="text-white/80 font-medium">Reportes</span>
       </div>
 
       {/* Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Contabilidad</h1>
-          <p className="text-sm text-white/50 mt-1">Libro de ingresos y egresos por producto. Los movimientos alimentan la calibración de Finanzas.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Reportes</h1>
+          <p className="text-sm text-white/50 mt-1">Lo que pasa en cada herramienta, con detalle por área. El libro contable y la parte fiscal siguen aquí.</p>
         </div>
 
         <div className="bg-white/5 border border-white/10 rounded-2xl p-3 min-w-[280px]">
@@ -428,7 +428,8 @@ function ContabilidadInner({
         </div>
       </div>
 
-      {/* Resumen KPIs interactivos */}
+      {/* Resumen KPIs interactivos del libro: en Reportes cada área trae los suyos. */}
+      {tab !== 'reportes' && (
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
           {
@@ -492,6 +493,7 @@ function ContabilidadInner({
           );
         })}
       </div>
+      )}
 
       {/* Tabs y Acciones */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 border-b border-white/8 pb-2 sm:pb-0">
@@ -517,6 +519,7 @@ function ContabilidadInner({
             );
           })}
         </div>
+        {tab !== 'reportes' && (
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={exportarCSV}
@@ -546,9 +549,10 @@ function ContabilidadInner({
             <span>Nuevo movimiento</span>
           </button>
         </div>
+        )}
       </div>
 
-      {/* ══ TAB: MOVIMIENTOS ══ */}
+      {/* ══ TAB: REPORTES ══ */}
       {tab === 'reportes' && (
         <ReportesPanel
           productoId={productoId}

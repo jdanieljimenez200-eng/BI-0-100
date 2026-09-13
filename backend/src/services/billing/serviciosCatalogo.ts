@@ -23,7 +23,7 @@ export type HerramientaKey = Extract<
 
 export const SERVICIOS_CATALOGO: Record<HerramientaKey, ServicioMeta> = {
   pos:          { key: 'pos',          label: 'Punto de Venta',    precio_mxn: 149 },
-  contabilidad: { key: 'contabilidad', label: 'Contabilidad',      precio_mxn: 149 },
+  contabilidad: { key: 'contabilidad', label: 'Reportes',          precio_mxn: 149 },
   inventario:   { key: 'inventario',   label: 'Inventario',        precio_mxn: 99 },
   nomina:       { key: 'nomina',       label: 'Personal & Nómina', precio_mxn: 99 },
   cotizaciones: { key: 'cotizaciones', label: 'Cotizaciones',      precio_mxn: 69 },

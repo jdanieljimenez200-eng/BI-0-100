@@ -233,7 +233,7 @@ export const CAPABILITIES = [
   { key: 'clientes', grupo: 'herramientas' as const, label: 'Clientes', sensible: false },
   { key: 'cotizaciones', grupo: 'herramientas' as const, label: 'Cotizaciones', sensible: false },
   { key: 'nomina', grupo: 'herramientas' as const, label: 'Nómina', sensible: true },
-  { key: 'contabilidad', grupo: 'herramientas' as const, label: 'Contabilidad', sensible: true },
+  { key: 'contabilidad', grupo: 'herramientas' as const, label: 'Reportes', sensible: true },
 ] as const;
 
 // Verificación de exhaustividad en tiempo de compilación: si PermisosTrabajador

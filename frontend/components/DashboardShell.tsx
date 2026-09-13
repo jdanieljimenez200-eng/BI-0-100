@@ -84,7 +84,7 @@ const HERRAMIENTAS_ITEMS: { href: string; label: string; Icon: LucideIcon }[] = 
   { href: '/dashboard/herramientas/clientes', label: 'Clientes (CRM)', Icon: Users },
   { href: '/dashboard/herramientas/calendario', label: 'Agenda & Citas', Icon: Calendar },
   { href: '/dashboard/herramientas/personal', label: 'Personal & Nómina', Icon: Briefcase },
-  { href: '/dashboard/herramientas/contabilidad', label: 'Contabilidad Rápida', Icon: BarChart3 },
+  { href: '/dashboard/herramientas/contabilidad', label: 'Reportes', Icon: BarChart3 },
 ];
 
 function getModuloLink(modulo: ModuloSlug, productoId: string, snap: AnalisisSnap | null): string {
