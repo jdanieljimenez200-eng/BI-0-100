@@ -229,7 +229,7 @@ export default function PricingPage() {
 
               <div className="mb-8 border-b border-white/10 pb-8">
                 <span className="text-4xl font-extrabold text-white tracking-tight">{plan.precio}</span>
-                {plan.periodo && (
+                {plan.periodo && plan.precio !== 'Gratis' && (
                   <span className="text-white/40 text-sm ml-1">MXN/{plan.periodo}</span>
                 )}
               </div>
