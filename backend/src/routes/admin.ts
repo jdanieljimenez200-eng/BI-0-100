@@ -11,6 +11,7 @@ import {
   type AdminRequest,
 } from '../middleware/requireAdmin';
 import { logger } from '../utils/logger';
+import { PLAN_LIMITES } from '../services/billing/planService';
 import { bloquearSesiones, levantarBloqueo } from '../services/auth/bloqueoSesion';
 import { invalidatePlanCache } from '../middleware/requirePlan';
 import { AuditoriaAdmin } from '../models/AuditoriaAdmin';
@@ -350,6 +351,79 @@ router.get(
   },
 );
 
+
+// ─── GET /api/admin/costos-ia ─────────────────────────────────────────────────
+
+/**
+ * Gasto de IA: por día, módulo, sección, modelo y plan, y las cuentas que más
+ * gastan. Sale de `uso_ia`, que registra el costo de cada llamada.
+ *
+ * Los ingresos del periodo se estiman con el precio mensual de cada plan activo:
+ * sirve para vigilar el margen, no sustituye a los informes de Stripe.
+ */
+router.get(
+  '/costos-ia',
+  requirePermiso('verCostos'),
+  [query('dias').optional().isInt({ min: 1, max: 365 })],
+  async (req: AuthRequest, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    const dias = Number(req.query.dias ?? 30);
+    const desde = `NOW() - make_interval(days => $1)`;
+
+    try {
+      const q = (sql: string) => AppDataSource.query(sql, [dias]);
+      const [totales, porDia, porModulo, porSeccion, porModelo, porPlan, topCuentas] = await Promise.all([
+        q(`SELECT COALESCE(SUM(costo_usd), 0)::float AS periodo,
+                  COALESCE(SUM(costo_usd) FILTER (WHERE fecha >= date_trunc('day', NOW())), 0)::float AS hoy,
+                  COALESCE(SUM(costo_usd) FILTER (WHERE fecha >= date_trunc('month', NOW())), 0)::float AS mes,
+                  COUNT(*)::int AS llamadas,
+                  COUNT(DISTINCT usuario_id)::int AS cuentas
+             FROM uso_ia WHERE fecha >= ${desde}`),
+        q(`SELECT to_char(date_trunc('day', fecha), 'YYYY-MM-DD') AS dia, SUM(costo_usd)::float AS costo, COUNT(*)::int AS llamadas
+             FROM uso_ia WHERE fecha >= ${desde} GROUP BY 1 ORDER BY 1`),
+        q(`SELECT modulo, SUM(costo_usd)::float AS costo, COUNT(*)::int AS llamadas,
+                  COUNT(DISTINCT analisis_id)::int AS analisis
+             FROM uso_ia WHERE fecha >= ${desde} GROUP BY 1 ORDER BY costo DESC`),
+        q(`SELECT seccion, modelo, COUNT(*)::int AS llamadas, AVG(costo_usd)::float AS costo_medio,
+                  SUM(costo_usd)::float AS costo, AVG(input_tokens)::int AS input_medio, AVG(output_tokens)::int AS output_medio
+             FROM uso_ia WHERE fecha >= ${desde} GROUP BY 1, 2 ORDER BY costo DESC`),
+        q(`SELECT modelo, SUM(costo_usd)::float AS costo, SUM(input_tokens)::bigint AS input_tokens,
+                  SUM(output_tokens)::bigint AS output_tokens, SUM(cache_read_tokens)::bigint AS cache_read_tokens
+             FROM uso_ia WHERE fecha >= ${desde} GROUP BY 1 ORDER BY costo DESC`),
+        q(`SELECT COALESCE(u.plan, 'sin cuenta') AS plan, COUNT(DISTINCT i.usuario_id)::int AS cuentas,
+                  SUM(i.costo_usd)::float AS costo,
+                  (SUM(i.costo_usd) / NULLIF(COUNT(DISTINCT i.usuario_id), 0))::float AS costo_por_cuenta
+             FROM uso_ia i LEFT JOIN usuarios u ON u.id = i.usuario_id
+            WHERE i.fecha >= ${desde} GROUP BY 1 ORDER BY costo DESC`),
+        q(`SELECT i.usuario_id, u.email, u.plan, SUM(i.costo_usd)::float AS costo, COUNT(*)::int AS llamadas
+             FROM uso_ia i LEFT JOIN usuarios u ON u.id = i.usuario_id
+            WHERE i.fecha >= ${desde} AND i.usuario_id IS NOT NULL
+            GROUP BY 1, 2, 3 ORDER BY costo DESC LIMIT 20`),
+      ]);
+
+      const precioPlan = (plan: string) => (plan in PLAN_LIMITES ? PLAN_LIMITES[plan as Plan].precio_usd_mensual : 0);
+      const por_plan = (porPlan as { plan: string; cuentas: number; costo: number; costo_por_cuenta: number }[]).map((p) => {
+        const ingreso = precioPlan(p.plan) * p.cuentas * (dias / 30);
+        return { ...p, ingreso_estimado: ingreso, margen_pct: ingreso > 0 ? Math.round(((ingreso - p.costo) / ingreso) * 1000) / 10 : null };
+      });
+
+      return res.json({
+        dias,
+        totales: totales[0],
+        por_dia: porDia,
+        por_modulo: porModulo,
+        por_seccion: porSeccion,
+        por_modelo: porModelo,
+        por_plan,
+        top_cuentas: topCuentas,
+      });
+    } catch (err) {
+      logger.error('[admin] error leyendo costos de IA:', err);
+      return res.status(500).json({ error: 'Error al leer los costos de IA' });
+    }
+  },
+);
 
 // ─── GET /api/admin/yo ────────────────────────────────────────────────────────
 

@@ -37,6 +37,39 @@ export async function leerAuditoria(filtros: {
   return data;
 }
 
+// ─── Costos de IA (superadmin) ──────────────────────────────────────────────
+
+export interface CostosIA {
+  dias: number;
+  totales: { periodo: number; hoy: number; mes: number; llamadas: number; cuentas: number };
+  por_dia: { dia: string; costo: number; llamadas: number }[];
+  por_modulo: { modulo: string; costo: number; llamadas: number; analisis: number }[];
+  por_seccion: {
+    seccion: string;
+    modelo: string;
+    llamadas: number;
+    costo_medio: number;
+    costo: number;
+    input_medio: number;
+    output_medio: number;
+  }[];
+  por_modelo: { modelo: string; costo: number; input_tokens: string; output_tokens: string; cache_read_tokens: string }[];
+  por_plan: {
+    plan: string;
+    cuentas: number;
+    costo: number;
+    costo_por_cuenta: number;
+    ingreso_estimado: number;
+    margen_pct: number | null;
+  }[];
+  top_cuentas: { usuario_id: string; email: string | null; plan: string | null; costo: number; llamadas: number }[];
+}
+
+export async function leerCostosIA(dias: number) {
+  const { data } = await api.get<CostosIA>('/admin/costos-ia', { params: { dias } });
+  return data;
+}
+
 // ─── Roles ───────────────────────────────────────────────────────────────────
 
 export type AdminRol = 'soporte' | 'moderador' | 'superadmin';
@@ -48,7 +81,8 @@ export type Permiso =
   | 'cambiarPlan'
   | 'gestionarRoles'
   | 'verAuditoria'
-  | 'gestionarPapelera';
+  | 'gestionarPapelera'
+  | 'verCostos';
 
 export const NOMBRE_ROL: Record<AdminRol, string> = {
   soporte: 'Soporte',

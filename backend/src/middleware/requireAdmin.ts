@@ -51,6 +51,8 @@ export const PERMISOS = {
   gestionarRoles: ['superadmin'],
   verAuditoria: ['superadmin'],
   gestionarPapelera: ['superadmin'],
+  // Gasto de IA por cuenta: dato de negocio y de clientes, solo superadmin.
+  verCostos: ['superadmin'],
 } as const satisfies Record<string, readonly AdminRol[]>;
 
 export type Permiso = keyof typeof PERMISOS;

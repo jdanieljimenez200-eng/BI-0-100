@@ -255,6 +255,14 @@ export default function AdminPage() {
               Papelera
             </Link>
           )}
+          {puede('verCostos') && (
+            <Link
+              href="/dashboard/admin/costos-ia"
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-white/15 text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              Costos de IA
+            </Link>
+          )}
           {puede('verAuditoria') && (
             <Link
               href="/dashboard/admin/auditoria"
