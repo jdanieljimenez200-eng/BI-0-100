@@ -7,6 +7,10 @@ module.exports = {
   // requested from the command line instead (see the test scripts in package.json).
   roots: ['<rootDir>/src'],
   testMatch: ['**/__tests__/**/*.test.ts'],
+  setupFiles: ['<rootDir>/src/__tests__/helpers/entornoTests.ts'],
+  // Los beforeAll de integración crean usuarios con bcrypt (12 rondas): con la
+  // suite en paralelo superaban los 5 s por defecto y fallaban sin motivo real.
+  testTimeout: 30_000,
   transform: {
     '^.+\\.ts$': ['ts-jest', {
       // isolatedModules moved out of the ts-jest option namespace (deprecated, removed in

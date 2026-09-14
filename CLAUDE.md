@@ -115,7 +115,7 @@ Montadas en `backend/src/app.ts`:
 5. `/api/marketing`: Estrategia de marketing, copies, buyer personas.
 6. `/api/finanzas`: Modelado financiero, márgenes, simulador de escenarios.
 7. `/api/legal`: Diagnóstico normativo, checklist regulatorio, contratos.
-8. `/api/brief`: Diagnóstico ejecutivo con IA Claude 3 Haiku (cuota global).
+8. `/api/brief`: Diagnóstico ejecutivo con IA Claude Sonnet 5 (cuota global).
 9. `/api/herramientas`: Directorio y asignación de herramientas de negocio.
 10. `/api/equipo`: Invitaciones y asignaciones de colaboradores (`trabajador`).
 11. `/api/pos`: Terminal punto de venta, tickets con folios seguros bajo advisory locks.
@@ -180,7 +180,7 @@ Montadas en `backend/src/app.ts`:
 ```bash
 npm run dev           # Servidor con recarga automática (ts-node-dev)
 npm run typecheck     # Chequeo estricto de tipos (tsc --noEmit)
-npm test              # Suite completa de tests Jest (527 pruebas)
+npm test              # Suite completa de tests Jest (~895 pruebas, en serie; límites por IP desactivados en tests)
 npm run test:coverage # Cobertura de tests
 npm run build         # Compilación de producción hacia dist/
 npm run migration:run # Aplicar migraciones pendientes
