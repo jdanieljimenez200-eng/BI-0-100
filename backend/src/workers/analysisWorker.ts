@@ -22,7 +22,8 @@ async function cargarProducto(productoId: string): Promise<Producto> {
 
 export async function procesarAnalisis(job: Job) {
   // Cada trabajo abre su propio seguimiento de secciones que salieron de plantilla.
-  return conSeguimientoIA(() => ejecutarTrabajo(job));
+  const { moduleName, analisisId, usuarioId } = job.data ?? {};
+  return conSeguimientoIA(() => ejecutarTrabajo(job), { usuarioId, modulo: moduleName, analisisId });
 }
 
 async function ejecutarTrabajo(job: Job) {

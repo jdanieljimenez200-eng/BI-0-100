@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { Producto } from '../../models/Producto';
 import { BriefAnalisisInput, BriefResultado, PaletaColores } from './types';
 import { obtenerPaleta } from './paletasService';
@@ -6,7 +5,7 @@ import { sanitizeForLLM, sanitizeArrayForLLM } from '../../utils/sanitizeForLLM'
 import { parseLLMJson } from '../../middleware/validate';
 import { logger } from '../../utils/logger';
 import { z } from 'zod';
-import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
 import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 const BriefSchema = z.object({
@@ -122,7 +121,6 @@ export async function generarBrief(
   }
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, ...OPCIONES_ANTHROPIC });
     const tipografias = getTipografiasDefault(input.estilo_visual);
 
     const prompt = `Eres un director de branding y estratega de marca senior.
@@ -190,14 +188,13 @@ Responde ÚNICAMENTE un objeto JSON válido con esta estructura exacta:
   "resumen_tweet": "Resumen condensado estilo pitch de elevador (< 280 caracteres)"
 }`;
 
-    const response = await client.messages.create({
-      model: 'claude-3-haiku-20240307',
+    const response = await crearMensaje('brief.identidad', 'estrategia', {
       max_tokens: 2000,
       temperature: 0.7,
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const textContent = response.content[0]?.type === 'text' ? response.content[0].text : '';
+    const textContent = textoDe(response);
     const parsed = parseLLMJson(textContent, BriefSchema);
 
     return {

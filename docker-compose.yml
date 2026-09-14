@@ -70,6 +70,10 @@ services:
       JWT_SECRET: dev_jwt_secret_change_me_min_32_chars_random_string
       JWT_REFRESH_SECRET: dev_jwt_refresh_secret_change_me_min_32_chars_random
       FRONTEND_URL: http://localhost:3000
+      # IA (opcional en desarrollo): se toma del .env del host, que git ignora.
+      # Sin ella los análisis salen de plantillas. Usa una clave de desarrollo
+      # con su propio límite de gasto, nunca la de producción.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # Transcripción de voz (opcional): si no está en el .env del host, la
       # ruta /api/ventas/transcribir se declara no disponible (503).
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

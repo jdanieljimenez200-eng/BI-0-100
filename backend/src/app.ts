@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { AppDataSource } from './config/database';
 import { logger } from './utils/logger';
+import { verificarClaveAnthropic } from './config/anthropic';
 import { initRedis, redisClient } from './config/redis';
 import { corsMiddleware, apiLimiter, analysisStatusLimiter } from './middleware/cors';
 import { errorHandler } from './middleware/errorHandler';
@@ -178,6 +179,10 @@ let server: ReturnType<typeof app.listen> | null = null;
 
 export async function initializeApp(): Promise<void> {
   try {
+    // Sin API key válida en producción no se arranca: se serviría plantilla a
+    // todos los clientes como si fuera IA.
+    verificarClaveAnthropic();
+
     // Initialize Database
     await AppDataSource.initialize();
     logger.info('[boot] Database initialized');

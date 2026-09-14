@@ -12,14 +12,27 @@ import { AsyncLocalStorage } from 'async_hooks';
  *
  * Fuera de un trabajo (endpoints on-demand) `registrarFallbackIA` no hace nada.
  */
-interface Seguimiento {
+/** Quién y para qué se llama a la IA: alimenta el registro de costos (`uso_ia`). */
+export interface ContextoIA {
+  usuarioId?: string;
+  modulo?: string;
+  analisisId?: string;
+}
+
+interface Seguimiento extends ContextoIA {
   secciones: Set<string>;
 }
 
 const almacen = new AsyncLocalStorage<Seguimiento>();
 
-export function conSeguimientoIA<T>(fn: () => Promise<T>): Promise<T> {
-  return almacen.run({ secciones: new Set() }, fn);
+export function conSeguimientoIA<T>(fn: () => Promise<T>, contexto: ContextoIA = {}): Promise<T> {
+  return almacen.run({ ...contexto, secciones: new Set() }, fn);
+}
+
+/** Contexto del trabajo o petición en curso, si lo hay. */
+export function contextoIA(): ContextoIA | undefined {
+  const s = almacen.getStore();
+  return s ? { usuarioId: s.usuarioId, modulo: s.modulo, analisisId: s.analisisId } : undefined;
 }
 
 /**

@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
 import { parseLLMJson } from '../../middleware/validate';
 import { DafoResult, DafoItem, TendenciasResult, CompetenciaResult, ViabilidadResult } from './types';
@@ -40,7 +39,7 @@ function dafoTemplate(
 // ─── Schema de validación del output del LLM ────────────────────────────────
 
 import { z } from 'zod';
-import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
 import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 const DafoItemSchema = z.object({
@@ -217,18 +216,16 @@ async function claudeDafo(
   viabilidad: ViabilidadResult,
   contextoExtra?: DafoContextoExtra
 ): Promise<DafoResult> {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, ...OPCIONES_ANTHROPIC });
   const userPrompt = construirPromptDafo(producto, competencia, tendencias, viabilidad, contextoExtra);
 
-  const msg = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+  const msg = await crearMensaje('mercado.dafo', 'estrategia', {
     max_tokens: 2000,
     temperature: 0.2,
     system: SYSTEM_PROMPT_DAFO,
     messages: [{ role: 'user', content: userPrompt }],
   });
 
-  const text = msg.content[0].type === 'text' ? msg.content[0].text : '';
+  const text = textoDe(msg);
   const parsed = parseLLMJson(text, DafoOutputSchema);
 
   // Cast a DafoItem[] sin perder campos extra devueltos por el LLM.

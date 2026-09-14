@@ -1,10 +1,9 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
 import { parseLLMJson } from '../../middleware/validate';
 import { BriefContexto, CopyEstrategia, EstrategiaMarketing, TipoEstrategia, VozMarca } from './types';
 import { getPaisNombre } from '../../utils/latam';
-import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
 import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 // ─── Schema de validación del output del LLM ────────────────────────────────
@@ -25,7 +24,6 @@ const CopyOutputSchema = z.object({
   copies: z.array(CopyItemSchema).min(1).max(3),
 });
 
-const client = process.env.ANTHROPIC_API_KEY ? new Anthropic(OPCIONES_ANTHROPIC) : null;
 
 const SYSTEM_PROMPT_COPY = `Eres un Copywriter Publicitario Senior y Estratégico con portfolio en DTC, retail omnicanal, SaaS y servicios en toda Latinoamérica. Has lanzado más de 200 campañas y sabes que en mercados commoditizados donde las capacidades convergen, la narrativa es el diferenciador.
 
@@ -197,7 +195,7 @@ export async function generarCopies(
   pais?: string,
   puv?: string
 ): Promise<CopyEstrategia[]> {
-  if (!client) {
+  if (!hayClaveAnthropic()) {
     return estrategias.map((e) => copyMock(nombre, categoria, e, vozMarca));
   }
 
@@ -291,15 +289,14 @@ Dado que es un ${tipoActividad}, usa vocabulario de ventas como "${un_medida}". 
 Devuelve exactamente 3 objetos en el array en orden: PREMIUM → VOLUMEN → ESPECIALIZADO. SOLO JSON.`;
 
   try {
-    const msg = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const msg = await crearMensaje('marketing.copies', 'mecanica', {
       max_tokens: 2500,
       temperature: 0.2,
       system: SYSTEM_PROMPT_COPY,
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const text = msg.content[0].type === 'text' ? msg.content[0].text : '';
+    const text = textoDe(msg);
     const parsed = parseLLMJson(text, CopyOutputSchema);
     return parsed.copies.map((c) => ({ ...c, es_mock: false }) as CopyEstrategia);
   } catch (err) {

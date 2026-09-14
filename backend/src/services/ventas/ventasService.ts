@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
 import { parseLLMJson } from '../../middleware/validate';
@@ -20,16 +19,12 @@ import {
   CompetidorContexto,
   ImagenParaAnalisis,
 } from './types';
-import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { crearMensaje, hayClaveAnthropic, textoDe, type TareaIA } from '../../config/anthropic';
 import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 
-const client = process.env.ANTHROPIC_API_KEY ? new Anthropic(OPCIONES_ANTHROPIC) : null;
 
-const MODELO = 'claude-sonnet-4-6';
 const MAX_TOKENS = 3000;
-/** Modelo con visión usado exclusivamente para analizar frames de vídeo. */
-const MODELO_VISION = 'claude-fable-5-1';
 
 // ─── Schemas de salida ───────────────────────────────────────────────────────
 
@@ -209,32 +204,39 @@ export function generarPorqueFallanMock(input: VentasAnalisisInput): PorqueFalla
 
 // ─── Generadores LLM ────────────────────────────────────────────────────────
 
-async function llamarClaude(system: string, userPrompt: string): Promise<unknown> {
-  if (!client) throw new Error('ANTHROPIC_API_KEY no configurada');
-  const msg = await client.messages.create({
-    model: MODELO,
+/**
+ * `seccion` identifica la llamada en el registro de costos; `tarea` elige el
+ * modelo (config/anthropic.ts). Las listas cortas y mecánicas van a 'mecanica'.
+ */
+async function llamarClaude(
+  system: string,
+  userPrompt: string,
+  seccion: string,
+  tarea: TareaIA = 'estrategia'
+): Promise<unknown> {
+  if (!hayClaveAnthropic()) throw new Error('ANTHROPIC_API_KEY no configurada');
+  const msg = await crearMensaje(seccion, tarea, {
     max_tokens: MAX_TOKENS,
     temperature: 0.7,
     system,
     messages: [{ role: 'user', content: userPrompt }],
   });
-  const text = msg.content[0].type === 'text' ? msg.content[0].text : '';
+  const text = textoDe(msg);
   return parseLLMJson(text);
 }
 
 /**
  * Igual que `llamarClaude` pero con contenido multimodal (frames + texto).
- * Existe aparte para no tocar las 8+ llamadas de solo-texto que ya usan
- * `llamarClaude`; usa `MODELO_VISION` en vez de `MODELO`.
+ * Sonnet 5 ya tiene visión: no hace falta un modelo aparte más caro.
  */
 async function llamarClaudeConImagenes(
   system: string,
   userText: string,
-  frames: ImagenParaAnalisis[]
+  frames: ImagenParaAnalisis[],
+  seccion: string
 ): Promise<unknown> {
-  if (!client) throw new Error('ANTHROPIC_API_KEY no configurada');
-  const msg = await client.messages.create({
-    model: MODELO_VISION,
+  if (!hayClaveAnthropic()) throw new Error('ANTHROPIC_API_KEY no configurada');
+  const msg = await crearMensaje(seccion, 'estrategia', {
     max_tokens: MAX_TOKENS,
     temperature: 0.7,
     system,
@@ -251,13 +253,13 @@ async function llamarClaudeConImagenes(
       },
     ],
   });
-  const text = msg.content[0].type === 'text' ? msg.content[0].text : '';
+  const text = textoDe(msg);
   return parseLLMJson(text);
 }
 
 /** Tips de negociación/venta personalizados al contexto del producto. */
 export async function generarTips(input: VentasAnalisisInput): Promise<TipNegociacion[]> {
-  if (!client) return generarTipsMock(input);
+  if (!hayClaveAnthropic()) return generarTipsMock(input);
 
   try {
     const system = `Eres un Director de Ventas con 20 años cerrando en retail, servicios y B2B en Latinoamérica.
@@ -272,7 +274,7 @@ Formato JSON: {"tips":[{"titulo","descripcion","ejemplo_practico","error_comun"}
 - descripcion: 1-2 oraciones del principio y POR QUÉ funciona psicológicamente.
 - ejemplo_practico: frase/guion literal que el vendedor puede usar hoy, con números del ticket dado.
 - error_comun: el error típico que neutraliza ese tip.`;
-    const parsed = TipsOutputSchema.parse(await llamarClaude(system, prompt));
+    const parsed = TipsOutputSchema.parse(await llamarClaude(system, prompt, 'ventas.tips'));
     return parsed.tips;
   } catch (err) {
     registrarFallbackIA('ventas.tips');
@@ -291,7 +293,7 @@ export async function generarHistoriaDiaria(
   input: VentasAnalisisInput,
   fechaISO: string
 ): Promise<HistoriaEmprendedor> {
-  if (!client) return generarHistoriaMock(input, fechaISO);
+  if (!hayClaveAnthropic()) return generarHistoriaMock(input, fechaISO);
 
   try {
     const system = `Eres un editor de una newsletter diaria de emprendimiento para Latinoamérica ("La historia del día").
@@ -311,7 +313,7 @@ Formato JSON: {"nombre","industria","pais","como_lo_logro","mentalidad_clave","o
 - estrategia_marketing: canales y táctica específica usada (no lista genérica).
 - metricas: números de arranque→resultado con periodo temporal.
 - leccion_aplicable: 1-2 oraciones conectando SU decisión con el negocio del lector.`;
-    const parsed = HistoriaOutputSchema.parse(await llamarClaude(system, prompt));
+    const parsed = HistoriaOutputSchema.parse(await llamarClaude(system, prompt, 'ventas.historia'));
     return { ...parsed, fecha: fechaISO } satisfies HistoriaEmprendedor;
   } catch (err) {
     registrarFallbackIA('ventas.historia');
@@ -322,7 +324,7 @@ Formato JSON: {"nombre","industria","pais","como_lo_logro","mentalidad_clave","o
 
 /** Por qué fracasan los emprendimientos COMO ESTE (personalizado). */
 export async function generarPorqueFallan(input: VentasAnalisisInput): Promise<PorqueFallan> {
-  if (!client) return generarPorqueFallanMock(input);
+  if (!hayClaveAnthropic()) return generarPorqueFallanMock(input);
 
   try {
     const system = `Eres un analista de supervivencia empresarial. Has visto cientos de PYMEs LATAM cerrar en sus primeros 24 meses.
@@ -338,7 +340,7 @@ Formato JSON: {"patron_comun": str, "razones":[{"titulo","descripcion","senales_
 - 3-5 razones ordenadas por mortalidad esperada en ESTE contexto.
 - senales_alerta: señales tempranas observables en EL NEGOCIO del lector.
 - como_evitarlo: acción concreta con número/plazo.`;
-    const parsed = PorqueFallanOutputSchema.parse(await llamarClaude(system, prompt));
+    const parsed = PorqueFallanOutputSchema.parse(await llamarClaude(system, prompt, 'ventas.porque_fallan'));
     return parsed;
   } catch (err) {
     console.error('[ventasService] porque_fallan LLM falló, usando mock:', err instanceof Error ? err.message : err);
@@ -427,7 +429,7 @@ export function generarPerfilClienteMock(input: VentasAnalisisInput): PerfilClie
 }
 
 export async function generarPerfilCliente(input: VentasAnalisisInput): Promise<PerfilClienteIdeal> {
-  if (!client) return generarPerfilClienteMock(input);
+  if (!hayClaveAnthropic()) return generarPerfilClienteMock(input);
 
   try {
     const system = `Eres un especialista en research de audiencias para PyMEs LATAM. Construyes perfiles de cliente ideal (ICP) basados en evidencia de mercado y comportamiento de compra en México y Latinoamérica. Eres concreto: nunca describes al cliente como "joven" sin especificar edad; nunca dices "redes sociales" sin nombrar cuáles.
@@ -460,7 +462,7 @@ Formato JSON exacto:
   "score_razon": "1-2 frases explicando el score con datos del producto"
 }`;
 
-    const raw = await llamarClaude(system, prompt);
+    const raw = await llamarClaude(system, prompt, 'ventas.perfil_cliente');
     return PerfilClienteSchema.parse(raw) as PerfilClienteIdeal;
   } catch (err) {
     registrarFallbackIA('ventas.perfil_cliente');
@@ -496,7 +498,7 @@ export async function generarRebatidas(
   perfil: PerfilClienteIdeal,
   input: VentasAnalisisInput
 ): Promise<RebatidaObjecion[]> {
-  if (!client) return generarRebatidasMock(perfil);
+  if (!hayClaveAnthropic()) return generarRebatidasMock(perfil);
 
   try {
     const system = `Eres un Director de Ventas con 20 años cerrando en retail, servicios y B2B en Latinoamérica.
@@ -512,7 +514,7 @@ Para CADA objeción, escribe una rebatida lista para decir en conversación (no 
 Formato JSON: {"rebatidas":[{"objecion","rebatida"}]}
 - objecion: repite la objeción tal cual se dio arriba.
 - rebatida: 1-3 oraciones, en primera persona como si el vendedor la dijera en voz alta, con un dato/número del producto cuando aplique.`;
-    const parsed = RebatidasOutputSchema.parse(await llamarClaude(system, prompt));
+    const parsed = RebatidasOutputSchema.parse(await llamarClaude(system, prompt, 'ventas.objeciones'));
     return parsed.rebatidas;
   } catch (err) {
     console.error('[ventasService] rebatidas LLM falló, usando mock:', err instanceof Error ? err.message : err);
@@ -557,7 +559,7 @@ export async function generarFollowUps(
   input: VentasAnalisisInput,
   tonoMarca?: string
 ): Promise<FollowUpMensaje[]> {
-  if (!client) return generarFollowUpsMock(input);
+  if (!hayClaveAnthropic()) return generarFollowUpsMock(input);
 
   try {
     const tono = tonoMarca ? sanitizeForLLM(tonoMarca, { maxLen: 200 }) : 'directo y cercano, sin presión';
@@ -572,7 +574,7 @@ Genera 3 mensajes de seguimiento para un prospecto que ya mostró interés pero 
 
 Formato JSON: {"mensajes":[{"momento","mensaje"}]}
 - mensaje: listo para copiar y pegar, corto (2-4 líneas), sin sonar desesperado.`;
-    const parsed = FollowUpsOutputSchema.parse(await llamarClaude(system, prompt));
+    const parsed = FollowUpsOutputSchema.parse(await llamarClaude(system, prompt, 'ventas.followups', 'mecanica'));
     return parsed.mensajes;
   } catch (err) {
     console.error('[ventasService] follow-ups LLM falló, usando mock:', err instanceof Error ? err.message : err);
@@ -615,7 +617,7 @@ export async function generarPalabrasClaveAds(
   perfil: PerfilClienteIdeal,
   input: VentasAnalisisInput
 ): Promise<PalabrasClaveAds> {
-  if (!client) return generarPalabrasClaveAdsMock(perfil);
+  if (!hayClaveAnthropic()) return generarPalabrasClaveAdsMock(perfil);
 
   try {
     const system = `Eres un especialista en medios pagados (Google Ads y Meta Ads) para PyMEs LATAM.
@@ -634,7 +636,7 @@ Genera dos listas:
 2. intereses_meta: 8-12 términos de segmentación por interés para Meta/Instagram Ads (conceptos, comportamientos o marcas afines — NO frases de búsqueda).
 
 Formato JSON: {"keywords_busqueda":[...],"intereses_meta":[...]}`;
-    const parsed = PalabrasClaveAdsSchema.parse(await llamarClaude(system, prompt));
+    const parsed = PalabrasClaveAdsSchema.parse(await llamarClaude(system, prompt, 'ventas.palabras_clave', 'mecanica'));
     return parsed;
   } catch (err) {
     console.error('[ventasService] palabras_clave_ads LLM falló, usando mock:', err instanceof Error ? err.message : err);
@@ -720,7 +722,7 @@ export async function evaluarGuion(
   input: VentasAnalisisInput,
   perfilCliente?: PerfilClienteIdeal | null,
 ): Promise<EvaluacionGuion> {
-  if (!client) return evaluarGuionMock(guion, input);
+  if (!hayClaveAnthropic()) return evaluarGuionMock(guion, input);
 
   try {
     const system = `Eres un experto en copywriting de ventas para PyMEs LATAM. Evalúas guiones, hooks, captions y CTAs con criterios de conversión reales: claridad del gancho, fuerza del CTA, manejo de objeciones, alineación con el cliente ideal y urgencia. No eres condescendiente: das scores honestos y rewrites reales.
@@ -755,7 +757,7 @@ Formato JSON:
   "fecha_evaluacion": "${new Date().toISOString()}"
 }`;
 
-    const raw = await llamarClaude(system, prompt);
+    const raw = await llamarClaude(system, prompt, 'ventas.guion');
     return EvaluacionGuionSchema.parse(raw) as EvaluacionGuion;
   } catch (err) {
     console.error('[ventasService] evaluar_guion LLM falló, usando mock:', err instanceof Error ? err.message : err);
@@ -776,7 +778,7 @@ const MetricasVisualesSchema = z.object({
 
 /**
  * Evalúa un pitch en vídeo: el texto transcrito con el scorer de siempre
- * (`evaluarGuion`) + un análisis visual aparte con Claude Fable (`MODELO_VISION`)
+ * (`evaluarGuion`) + un análisis visual aparte con visión de Claude
  * a partir de frames extraídos del vídeo. Nunca rompe la respuesta: sin
  * `ANTHROPIC_API_KEY`, sin frames, o si la llamada de visión falla, regresa la
  * evaluación de solo texto sin `metricas_visuales`.
@@ -788,7 +790,7 @@ export async function evaluarGuionConVideo(
   perfilCliente?: PerfilClienteIdeal | null,
 ): Promise<EvaluacionGuion> {
   const base = await evaluarGuion(guionTranscrito, input, perfilCliente);
-  if (!client || frames.length === 0) return base;
+  if (!hayClaveAnthropic() || frames.length === 0) return base;
 
   try {
     const system = `Eres un coach de pitch en cámara para PyMEs LATAM. Evalúas la ejecución VISUAL de un pitch en vídeo a partir de frames representativos: energía y lenguaje corporal, profesionalismo del entorno, y visibilidad clara del producto en cámara. No evalúes el guion/texto (ya se evaluó aparte) — solo lo que se VE en la imagen.
@@ -809,11 +811,11 @@ Formato JSON:
   ]
 }`;
 
-    const raw = await llamarClaudeConImagenes(system, userText, frames);
+    const raw = await llamarClaudeConImagenes(system, userText, frames, 'ventas.guion_video');
     const parsed = MetricasVisualesSchema.parse(raw);
     return { ...base, metricas_visuales: parsed.metricas_visuales };
   } catch (err) {
-    console.error('[ventasService] evaluar_guion_con_video (Fable) falló, usando solo texto:', err instanceof Error ? err.message : err);
+    console.error('[ventasService] evaluar_guion_con_video (visión) falló, usando solo texto:', err instanceof Error ? err.message : err);
     return base;
   }
 }
@@ -916,7 +918,7 @@ export async function analizarCompetidor(
   input: VentasAnalisisInput,
   contexto?: CompetidorContexto,
 ): Promise<AnalisisCompetidor> {
-  if (!client) return analizarCompetidorMock(nombre, transcripcion);
+  if (!hayClaveAnthropic()) return analizarCompetidorMock(nombre, transcripcion);
 
   try {
     const system = `Eres un analista de inteligencia competitiva para PyMEs LATAM. Analizas videos y guiones de ventas de competidores para identificar su estructura, tono, propuesta de valor, puntos fuertes y debilidades. Tu análisis debe ser accionable: el dueño del negocio debe poder tomar decisiones con él.
@@ -942,7 +944,7 @@ Analiza este competidor/referente y devuelve:
   "cta_usado": "la llamada a la acción que usa literalmente"
 }`;
 
-    const raw = await llamarClaude(system, prompt);
+    const raw = await llamarClaude(system, prompt, 'ventas.competidor');
     return CompetidorSchema.parse(raw) as AnalisisCompetidor;
   } catch (err) {
     console.error('[ventasService] analizar_competidor LLM falló, usando mock:', err instanceof Error ? err.message : err);
@@ -952,8 +954,8 @@ Analiza este competidor/referente y devuelve:
 
 /**
  * Igual que `analizarCompetidor` pero a partir de UNA foto (anuncio, post,
- * empaque, local) en vez de un video transcrito. Usa `MODELO_VISION` (Claude
- * Fable) — mismo patrón que `evaluarGuionConVideo`. Cae al mock si no hay
+ * empaque, local) en vez de un video transcrito. Usa la visión de Claude,
+ * mismo patrón que `evaluarGuionConVideo`. Cae al mock si no hay
  * ANTHROPIC_API_KEY o si la llamada de visión falla.
  */
 export async function analizarCompetidorFoto(
@@ -962,7 +964,7 @@ export async function analizarCompetidorFoto(
   input: VentasAnalisisInput,
   contexto?: CompetidorContexto,
 ): Promise<AnalisisCompetidor> {
-  if (!client) return analizarCompetidorMock(nombre, `[foto] ${nombre}`);
+  if (!hayClaveAnthropic()) return analizarCompetidorMock(nombre, `[foto] ${nombre}`);
 
   try {
     const system = `Eres un analista de inteligencia competitiva para PyMEs LATAM. Analizas UNA FOTO (anuncio, publicación, empaque, local) de un competidor para identificar su propuesta de valor, tono visual y diferenciadores. Tu análisis debe ser accionable: el dueño del negocio debe poder tomar decisiones con él.
@@ -984,10 +986,10 @@ Devuelve:
   "cta_usado": "llamado a la acción visible en la imagen, o \\"Ninguno visible\\" si no hay"
 }`;
 
-    const raw = await llamarClaudeConImagenes(system, userText, [imagen]);
+    const raw = await llamarClaudeConImagenes(system, userText, [imagen], 'ventas.competidor_foto');
     return CompetidorSchema.parse(raw) as AnalisisCompetidor;
   } catch (err) {
-    console.error('[ventasService] analizar_competidor_foto (Fable) falló, usando mock:', err instanceof Error ? err.message : err);
+    console.error('[ventasService] analizar_competidor_foto (visión) falló, usando mock:', err instanceof Error ? err.message : err);
     return analizarCompetidorMock(nombre, `[foto] ${nombre}`);
   }
 }
@@ -997,7 +999,7 @@ export async function generarComparativa(
   competidores: AnalisisCompetidor[],
   input: VentasAnalisisInput,
 ): Promise<ComparativaCompetidores> {
-  if (!client || competidores.length === 0) {
+  if (!hayClaveAnthropic() || competidores.length === 0) {
     return generarComparativaMock(miProducto, competidores);
   }
 
@@ -1034,7 +1036,7 @@ Genera la comparativa estratégica:
   ]
 }`;
 
-    const raw = await llamarClaude(system, prompt);
+    const raw = await llamarClaude(system, prompt, 'ventas.comparativa');
     const parsed = ComparativaSchema.parse(raw);
     return parsed as ComparativaCompetidores;
   } catch (err) {

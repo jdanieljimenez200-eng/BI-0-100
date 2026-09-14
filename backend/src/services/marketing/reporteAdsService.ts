@@ -1,5 +1,4 @@
 import * as XLSX from 'xlsx';
-import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
 import { parseLLMJson } from '../../middleware/validate';
@@ -14,7 +13,7 @@ import {
   ResumenAgregadoReporteAds,
   ReporteAdsProcesado,
 } from './types';
-import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
 
 // ─── Error Custom ─────────────────────────────────────────────────────────────
 
@@ -706,7 +705,6 @@ export function mockReporteAds(
 
 // ─── Interpretación con IA (Claude Sonnet) ───────────────────────────────────
 
-const client = process.env.ANTHROPIC_API_KEY ? new Anthropic(OPCIONES_ANTHROPIC) : null;
 
 const SYSTEM_PROMPT_DIAGNOSTICO = `Eres un Chief Media Officer y Growth Auditor senior con 12+ años auditando y optimizando cuentas publicitarias en Meta Ads, Google Ads, TikTok Ads y LinkedIn Ads para negocios en Latinoamérica.
 
@@ -731,7 +729,7 @@ export async function interpretarConIA(
     cliente_ideal?: string;
   }
 ): Promise<ReporteAdsProcesado> {
-  if (!client) {
+  if (!hayClaveAnthropic()) {
     logger.info('[reporteAdsService] ANTHROPIC_API_KEY no configurada. Usando mock determinista.');
     return mockReporteAds(agregado, contextoProducto);
   }
@@ -784,16 +782,14 @@ Genera el diagnóstico en formato JSON con la siguiente estructura exacta:
 }`;
 
   try {
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const response = await crearMensaje('marketing.reporte_ads', 'estrategia', {
       max_tokens: 4000,
       temperature: 0.2,
       system: SYSTEM_PROMPT_DIAGNOSTICO,
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const block = response.content[0];
-    const text = block && block.type === 'text' ? block.text : '';
+    const text = textoDe(response);
     const diag = parseLLMJson<DiagnosticoIAReporteAds>(text, DiagnosticoIAReporteAdsSchema);
 
     return {

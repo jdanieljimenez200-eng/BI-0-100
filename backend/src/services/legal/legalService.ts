@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
 import { parseLLMJson } from '../../middleware/validate';
@@ -12,12 +11,10 @@ import type {
   ObligacionFiscal,
   PermisoCumplimiento,
 } from './types';
-import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
 import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
-const client = process.env.ANTHROPIC_API_KEY ? new Anthropic(OPCIONES_ANTHROPIC) : null;
 
-const MODELO = 'claude-sonnet-4-6';
 const MAX_TOKENS = 8000;
 
 // ─── Metadatos por país ─────────────────────────────────────────────────────
@@ -420,16 +417,14 @@ ${seccionesCondicionales}
 // ─── Llamada al LLM ─────────────────────────────────────────────────────────
 
 async function llamarClaude(system: string, prompt: string): Promise<unknown> {
-  if (!client) throw new Error('ANTHROPIC_API_KEY no configurada');
-  const msg = await client.messages.create({
-    model: MODELO,
+  if (!hayClaveAnthropic()) throw new Error('ANTHROPIC_API_KEY no configurada');
+  const msg = await crearMensaje('legal.dictamen', 'critica', {
     max_tokens: MAX_TOKENS,
     temperature: 0.3,
     system,
     messages: [{ role: 'user', content: prompt }],
   });
-  const bloque = msg.content[0];
-  const text = bloque && bloque.type === 'text' ? bloque.text : '';
+  const text = textoDe(msg);
   return parseLLMJson(text);
 }
 
@@ -915,7 +910,7 @@ export async function generarAnalisisLegal(
   const { iso, meta } = resolverPais(producto.pais);
   const fechaISO = new Date().toISOString();
 
-  if (!client) return generarAnalisisLegalMock(producto, input, fechaISO);
+  if (!hayClaveAnthropic()) return generarAnalisisLegalMock(producto, input, fechaISO);
 
   try {
     const bruto = await llamarClaude(systemPrompt(meta), userPrompt(producto, input, meta, iso));

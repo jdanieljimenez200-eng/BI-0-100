@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import { logger } from '../../utils/logger';
 
 /**
- * Extracción de frames de vídeo para análisis visual con Claude (Fable).
+ * Extracción de frames de vídeo para análisis visual con Claude.
  *
  * ffmpeg necesita un archivo real (no acepta un buffer en memoria para
  * `.screenshots()`), así que el vídeo se escribe a un temporal en

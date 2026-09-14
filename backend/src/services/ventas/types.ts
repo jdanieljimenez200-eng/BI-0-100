@@ -139,7 +139,7 @@ export interface EvaluacionGuion {
   puntos_debiles: string[];          // qué mejorar
   version_mejorada: string;          // rewrite completo del guion
   fecha_evaluacion: string;          // ISO 8601
-  /** Solo presente cuando se evaluó un vídeo con visión (Claude Fable). */
+  /** Solo presente cuando se evaluó un vídeo con visión de Claude. */
   metricas_visuales?: MetricaGuion[];
 }
 

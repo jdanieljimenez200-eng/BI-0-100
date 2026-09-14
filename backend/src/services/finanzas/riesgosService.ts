@@ -1,9 +1,8 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
 import { parseLLMJson } from '../../middleware/validate';
 import { logger } from '../../utils/logger';
-import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
 import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 /**
@@ -40,8 +39,6 @@ export interface RiesgosContexto {
   meses_para_recuperar_inversion: number | null;
 }
 
-const client = process.env.ANTHROPIC_API_KEY ? new Anthropic(OPCIONES_ANTHROPIC) : null;
-const MODELO = 'claude-sonnet-4-6';
 const MAX_TOKENS = 2000;
 
 const RiesgoSchema = z.object({
@@ -127,21 +124,20 @@ export function generarRiesgosMock(ctx: RiesgosContexto): RiesgosNegocio {
 }
 
 async function llamarClaude(system: string, userPrompt: string): Promise<unknown> {
-  if (!client) throw new Error('ANTHROPIC_API_KEY no configurada');
-  const msg = await client.messages.create({
-    model: MODELO,
+  if (!hayClaveAnthropic()) throw new Error('ANTHROPIC_API_KEY no configurada');
+  const msg = await crearMensaje('finanzas.riesgos', 'estrategia', {
     max_tokens: MAX_TOKENS,
     temperature: 0.7,
     system,
     messages: [{ role: 'user', content: userPrompt }],
   });
-  const text = msg.content[0].type === 'text' ? msg.content[0].text : '';
+  const text = textoDe(msg);
   return parseLLMJson(text);
 }
 
 /** Riesgos financieros de ESTE negocio, con base en sus números ya calculados. */
 export async function generarRiesgosNegocio(ctx: RiesgosContexto): Promise<RiesgosNegocio> {
-  if (!client) return generarRiesgosMock(ctx);
+  if (!hayClaveAnthropic()) return generarRiesgosMock(ctx);
 
   try {
     const system = `Eres un analista financiero especializado en supervivencia de PYMEs LATAM en sus primeros 24 meses.

@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
 import { parseLLMJson } from '../../middleware/validate';
@@ -43,7 +42,7 @@ export interface ReporteBi {
 // Se importa para usarla en el prompt y se re-exporta para no romper a los
 // consumidores existentes.
 import { describirFuenteCompetencia } from './fuentesCompetencia';
-import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
 import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 export { describirFuenteCompetencia };
@@ -196,7 +195,6 @@ export async function generarReporteBi(
   }
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, ...OPCIONES_ANTHROPIC });
 
     // Datos financieros leidos desde Producto (SSOT)
     const { puv, inversion_inicial, costos_fijos, precio_venta, estatus_proyecto, tipo_actividad } = ctx;
@@ -346,15 +344,14 @@ FORMATO DE SALIDA — JSON válido SIN explicaciones adicionales:
 
 REGLA ABSOLUTA: Nunca des consejos genéricos. Cada frase debe referenciar un dato numérico real (precio, competidores, búsquedas, %) de los datos proporcionados.`;
 
-    const msg = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const msg = await crearMensaje('mercado.reporte_bi', 'estrategia', {
       max_tokens: 2500,
       temperature: 0.2,
       system: SYSTEM_PROMPT_REPORTE_BI,
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const text = msg.content[0].type === 'text' ? msg.content[0].text : '';
+    const text = textoDe(msg);
     const parsed = ReporteBiOutputSchema.parse(parseLLMJson(text));
 
     // Normalización defensiva: el LLM (o respuestas/cachés antiguas) a veces

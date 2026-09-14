@@ -68,6 +68,26 @@ for var in "${REQUIRED_VARS[@]}"; do
   fi
 done
 
+# 5b. Secretos: ninguna clave real en el repo, en variables públicas ni en el bundle
+echo "✓ Checking secrets..."
+# Claves reales (las plantillas usan xxxx y no coinciden: exigen al menos 20 caracteres alfanuméricos seguidos).
+PATRON_SECRETOS='sk-ant-[A-Za-z0-9_-]{20,}|sk-proj-[A-Za-z0-9_-]{20,}|(sk|rk)_live_[A-Za-z0-9]{20,}|whsec_[A-Za-z0-9]{20,}'
+if git --no-pager grep -nIE "$PATRON_SECRETOS" -- . ':!**/node_modules/**' ':!**/*.test.ts' | grep -v 'xxxx'; then
+  echo "❌ Posible clave real en archivos del repositorio"; exit 1
+fi
+# Una variable NEXT_PUBLIC_* se incrusta en el JavaScript que descarga el navegador.
+if env | grep -E '^NEXT_PUBLIC_[A-Z_]*=' | grep -iE 'ANTHROPIC|OPENAI|STRIPE_SECRET|sk-ant-|sk_live_'; then
+  echo "❌ Una variable NEXT_PUBLIC_ contiene una clave secreta"; exit 1
+fi
+if [ -d frontend/.next/static ] && grep -rEl "$PATRON_SECRETOS" frontend/.next/static >/dev/null 2>&1; then
+  echo "❌ El bundle del frontend contiene una clave secreta"; exit 1
+fi
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks detect --no-banner --redact || { echo "❌ gitleaks encontró secretos"; exit 1; }
+else
+  echo "⚠️  gitleaks no instalado: solo se aplicó el escaneo básico"
+fi
+
 # 6. Database migrations check
 echo "✓ Checking migrations..."
 if [ ! -d "backend/src/migrations" ]; then

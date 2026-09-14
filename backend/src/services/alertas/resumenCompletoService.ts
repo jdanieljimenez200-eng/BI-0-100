@@ -13,7 +13,6 @@
  */
 
 import crypto from 'crypto';
-import Anthropic from '@anthropic-ai/sdk';
 import { AppDataSource } from '../../config/database';
 import { AnalisisMercado } from '../../models/AnalisisMercado';
 import { AnalisisMarketing } from '../../models/AnalisisMarketing';
@@ -24,7 +23,7 @@ import { AnalisisVentas } from '../../models/AnalisisVentas';
 import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
 import { redisClient } from '../../config/redis';
 import { logger } from '../../utils/logger';
-import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
 
 export type ModuloResumen = 'mercado' | 'marketing' | 'finanzas' | 'legal' | 'brief' | 'ventas';
 
@@ -192,7 +191,6 @@ async function construirResumenIa(modulos: ModuloResumenInfo[]): Promise<{ texto
   if (!process.env.ANTHROPIC_API_KEY) return { texto: construirResumenLocal(modulos), esMock: true };
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, ...OPCIONES_ANTHROPIC });
     const listado = modulos
       .map((m) => {
         const estado = m.tiene_analisis
@@ -202,8 +200,7 @@ async function construirResumenIa(modulos: ModuloResumenInfo[]): Promise<{ texto
       })
       .join('\n');
 
-    const msg = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const msg = await crearMensaje('alertas.resumen_completo', 'mecanica', {
       max_tokens: 500,
       temperature: 0.3,
       system:
@@ -213,7 +210,7 @@ async function construirResumenIa(modulos: ModuloResumenInfo[]): Promise<{ texto
         'No inventes datos que no estén en la entrada. Responde solo el texto del resumen, sin JSON ni encabezados.',
       messages: [{ role: 'user', content: `Estado de los 6 módulos:\n${listado}` }],
     });
-    const text = msg.content[0]?.type === 'text' ? msg.content[0].text.trim() : '';
+    const text = textoDe(msg).trim();
     return text ? { texto: text, esMock: false } : { texto: construirResumenLocal(modulos), esMock: true };
   } catch (err) {
     logger.warn('resumenCompletoService: Claude falló, usando fallback local:', err);

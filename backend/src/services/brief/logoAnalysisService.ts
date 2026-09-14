@@ -1,9 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { parseLLMJson } from '../../middleware/validate';
-import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
 
-const client = process.env.ANTHROPIC_API_KEY ? new Anthropic(OPCIONES_ANTHROPIC) : null;
 
 // ─── Output types ─────────────────────────────────────────────────────────────
 
@@ -126,7 +124,7 @@ export interface AnalyzarLogoInput {
 }
 
 export async function analizarLogo(input: AnalyzarLogoInput): Promise<LogoAnalysisResult> {
-  if (!client) return generarMock();
+  if (!hayClaveAnthropic()) return generarMock();
 
   // Build context about the brand if a brief exists
   let briefContext = '';
@@ -175,8 +173,7 @@ Responde ÚNICAMENTE con un objeto JSON válido (sin markdown, sin explicaciones
 }`;
 
   try {
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const response = await crearMensaje('brief.logo', 'estrategia', {
       max_tokens: 2000,
       temperature: 0.15,
       system: SYSTEM_PROMPT,
@@ -196,7 +193,7 @@ Responde ÚNICAMENTE con un objeto JSON válido (sin markdown, sin explicaciones
       }],
     });
 
-    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    const text = textoDe(response);
     const parsed = parseLLMJson(text, LogoAnalysisSchema) as LogoAnalysisResult;
 
     // Recalculate total as average

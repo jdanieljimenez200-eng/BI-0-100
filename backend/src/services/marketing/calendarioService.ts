@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
 import { parseLLMJson } from '../../middleware/validate';
@@ -19,10 +18,9 @@ import {
   TipoEstrategia,
   VozMarca,
 } from './types';
-import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
 import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
-const client = process.env.ANTHROPIC_API_KEY ? new Anthropic(OPCIONES_ANTHROPIC) : null;
 
 const SYSTEM_PROMPT_CALENDARIO = `Eres un Social Media Strategist y Growth Hacker senior con 10+ años diseñando calendarios editoriales de alto impacto en Latinoamérica. Has escalado cuentas de 0 a 100K+ seguidores y de cero a 7 cifras en ventas usando contenido orgánico.
 
@@ -1251,7 +1249,7 @@ export async function generarCalendario(
   // vería tendencias y posts de redes que no usa).
   const plataformasActivas = plataformas && plataformas.length > 0 ? plataformas : ['Instagram', 'Facebook', 'TikTok'];
 
-  if (!client) {
+  if (!hayClaveAnthropic()) {
     return aplicarRecorte(
       alinearConPlataformasActivas(mockCalendario(nombre, estrategiaTipo, vozMarca), plataformasActivas),
       recorte
@@ -1471,23 +1469,21 @@ ${recorte.semanas === 2
   : 'Concentra en esta única semana el mayor valor posible: presentación, prueba social y un CTA claro.\n'}Contenido 100% específico para ${sNombre} — nada genérico.`;
 
   try {
-    const msg = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const msg = await crearMensaje('marketing.calendario', 'extensa', {
       max_tokens: 12000,
       temperature: 0.2,
       system: SYSTEM_PROMPT_CALENDARIO,
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const text = msg.content[0].type === 'text' ? msg.content[0].text : '';
+    const text = textoDe(msg);
     let parsed: Omit<CalendarioSemanalMarketing, 'estrategia_tipo'> | null = null;
     try {
       parsed = parseLLMJson(text, CalendarioOutputSchema) as Omit<CalendarioSemanalMarketing, 'estrategia_tipo'>;
     } catch (parseErr) {
       console.warn('Initial calendar parse failed, attempting reduced retry:', parseErr instanceof Error ? parseErr.message : parseErr);
       try {
-        const retryMsg = await client.messages.create({
-          model: 'claude-sonnet-4-6',
+        const retryMsg = await crearMensaje('marketing.calendario_reintento', 'estrategia', {
           max_tokens: 5000,
           temperature: 0.1,
           system: 'Devuelve SOLO un JSON válido con el calendario y tendencias reducidas. Sin markdown.',
@@ -1501,7 +1497,7 @@ ${recorte.semanas === 2
             },
           ],
         });
-        const retryText = retryMsg.content[0].type === 'text' ? retryMsg.content[0].text : '';
+        const retryText = textoDe(retryMsg);
         parsed = parseLLMJson(retryText, CalendarioOutputSchema) as Omit<CalendarioSemanalMarketing, 'estrategia_tipo'>;
       } catch (retryErr) {
         console.warn('Reduced calendar retry also failed:', retryErr instanceof Error ? retryErr.message : retryErr);

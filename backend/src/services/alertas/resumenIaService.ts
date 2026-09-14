@@ -21,7 +21,6 @@
  */
 
 import crypto from 'crypto';
-import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { parseLLMJson } from '../../middleware/validate';
 import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
@@ -29,7 +28,7 @@ import { redisClient } from '../../config/redis';
 import { logger } from '../../utils/logger';
 import type { Alerta, NivelAlerta } from './types';
 import type { AlertasOperativas } from './agregadorOperativo';
-import { OPCIONES_ANTHROPIC } from '../../config/anthropic';
+import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
 
 // ─── Salida ─────────────────────────────────────────────────────────────────
 
@@ -342,17 +341,15 @@ export async function generarResumenIaAlertas(
   if (!process.env.ANTHROPIC_API_KEY) return construirResumenLocal(datos);
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, ...OPCIONES_ANTHROPIC });
 
-    const msg = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const msg = await crearMensaje('alertas.resumen', 'mecanica', {
       max_tokens: 900,
       temperature: 0.2,
       system: SYSTEM_PROMPT_RESUMEN,
       messages: [{ role: 'user', content: construirPrompt(datos) }],
     });
 
-    const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '';
+    const text = textoDe(msg);
     const parsed = parseLLMJson(text, ResumenIaOutputSchema);
 
     const resultado: ResumenIaAlertas = {
