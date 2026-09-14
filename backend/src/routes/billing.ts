@@ -17,11 +17,13 @@ import {
   constructWebhookEvent,
   extractSubscriptionPlan,
   esPatrocinio,
+  esImpulso,
   datosPatrocinio,
   PURCHASABLE_PLANS,
   BillingCycle,
 } from '../services/billing/stripeService';
 import * as patrocinios from '../services/network/patrociniosService';
+import * as impulsosNet from '../services/network/impulsosService';
 import { Producto } from '../models/Producto';
 import { AnalisisMercado } from '../models/AnalisisMercado';
 import { AnalisisMarketing } from '../models/AnalisisMarketing';
@@ -278,6 +280,12 @@ async function handleStripeEvent(event: Stripe.Event): Promise<void> {
       return;
     }
 
+    // ── Impulsos de la red: pago único, tampoco toca el plan ──────────────
+    if (esImpulso(event.data.object)) {
+      await manejarEventoImpulso(manager, event);
+      return;
+    }
+
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as unknown as StripeObj;
@@ -422,6 +430,36 @@ async function manejarEventoPatrocinio(
       logger.info(`[network] patrocinio ${obj['id']} cancelado`);
       break;
     }
+  }
+}
+
+/**
+ * Pago de un impulso de la red. `checkout.session.completed` llega con
+ * `payment_status = 'paid'` en tarjeta; con métodos diferidos (OXXO) llega
+ * `unpaid` y el cobro se confirma después con `async_payment_succeeded`.
+ */
+async function manejarEventoImpulso(manager: EntityManager, event: Stripe.Event): Promise<void> {
+  const obj = event.data.object as unknown as Record<string, unknown>;
+  const impulsoId = (obj['metadata'] as Record<string, unknown> | undefined)?.['impulso_id'];
+  if (typeof impulsoId !== 'string' || !/^[0-9a-f-]{36}$/i.test(impulsoId)) {
+    logger.error(`[network] evento de impulso ${event.id} (${event.type}) sin impulso_id válido`);
+    return;
+  }
+  const paymentIntent = typeof obj['payment_intent'] === 'string' ? (obj['payment_intent'] as string) : null;
+
+  switch (event.type) {
+    case 'checkout.session.completed':
+      if (obj['payment_status'] === 'paid') {
+        await impulsosNet.activarPagado(manager, { impulsoId, sessionId: obj['id'] as string, paymentIntent });
+      }
+      break;
+    case 'checkout.session.async_payment_succeeded':
+      await impulsosNet.activarPagado(manager, { impulsoId, sessionId: obj['id'] as string, paymentIntent });
+      break;
+    case 'checkout.session.expired':
+    case 'checkout.session.async_payment_failed':
+      await impulsosNet.expirarSesion(manager, impulsoId);
+      break;
   }
 }
 

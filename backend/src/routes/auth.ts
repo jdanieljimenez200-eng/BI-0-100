@@ -226,6 +226,8 @@ const handleSignup = async (req: Request, res: Response) => {
         account_role: invitacionValida ? 'trabajador' : 'owner',
         owner_id: invitacionValida ? invitacionValida.cuenta_id : undefined,
         plan: 'freemium',
+        // Un colaborador invitado entra a la cuenta de un negocio, elija lo que elija.
+        tipo_cuenta: !invitacionValida && req.body.tipo_cuenta === 'experto' ? 'experto' : 'negocio',
         analisis_disponibles: 0,
         creditos_marketing: 0,
       });
@@ -260,6 +262,7 @@ const handleSignup = async (req: Request, res: Response) => {
       role: usuario.account_role,
       account_role: usuario.account_role,
       plan: usuario.plan,
+      tipo_cuenta: usuario.tipo_cuenta,
       permisos,
     };
 
@@ -325,6 +328,7 @@ const handleLogin = async (req: Request, res: Response) => {
       name: usuario.nombre,
       plan: usuario.plan,
       account_role: usuario.account_role,
+      tipo_cuenta: usuario.tipo_cuenta,
       permisos,
     };
 
@@ -368,6 +372,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
       name: usuario.nombre,
       plan: usuario.plan,
       account_role: usuario.account_role,
+      tipo_cuenta: usuario.tipo_cuenta,
       es_admin: usuario.es_admin ?? false,
       permisos,
     };
@@ -376,6 +381,24 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
   } catch (err) {
     logger.error('GET /api/auth/me error:', err);
     res.status(500).json({ error: 'Error al obtener usuario' });
+  }
+});
+
+/**
+ * Cambia lo que el usuario eligió al registrarse. Un experto que también tiene
+ * negocio activa aquí el panel de análisis, y al revés. No toca plan ni permisos.
+ */
+router.patch('/tipo-cuenta', authenticate, async (req: AuthRequest, res: Response) => {
+  const tipo = req.body?.tipo_cuenta;
+  if (tipo !== 'negocio' && tipo !== 'experto') {
+    return res.status(400).json({ error: 'tipo_cuenta debe ser negocio o experto' });
+  }
+  try {
+    await AppDataSource.getRepository(Usuario).update(req.userId!, { tipo_cuenta: tipo });
+    res.json({ tipo_cuenta: tipo });
+  } catch (err) {
+    logger.error('PATCH /api/auth/tipo-cuenta error:', err);
+    res.status(500).json({ error: 'No se pudo cambiar el tipo de cuenta' });
   }
 });
 

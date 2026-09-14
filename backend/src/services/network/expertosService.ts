@@ -1,5 +1,6 @@
 import { AppDataSource } from '../../config/database';
 import type { CategoriaExperto } from '../../models/Experto';
+import { IMPULSO_VIGENTE } from './impulsosService';
 
 /**
  * Consultas del directorio de expertos.
@@ -35,6 +36,7 @@ export interface ExpertoPublico {
   ciudad: string;
   pais: string | null;
   avatar_url: string | null;
+  portada_url: string | null;
   sitio_web: string | null;
   tarifa_desde: number | null;
   moneda: string;
@@ -64,6 +66,7 @@ const COLUMNAS_PUBLICAS = `
   e.ciudad,
   e.pais,
   e.avatar_url,
+  e.portada_url,
   e.sitio_web,
   e.tarifa_desde,
   e.moneda,
@@ -99,6 +102,7 @@ type FilaDirectorio = {
   ciudad: string;
   pais: string | null;
   avatar_url: string | null;
+  portada_url: string | null;
   sitio_web: string | null;
   tarifa_desde: string | null;
   moneda: string;
@@ -122,6 +126,7 @@ function aPublico(f: FilaDirectorio): ExpertoPublico {
     ciudad: f.ciudad,
     pais: f.pais,
     avatar_url: f.avatar_url,
+    portada_url: f.portada_url,
     sitio_web: f.sitio_web,
     // null significa "no ha puesto tarifa", que no es lo mismo que "es gratis".
     tarifa_desde: f.tarifa_desde === null ? null : Number(f.tarifa_desde),
@@ -190,12 +195,100 @@ export async function listarDirectorio(
   return { expertos: filas.map(aPublico), total: Number(total) };
 }
 
+/**
+ * Expertos con un impulso vigente para esta búsqueda, en orden aleatorio.
+ *
+ * Con ciudad en el filtro entran los impulsos de esa ciudad y los nacionales;
+ * sin ciudad, solo los nacionales: un impulso de Monterrey no compró aparecer a
+ * quien busca en todo el país. El orden aleatorio reparte los huecos entre
+ * quienes pagaron lo mismo.
+ */
+export async function listarPromocionados(f: {
+  categoria?: CategoriaExperto;
+  ciudad?: string;
+  q?: string;
+  limite: number;
+}): Promise<ExpertoPublico[]> {
+  const where: string[] = [`e.estado = 'aprobado'`, `e.eliminado_en IS NULL`];
+  const params: unknown[] = [];
+  if (f.categoria) {
+    params.push(f.categoria);
+    where.push(`e.categoria = $${params.length}`);
+  }
+  if (f.q) {
+    params.push(`%${f.q}%`);
+    const i = params.length;
+    where.push(
+      `(e.nombre_comercial ILIKE $${i} OR e.nombre_display ILIKE $${i} OR e.especialidad ILIKE $${i} OR e.bio_corta ILIKE $${i})`
+    );
+  }
+  let lugar = `i.alcance = 'nacional'`;
+  if (f.ciudad) {
+    params.push(f.ciudad);
+    lugar = `(i.alcance = 'nacional' OR lower(i.ciudad) = lower($${params.length}))`;
+  }
+  params.push(f.limite);
+
+  const filas: FilaDirectorio[] = await AppDataSource.query(
+    `SELECT ${COLUMNAS_PUBLICAS}, 1 AS prioridad_patrocinio
+       FROM expertos e
+      WHERE ${where.join(' AND ')}
+        AND EXISTS (
+          SELECT 1 FROM impulsos_experto i
+           WHERE i.experto_id = e.id AND i.categoria = e.categoria
+             AND ${IMPULSO_VIGENTE} AND ${lugar}
+        )
+      ORDER BY random()
+      LIMIT $${params.length}`,
+    params
+  );
+  return filas.map(aPublico);
+}
+
+export interface ImagenPublica {
+  id: string;
+  url: string;
+  descripcion: string;
+}
+
+export interface ServicioPublico {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  precio_desde: number | null;
+  unidad: string;
+}
+
+export async function imagenesDe(expertoId: string): Promise<ImagenPublica[]> {
+  return AppDataSource.query(
+    `SELECT id, url, descripcion FROM experto_imagenes WHERE experto_id = $1 ORDER BY orden, fecha_creacion`,
+    [expertoId]
+  );
+}
+
+export async function serviciosDe(expertoId: string): Promise<ServicioPublico[]> {
+  const filas = await AppDataSource.query(
+    `SELECT id, nombre, descripcion, precio_desde, unidad
+       FROM experto_servicios WHERE experto_id = $1 ORDER BY orden, fecha_creacion`,
+    [expertoId]
+  );
+  return filas.map((s: ServicioPublico & { precio_desde: string | null }) => ({
+    ...s,
+    precio_desde: s.precio_desde === null ? null : Number(s.precio_desde),
+  }));
+}
+
 export interface FichaPublica extends ExpertoPublico {
   bio_larga: string | null;
   video_url: string | null;
   email_contacto: string | null;
   telefono: string | null;
+  whatsapp: string | null;
   fecha_aprobacion: Date | null;
+  imagenes: ImagenPublica[];
+  servicios: ServicioPublico[];
+  /** Dueño de la ficha: no se publica, sirve para no contar sus propias visitas. */
+  usuario_id?: string | null;
 }
 
 /**
@@ -213,10 +306,13 @@ export async function obtenerFichaPublica(id: string): Promise<FichaPublica | nu
     mostrar_contacto: boolean;
     email_contacto: string | null;
     telefono: string | null;
+    whatsapp: string | null;
+    usuario_id: string | null;
     fecha_aprobacion: Date | null;
   })[] = await AppDataSource.query(
     `SELECT ${COLUMNAS_PUBLICAS},
-            e.bio_larga, e.mostrar_contacto, e.email_contacto, e.telefono, e.fecha_aprobacion,
+            e.bio_larga, e.mostrar_contacto, e.email_contacto, e.telefono, e.whatsapp, e.usuario_id,
+            e.fecha_aprobacion,
             pat.prioridad AS prioridad_patrocinio
        FROM expertos e
        ${PATROCINIO_VIGENTE}
@@ -228,12 +324,28 @@ export async function obtenerFichaPublica(id: string): Promise<FichaPublica | nu
   const f = filas[0];
   if (!f) return null;
 
+  const [imagenes, servicios, impulsado] = await Promise.all([
+    imagenesDe(f.id),
+    serviciosDe(f.id),
+    AppDataSource.query(
+      `SELECT EXISTS (SELECT 1 FROM impulsos_experto i WHERE i.experto_id = $1 AND ${IMPULSO_VIGENTE}) AS si`,
+      [f.id]
+    ),
+  ]);
+
+  const ficha = aPublico(f);
   return {
-    ...aPublico(f),
+    ...ficha,
+    es_patrocinado: ficha.es_patrocinado || Boolean(impulsado[0]?.si),
     bio_larga: f.bio_larga,
     video_url: f.video_url,
     email_contacto: f.mostrar_contacto ? f.email_contacto : null,
     telefono: f.mostrar_contacto ? f.telefono : null,
+    // WhatsApp es el botón de contacto: quien lo rellena quiere que le escriban.
+    whatsapp: f.whatsapp,
     fecha_aprobacion: f.fecha_aprobacion,
+    imagenes,
+    servicios,
+    usuario_id: f.usuario_id,
   };
 }

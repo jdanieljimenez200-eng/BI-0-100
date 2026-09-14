@@ -264,6 +264,59 @@ export function datosPatrocinio(
   if (categoria !== 'legal' && categoria !== 'marketing' && categoria !== 'ventas') return null;
   return { expertoId, categoria };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Impulsos de la red de expertos
+//
+// Pago único, no suscripción: el experto compra N días de visibilidad. El precio
+// lo calcula el backend (`impulsosService.cotizar`) y viaja como `price_data`, así
+// que no hace falta dar de alta un Price en Stripe por cada combinación de días y
+// alcance. La marca `tipo` hace que el webhook lo desvíe antes de tocar el plan.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const TIPO_PAGO_IMPULSO = 'impulso_experto';
+
+export async function createImpulsoCheckoutSession(params: {
+  customerId: string;
+  impulsoId: string;
+  montoMxn: number;
+  descripcion: string;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<{ id: string; url: string }> {
+  if (!stripe) throw new Error('Stripe no configurado');
+
+  const metadata = { tipo: TIPO_PAGO_IMPULSO, impulso_id: params.impulsoId };
+  const session = await stripe.checkout.sessions.create({
+    customer: params.customerId,
+    mode: 'payment',
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: 'mxn',
+          unit_amount: Math.round(params.montoMxn * 100),
+          product_data: { name: params.descripcion },
+        },
+      },
+    ],
+    success_url: params.successUrl,
+    cancel_url: params.cancelUrl,
+    locale: 'es',
+    metadata,
+    payment_intent_data: { metadata },
+    // El cupo queda reservado mientras la sesión vive: 30 min es el mínimo de Stripe.
+    expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+  });
+
+  return { id: session.id, url: session.url! };
+}
+
+/** ¿Este objeto de Stripe es el pago de un impulso? */
+export function esImpulso(obj: unknown): boolean {
+  const metadata = (obj as { metadata?: Record<string, unknown> } | null)?.metadata;
+  return metadata?.tipo === TIPO_PAGO_IMPULSO;
+}
 /**
  * Cancela una suscripción al momento.
  *

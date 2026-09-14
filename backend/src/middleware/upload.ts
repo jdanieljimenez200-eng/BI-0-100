@@ -384,27 +384,36 @@ export function recibirDocumentoExperto(req: Request, res: Response, next: NextF
   });
 }
 
-/** Foto o logotipo de la ficha. Esta sí es pública: va a StorageService. */
-const subirAvatarSingle = crearUploader({
-  tipoBase: 'image',
-  extensiones: ALLOWED_IMAGE_EXTENSIONS,
-  maxBytes: 3 * 1024 * 1024,
-  mensajeError: 'La foto debe ser una imagen (jpg, png, webp, gif)',
-}).single('avatar');
+/**
+ * Imágenes públicas de un perfil de la red (foto, portada, galería): van a
+ * StorageService. `campo` es el nombre del campo del formulario.
+ */
+function recibirImagenRed(campo: string, maxMb: number) {
+  const single = crearUploader({
+    tipoBase: 'image',
+    extensiones: ALLOWED_IMAGE_EXTENSIONS,
+    maxBytes: maxMb * 1024 * 1024,
+    mensajeError: 'La imagen debe ser jpg, png, webp o gif',
+  }).single(campo);
 
-export function recibirAvatarExperto(req: Request, res: Response, next: NextFunction): void {
-  subirAvatarSingle(req, res, (err: unknown) => {
-    if (!err) {
-      next();
-      return;
-    }
-    if (err instanceof multer.MulterError) {
-      const esTamano = err.code === 'LIMIT_FILE_SIZE';
-      res.status(esTamano ? 413 : 400).json({
-        error: esTamano ? 'La imagen supera el máximo de 3 MB' : 'Imagen inválida',
-      });
-      return;
-    }
-    res.status(400).json({ error: err instanceof Error ? err.message : 'Imagen inválida' });
-  });
+  return (req: Request, res: Response, next: NextFunction): void => {
+    single(req, res, (err: unknown) => {
+      if (!err) {
+        next();
+        return;
+      }
+      if (err instanceof multer.MulterError) {
+        const esTamano = err.code === 'LIMIT_FILE_SIZE';
+        res.status(esTamano ? 413 : 400).json({
+          error: esTamano ? `La imagen supera el máximo de ${maxMb} MB` : 'Imagen inválida',
+        });
+        return;
+      }
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Imagen inválida' });
+    });
+  };
 }
+
+export const recibirAvatarExperto = recibirImagenRed('avatar', 3);
+export const recibirPortadaExperto = recibirImagenRed('portada', 5);
+export const recibirImagenGaleria = recibirImagenRed('imagen', 5);

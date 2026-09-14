@@ -2,17 +2,25 @@ import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import { AppDataSource } from '../config/database';
-import { Experto } from '../models/Experto';
+import { Experto, CATEGORIAS_EXPERTO } from '../models/Experto';
 import { ResenaExperto } from '../models/ResenaExperto';
 import { Usuario } from '../models/Usuario';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermiso } from '../middleware/requireAdmin';
 import { ah } from '../utils/asyncHandler';
+import { filasSql } from '../utils/filasSql';
 import * as expertosService from '../services/network/expertosService';
 import * as resenasService from '../services/network/resenasService';
 import * as patrociniosService from '../services/network/patrociniosService';
 import * as documentos from '../services/network/documentosService';
-import { recibirDocumentoExperto, recibirAvatarExperto } from '../middleware/upload';
+import * as impulsos from '../services/network/impulsosService';
+import * as metricas from '../services/network/metricasService';
+import {
+  recibirDocumentoExperto,
+  recibirAvatarExperto,
+  recibirPortadaExperto,
+  recibirImagenGaleria,
+} from '../middleware/upload';
 import { StorageService } from '../services/StorageService';
 import { notificarRevisionFicha } from '../services/email/emailService';
 import { registrarAccionAdmin, MotivoSchema } from '../services/admin/auditoria';
@@ -21,6 +29,7 @@ import {
   getOrCreateCustomer,
   getPriceIdPatrocinio,
   createSponsorshipCheckoutSession,
+  createImpulsoCheckoutSession,
 } from '../services/billing/stripeService';
 
 /**
@@ -43,7 +52,7 @@ const router = Router();
 // Validación
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CATEGORIAS = ['legal', 'marketing', 'ventas'] as const;
+const CATEGORIAS = CATEGORIAS_EXPERTO;
 
 /**
  * URL de verdad, y solo http/https.
@@ -80,11 +89,19 @@ const CamposEditablesSchema = z.object({
   pais: z.string().trim().length(2).toUpperCase().nullable().optional(),
   email_contacto: z.string().trim().email().max(180).nullable().optional(),
   telefono: texto(40).nullable().optional(),
+  // Solo dígitos, con lada de país: es lo que wa.me necesita para abrir el chat.
+  whatsapp: z
+    .string()
+    .trim()
+    .transform((v) => v.replace(/[\s()+-]/g, ''))
+    .refine((v) => /^\d{10,15}$/.test(v), 'El WhatsApp debe tener entre 10 y 15 dígitos, con lada de país')
+    .nullable()
+    .optional(),
   mostrar_contacto: z.boolean().default(false),
   sitio_web: urlSegura(300).nullable().optional(),
   avatar_url: urlSegura(500).nullable().optional(),
   tarifa_desde: z.number().nonnegative().max(9_999_999).nullable().optional(),
-  moneda: texto(10).default('USD'),
+  moneda: texto(10).default('MXN'),
   ofrece_consulta_gratis: z.boolean().default(false),
   video_url: urlSegura(500).nullable().optional(),
   // `documento_url` NO está aquí a propósito. Guarda la clave interna del
@@ -188,15 +205,27 @@ router.get(
     }
     const { categoria, ciudad, q, limite, pagina } = parsed.data;
 
-    const { expertos, total } = await expertosService.listarDirectorio({
-      categoria,
-      ciudad,
-      q,
-      limit: limite,
-      offset: (pagina - 1) * limite,
-    });
+    const [{ expertos, total }, promocionados] = await Promise.all([
+      expertosService.listarDirectorio({
+        categoria,
+        ciudad,
+        q,
+        limit: limite,
+        offset: (pagina - 1) * limite,
+      }),
+      // Los impulsos se muestran en la primera página, aparte y etiquetados:
+      // mezclarlos en `expertos` movería la paginación orgánica.
+      pagina === 1
+        ? expertosService.listarPromocionados({ categoria, ciudad, q, limite: impulsos.HUECOS_PROMOCIONADOS })
+        : Promise.resolve([]),
+    ]);
 
-    res.json({ expertos, total, pagina, limite });
+    res.json({ expertos, promocionados, total, pagina, limite });
+
+    metricas.registrarImpresiones(
+      [...promocionados, ...expertos].map((e) => e.id),
+      promocionados.map((e) => e.id)
+    );
   })
 );
 
@@ -217,9 +246,60 @@ router.get(
       resenasService.distribucion(ficha.id),
     ]);
 
-    res.json({ experto: ficha, resenas, distribucion: reparto });
+    const { usuario_id: dueno, ...publica } = ficha;
+    res.json({ experto: { ...publica, es_mia: Boolean(req.userId && req.userId === dueno) }, resenas, distribucion: reparto });
+
+    // El experto revisando su propio perfil no cuenta como visita.
+    if (!req.userId || req.userId !== dueno) {
+      metricas.registrarVista(ficha.id, metricas.huellaVisitante(req.ip, req.get('user-agent')));
+    }
   })
 );
+
+/**
+ * Clic en un botón de contacto. Público: lo pulsa quien busca un experto, tenga
+ * cuenta o no. Solo cuenta; el enlace ya lo tiene la ficha. Responde 204 aunque
+ * falle el registro, para no retrasar la apertura de WhatsApp.
+ */
+router.post(
+  '/expertos/:id/contacto',
+  sesionOpcional,
+  ah(async (req: AuthRequest, res: Response) => {
+    const parsed = z
+      .object({ canal: z.enum(['whatsapp', 'telefono', 'email', 'web']) })
+      .safeParse(req.body);
+    if (!UUID.safeParse(req.params.id).success || !parsed.success) {
+      return res.status(400).json({ error: 'Canal o identificador inválido' });
+    }
+    const [experto] = await AppDataSource.query(
+      `SELECT id, usuario_id FROM expertos WHERE id = $1 AND estado = 'aprobado' AND eliminado_en IS NULL`,
+      [req.params.id]
+    );
+    if (!experto) return res.status(404).json({ error: 'Experto no encontrado' });
+
+    if (!req.userId || req.userId !== experto.usuario_id) {
+      await metricas
+        .registrarClic(experto.id, parsed.data.canal, metricas.huellaVisitante(req.ip, req.get('user-agent')))
+        .catch(() => undefined);
+    }
+    res.status(204).end();
+  })
+);
+
+/**
+ * Tarifas y límites de los impulsos. Público para poder enseñarlos en la página
+ * de «anúnciate» antes de que el experto tenga cuenta.
+ */
+router.get('/impulsos/tarifas', (_req, res: Response) => {
+  res.json({
+    moneda: 'MXN',
+    iva_incluido: true,
+    tarifa_dia: impulsos.TARIFA_DIA_MXN,
+    dias_min: impulsos.DIAS_MIN,
+    dias_max: impulsos.DIAS_MAX,
+    cupo: impulsos.CUPO,
+  });
+});
 
 /** Reseñas publicadas de un experto aprobado. */
 router.get(
@@ -427,6 +507,249 @@ router.post(
   })
 );
 
+/** Imagen de cabecera del perfil. Como la foto, no exige volver a revisión. */
+router.post(
+  '/expertos/:id/portada',
+  recibirPortadaExperto,
+  ah(async (req: AuthRequest, res: Response) => {
+    if (!UUID.safeParse(req.params.id).success) {
+      return res.status(400).json({ error: 'Identificador inválido' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No llegó ninguna imagen' });
+
+    const repo = AppDataSource.getRepository(Experto);
+    const experto = await repo.findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
+    if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
+
+    const anterior = experto.portada_url;
+    experto.portada_url = await StorageService.uploadFile(
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype,
+      'images'
+    );
+    await repo.save(experto);
+    await StorageService.deleteFile(anterior, 'images');
+    res.json({ portada_url: experto.portada_url });
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Contenido del perfil: galería y servicios (autenticado, solo el dueño)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const MAX_IMAGENES = 12;
+export const MAX_SERVICIOS = 15;
+
+/** La ficha propia, o null. La pertenencia va en el `where`. */
+async function fichaPropia(req: AuthRequest): Promise<Experto | null> {
+  if (!UUID.safeParse(req.params.id).success) return null;
+  return AppDataSource.getRepository(Experto).findOne({
+    where: { id: req.params.id, usuario_id: req.userId! },
+    select: ['id', 'usuario_id', 'categoria', 'estado', 'ciudad', 'nombre_comercial'],
+  });
+}
+
+/** Galería y servicios de la ficha propia, esté en el estado que esté. */
+router.get(
+  '/expertos/:id/contenido',
+  ah(async (req: AuthRequest, res: Response) => {
+    const experto = await fichaPropia(req);
+    if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
+    const [imagenes, servicios] = await Promise.all([
+      expertosService.imagenesDe(experto.id),
+      expertosService.serviciosDe(experto.id),
+    ]);
+    res.json({ imagenes, servicios, max_imagenes: MAX_IMAGENES, max_servicios: MAX_SERVICIOS });
+  })
+);
+
+/**
+ * Añade una imagen a la galería. Se publica sin pasar por revisión, como una
+ * foto en un perfil de Facebook: la ficha ya está aprobada y moderación puede
+ * retirarla. Lo que sí vuelve a revisión es cambiar quién dices ser.
+ */
+router.post(
+  '/expertos/:id/imagenes',
+  recibirImagenGaleria,
+  ah(async (req: AuthRequest, res: Response) => {
+    const experto = await fichaPropia(req);
+    if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
+    if (!req.file) return res.status(400).json({ error: 'No llegó ninguna imagen' });
+    const descripcion = texto(200).safeParse(req.body?.descripcion ?? '');
+
+    const url = await StorageService.uploadFile(req.file.buffer, req.file.originalname, req.file.mimetype, 'images');
+
+    // Candado por ficha: dos subidas simultáneas no pueden pasar ambas el límite.
+    const imagen = await AppDataSource.transaction(async (manager) => {
+      await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`galeria:${experto.id}`]);
+      const [{ total }] = await manager.query(
+        `SELECT count(*)::int AS total FROM experto_imagenes WHERE experto_id = $1`,
+        [experto.id]
+      );
+      if (total >= MAX_IMAGENES) return null;
+      const [fila] = await manager.query(
+        `INSERT INTO experto_imagenes (experto_id, url, descripcion, orden)
+         VALUES ($1, $2, $3, $4) RETURNING id, url, descripcion`,
+        [experto.id, url, descripcion.success ? descripcion.data : '', total]
+      );
+      return fila;
+    });
+
+    if (!imagen) {
+      await StorageService.deleteFile(url, 'images');
+      return res.status(409).json({ error: `La galería admite hasta ${MAX_IMAGENES} imágenes` });
+    }
+    res.status(201).json({ imagen });
+  })
+);
+
+/** Reordena la galería: el cliente manda los ids en el orden nuevo. */
+router.put(
+  '/expertos/:id/imagenes/orden',
+  ah(async (req: AuthRequest, res: Response) => {
+    const experto = await fichaPropia(req);
+    if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
+    const parsed = z.object({ ids: z.array(UUID).max(MAX_IMAGENES) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'Orden inválido' });
+
+    await AppDataSource.query(
+      `UPDATE experto_imagenes i SET orden = x.pos
+         FROM unnest($2::uuid[]) WITH ORDINALITY AS x(id, pos)
+        WHERE i.id = x.id AND i.experto_id = $1`,
+      [experto.id, parsed.data.ids]
+    );
+    res.json({ imagenes: await expertosService.imagenesDe(experto.id) });
+  })
+);
+
+router.delete(
+  '/expertos/:id/imagenes/:imagenId',
+  ah(async (req: AuthRequest, res: Response) => {
+    const experto = await fichaPropia(req);
+    if (!experto || !UUID.safeParse(req.params.imagenId).success) {
+      return res.status(404).json({ error: 'Imagen no encontrada' });
+    }
+    const [borrada] = filasSql<{ url: string }>(
+      await AppDataSource.query(`DELETE FROM experto_imagenes WHERE id = $1 AND experto_id = $2 RETURNING url`, [
+        req.params.imagenId,
+        experto.id,
+      ])
+    );
+    if (!borrada) return res.status(404).json({ error: 'Imagen no encontrada' });
+    await StorageService.deleteFile(borrada.url, 'images');
+    res.json({ mensaje: 'Imagen eliminada' });
+  })
+);
+
+const ServicioSchema = z.object({
+  nombre: texto(120).min(2, 'El servicio necesita un nombre'),
+  descripcion: texto(1000).default(''),
+  precio_desde: z.number().nonnegative().max(9_999_999).nullable().default(null),
+  unidad: texto(40).default(''),
+  orden: z.number().int().min(0).max(100).optional(),
+});
+
+router.post(
+  '/expertos/:id/servicios',
+  ah(async (req: AuthRequest, res: Response) => {
+    const experto = await fichaPropia(req);
+    if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
+    const parsed = ServicioSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+    }
+    const d = parsed.data;
+
+    const servicio = await AppDataSource.transaction(async (manager) => {
+      await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`servicios:${experto.id}`]);
+      const [{ total }] = await manager.query(
+        `SELECT count(*)::int AS total FROM experto_servicios WHERE experto_id = $1`,
+        [experto.id]
+      );
+      if (total >= MAX_SERVICIOS) return null;
+      const [fila] = await manager.query(
+        `INSERT INTO experto_servicios (experto_id, nombre, descripcion, precio_desde, unidad, orden)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, nombre, descripcion, precio_desde, unidad`,
+        [experto.id, d.nombre, d.descripcion, d.precio_desde, d.unidad, d.orden ?? total]
+      );
+      return fila;
+    });
+    if (!servicio) return res.status(409).json({ error: `Puedes publicar hasta ${MAX_SERVICIOS} servicios` });
+    res.status(201).json({
+      servicio: { ...servicio, precio_desde: servicio.precio_desde === null ? null : Number(servicio.precio_desde) },
+    });
+  })
+);
+
+router.patch(
+  '/expertos/:id/servicios/:servicioId',
+  ah(async (req: AuthRequest, res: Response) => {
+    const experto = await fichaPropia(req);
+    if (!experto || !UUID.safeParse(req.params.servicioId).success) {
+      return res.status(404).json({ error: 'Servicio no encontrado' });
+    }
+    // Sin `.default()` en la edición: un campo ausente no se toca.
+    const parsed = z
+      .object({
+        nombre: texto(120).min(2).optional(),
+        descripcion: texto(1000).optional(),
+        precio_desde: z.number().nonnegative().max(9_999_999).nullable().optional(),
+        unidad: texto(40).optional(),
+        orden: z.number().int().min(0).max(100).optional(),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+    }
+    const campos = Object.entries(parsed.data).filter(([, v]) => v !== undefined);
+    if (campos.length === 0) return res.status(400).json({ error: 'No hay nada que cambiar' });
+
+    // Las columnas salen del schema, nunca del cuerpo: no hay interpolación de datos del cliente.
+    const sets = campos.map(([k], i) => `"${k}" = $${i + 3}`).join(', ');
+    const [servicio] = filasSql<{ precio_desde: string | null }>(
+      await AppDataSource.query(
+        `UPDATE experto_servicios SET ${sets} WHERE id = $1 AND experto_id = $2
+         RETURNING id, nombre, descripcion, precio_desde, unidad`,
+        [req.params.servicioId, experto.id, ...campos.map(([, v]) => v)]
+      )
+    );
+    if (!servicio) return res.status(404).json({ error: 'Servicio no encontrado' });
+    res.json({
+      servicio: { ...servicio, precio_desde: servicio.precio_desde === null ? null : Number(servicio.precio_desde) },
+    });
+  })
+);
+
+router.delete(
+  '/expertos/:id/servicios/:servicioId',
+  ah(async (req: AuthRequest, res: Response) => {
+    const experto = await fichaPropia(req);
+    if (!experto || !UUID.safeParse(req.params.servicioId).success) {
+      return res.status(404).json({ error: 'Servicio no encontrado' });
+    }
+    const filas = filasSql(
+      await AppDataSource.query(`DELETE FROM experto_servicios WHERE id = $1 AND experto_id = $2 RETURNING id`, [
+        req.params.servicioId,
+        experto.id,
+      ])
+    );
+    if (filas.length === 0) return res.status(404).json({ error: 'Servicio no encontrado' });
+    res.json({ mensaje: 'Servicio eliminado' });
+  })
+);
+
+/** Apariciones, visitas y clics de la ficha propia en los últimos 30 días. */
+router.get(
+  '/expertos/:id/metricas',
+  ah(async (req: AuthRequest, res: Response) => {
+    const experto = await fichaPropia(req);
+    if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
+    const dias = z.coerce.number().int().min(7).max(90).catch(30).parse(req.query.dias);
+    res.json(await metricas.resumen(experto.id, dias));
+  })
+);
+
 /** Baja: borra la ficha, sus reseñas (cascada) y el documento del almacén. */
 router.delete(
   '/expertos/:id',
@@ -438,11 +761,18 @@ router.delete(
     const experto = await repo.findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
     if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
 
+    // Las URLs de la galería se leen antes: la cascada borra las filas.
+    const galeria: { url: string }[] = await AppDataSource.query(
+      `SELECT url FROM experto_imagenes WHERE experto_id = $1`,
+      [experto.id]
+    );
     await repo.delete(experto.id);
     // Darse de baja tiene que llevarse también la cédula. Un documento de
     // identidad que sobrevive al borrado de la cuenta es una fuga en diferido.
     await documentos.borrarDocumento(experto.documento_url);
     await StorageService.deleteFile(experto.avatar_url, 'images');
+    await StorageService.deleteFile(experto.portada_url, 'images');
+    for (const { url } of galeria) await StorageService.deleteFile(url, 'images');
 
     res.json({ mensaje: 'Ficha eliminada' });
   })
@@ -603,7 +933,13 @@ router.post(
     if (await patrociniosService.tienePatrocinioVigente(experto.id)) {
       return res.status(409).json({ error: 'Esta ficha ya tiene un patrocinio vigente' });
     }
-    if (!getPriceIdPatrocinio(experto.categoria)) {
+    // Los patrocinios mensuales solo existen en las tres categorías originales;
+    // el resto se promociona con impulsos.
+    const categoriaPatrocinio = experto.categoria;
+    if (
+      (categoriaPatrocinio !== 'legal' && categoriaPatrocinio !== 'marketing' && categoriaPatrocinio !== 'ventas') ||
+      !getPriceIdPatrocinio(categoriaPatrocinio)
+    ) {
       return res.status(503).json({
         error: `Todavía no hay patrocinios a la venta en ${experto.categoria}`,
       });
@@ -631,12 +967,135 @@ router.post(
     const url = await createSponsorshipCheckoutSession({
       customerId,
       expertoId: experto.id,
-      categoria: experto.categoria,
+      categoria: categoriaPatrocinio,
       successUrl: `${base}/network/mis-fichas?patrocinio=ok`,
       cancelUrl: `${base}/network/mis-fichas?patrocinio=cancelado`,
     });
 
     res.json({ url });
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Impulsos (autenticado, solo el dueño de la ficha)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ImpulsoSchema = z
+  .object({
+    experto_id: UUID,
+    alcance: z.enum(['ciudad', 'nacional']),
+    ciudad: texto(120).nullable().optional(),
+    dias: z.coerce.number().int().min(impulsos.DIAS_MIN).max(impulsos.DIAS_MAX),
+  })
+  .refine((d) => d.alcance === 'nacional' || Boolean(d.ciudad?.trim()), {
+    message: 'Elige la ciudad donde quieres aparecer',
+  });
+
+/** Precio y disponibilidad antes de pagar. No reserva nada. */
+router.get(
+  '/impulsos/cotizacion',
+  ah(async (req: AuthRequest, res: Response) => {
+    const parsed = ImpulsoSchema.safeParse(req.query);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+    }
+    const d = parsed.data;
+    const experto = await AppDataSource.getRepository(Experto).findOne({
+      where: { id: d.experto_id, usuario_id: req.userId! },
+      select: ['id', 'categoria'],
+    });
+    if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
+
+    const disp = await impulsos.disponibilidad(experto.categoria, d.alcance, d.ciudad ?? null);
+    res.json({
+      monto_mxn: impulsos.cotizar(d.alcance, d.dias),
+      tarifa_dia: impulsos.TARIFA_DIA_MXN[d.alcance],
+      dias: d.dias,
+      ...disp,
+    });
+  })
+);
+
+/**
+ * Reserva el cupo y abre el Checkout. El impulso solo se activa cuando el
+ * webhook confirma el pago; si el experto abandona, la reserva caduca sola.
+ */
+router.post(
+  '/impulsos/checkout',
+  ah(async (req: AuthRequest, res: Response) => {
+    if (!isStripeAvailable()) {
+      return res.status(503).json({ error: 'Los pagos no están disponibles ahora mismo' });
+    }
+    const parsed = ImpulsoSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+    }
+    const d = parsed.data;
+
+    const experto = await AppDataSource.getRepository(Experto).findOne({
+      where: { id: d.experto_id, usuario_id: req.userId! },
+      select: ['id', 'categoria', 'estado', 'nombre_comercial', 'eliminado_en'],
+    });
+    if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
+    // Cobrar por mostrar algo que nadie puede ver sería cobrar por nada.
+    if (experto.estado !== 'aprobado' || experto.eliminado_en) {
+      return res.status(409).json({ error: 'Tu perfil tiene que estar aprobado antes de impulsarlo' });
+    }
+
+    const usuario = await AppDataSource.getRepository(Usuario).findOne({
+      where: { id: req.userId! },
+      select: ['id', 'email', 'stripe_customer_id'],
+    });
+    if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    const reserva = await impulsos.reservar({
+      expertoId: experto.id,
+      categoria: experto.categoria,
+      alcance: d.alcance,
+      ciudad: d.ciudad ?? null,
+      dias: d.dias,
+    });
+    if (!reserva.ok) {
+      return res.status(409).json(
+        reserva.motivo === 'ya_tiene'
+          ? { error: 'Ya tienes un impulso vigente o en pago para ese lugar', motivo: reserva.motivo }
+          : {
+              error: 'No quedan espacios de impulso en ese lugar ahora mismo',
+              motivo: reserva.motivo,
+              libera_el: reserva.libera_el,
+            }
+      );
+    }
+
+    try {
+      const customerId = await getOrCreateCustomer(usuario.id, usuario.email, usuario.stripe_customer_id ?? undefined);
+      if (usuario.stripe_customer_id !== customerId) {
+        await AppDataSource.getRepository(Usuario).update(usuario.id, { stripe_customer_id: customerId });
+      }
+      const lugar = d.alcance === 'nacional' ? 'todo el país' : d.ciudad!.trim();
+      const base = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+      const sesion = await createImpulsoCheckoutSession({
+        customerId,
+        impulsoId: reserva.impulsoId,
+        montoMxn: reserva.monto,
+        descripcion: `Impulso de ${d.dias} días en ${lugar} — ${experto.nombre_comercial}`.slice(0, 250),
+        successUrl: `${base}/network/mis-fichas?impulso=ok`,
+        cancelUrl: `${base}/network/mis-fichas?impulso=cancelado`,
+      });
+      await impulsos.guardarSesion(reserva.impulsoId, sesion.id);
+      res.json({ url: sesion.url, impulso_id: reserva.impulsoId, monto_mxn: reserva.monto });
+    } catch (err) {
+      await impulsos.descartarReserva(reserva.impulsoId);
+      throw err;
+    }
+  })
+);
+
+/** Campañas de las fichas propias, con lo que rindió cada una. */
+router.get(
+  '/mis-impulsos',
+  ah(async (req: AuthRequest, res: Response) => {
+    res.json({ impulsos: await impulsos.listar({ usuarioId: req.userId! }) });
   })
 );
 
@@ -933,6 +1392,75 @@ adminNetworkRouter.patch(
     // Tras el commit: el recálculo lee las reseñas ya confirmadas.
     await resenasService.recalcularRating(resena.experto_id);
     res.json({ resena });
+  })
+);
+
+/** Todas las campañas de impulso, para revisar qué se está promocionando. */
+adminNetworkRouter.get(
+  '/impulsos',
+  ah(async (_req: AuthRequest, res: Response) => {
+    const lista = await impulsos.listar({ limite: 200 });
+    res.json({ impulsos: lista, total: lista.length });
+  })
+);
+
+/**
+ * Corta un impulso (perfil engañoso, suspendido…). No devuelve el dinero por sí
+ * solo: el reembolso se hace en Stripe, y la respuesta trae el pago para hacerlo.
+ */
+adminNetworkRouter.patch(
+  '/impulsos/:id/cancelar',
+  ah(async (req: AuthRequest, res: Response) => {
+    if (!UUID.safeParse(req.params.id).success) {
+      return res.status(400).json({ error: 'Identificador inválido' });
+    }
+    const m = MotivoSchema.safeParse(req.body?.motivo);
+    if (!m.success) return res.status(400).json({ error: m.error.errors[0].message });
+
+    const cancelado = await AppDataSource.transaction(async (manager) => {
+      const fila = await impulsos.cancelar(manager, req.params.id, m.data);
+      if (!fila) return null;
+      await registrarAccionAdmin(manager, req, {
+        accion: 'impulso.cancelado',
+        recursoTipo: 'impulso',
+        recursoId: fila.id,
+        despues: { estado: 'cancelado', experto_id: fila.experto_id },
+        motivo: m.data,
+      });
+      return fila;
+    });
+    if (!cancelado) return res.status(404).json({ error: 'No hay un impulso activo con ese identificador' });
+    res.json({ impulso: cancelado });
+  })
+);
+
+/** Retira una imagen de la galería de un perfil. Exige motivo y queda auditado. */
+adminNetworkRouter.delete(
+  '/imagenes/:id',
+  ah(async (req: AuthRequest, res: Response) => {
+    if (!UUID.safeParse(req.params.id).success) {
+      return res.status(400).json({ error: 'Identificador inválido' });
+    }
+    const m = MotivoSchema.safeParse(req.body?.motivo);
+    if (!m.success) return res.status(400).json({ error: m.error.errors[0].message });
+
+    const borrada = await AppDataSource.transaction(async (manager) => {
+      const [fila] = filasSql<{ id: string; experto_id: string; url: string }>(
+        await manager.query(`DELETE FROM experto_imagenes WHERE id = $1 RETURNING id, experto_id, url`, [req.params.id])
+      );
+      if (!fila) return null;
+      await registrarAccionAdmin(manager, req, {
+        accion: 'imagen.retirada',
+        recursoTipo: 'experto',
+        recursoId: fila.experto_id,
+        antes: { imagen_id: fila.id, url: fila.url },
+        motivo: m.data,
+      });
+      return fila;
+    });
+    if (!borrada) return res.status(404).json({ error: 'Imagen no encontrada' });
+    await StorageService.deleteFile(borrada.url, 'images');
+    res.json({ mensaje: 'Imagen retirada' });
   })
 );
 

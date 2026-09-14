@@ -14,7 +14,7 @@ import type { AuthRequest } from '../../middleware/auth';
  * ventana en la que el cambio ya ocurrió y el registro todavía puede fallar.
  */
 
-export type RecursoAuditado = 'usuario' | 'experto' | 'resena' | 'documento' | 'rol';
+export type RecursoAuditado = 'usuario' | 'experto' | 'resena' | 'documento' | 'rol' | 'impulso';
 
 export interface AccionAdmin {
   accion: string;

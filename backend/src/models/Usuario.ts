@@ -39,6 +39,13 @@ export class Usuario {
   account_role!: AccountRole;
 
   /**
+   * Lo que eligió al registrarse: «tengo un negocio» o «ofrezco servicios».
+   * Solo decide a dónde se le lleva al entrar; no concede ni quita permisos.
+   */
+  @Column({ type: 'varchar', length: 20, default: 'negocio' })
+  tipo_cuenta!: 'negocio' | 'experto';
+
+  /**
    * Rol de PLATAFORMA (administradores del SaaS).
    * NO confundir con account_role ('owner' = dueño de cuenta, multi-tenancy).
    */

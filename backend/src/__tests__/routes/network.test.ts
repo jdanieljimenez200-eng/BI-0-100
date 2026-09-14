@@ -101,7 +101,7 @@ describeWithDb('Red de expertos (/api/network)', () => {
     });
 
     it('rechaza una categoría que no existe', async () => {
-      const res = await alta(ajeno.accessToken, { ...baseLegal, categoria: 'contabilidad' });
+      const res = await alta(ajeno.accessToken, { ...baseLegal, categoria: 'astrologia' });
       expect(res.status).toBe(400);
     });
 

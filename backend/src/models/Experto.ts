@@ -10,7 +10,16 @@ import {
 } from 'typeorm';
 import { Usuario } from './Usuario';
 
-export type CategoriaExperto = 'legal' | 'marketing' | 'ventas';
+export const CATEGORIAS_EXPERTO = [
+  'legal',
+  'contabilidad',
+  'marketing',
+  'diseno',
+  'ventas',
+  'proveedores',
+  'tecnologia',
+] as const;
+export type CategoriaExperto = (typeof CATEGORIAS_EXPERTO)[number];
 export type EstadoExperto = 'pendiente' | 'aprobado' | 'rechazado' | 'suspendido';
 
 /**
@@ -78,6 +87,18 @@ export class Experto {
   @Column({ type: 'boolean', default: false })
   mostrar_contacto!: boolean;
 
+  /**
+   * Número de WhatsApp en formato internacional, solo dígitos (52155…). Es el
+   * contacto que se ofrece como botón: quien lo pone quiere que le escriban, así
+   * que se publica aunque `mostrar_contacto` esté apagado.
+   */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  whatsapp!: string | null;
+
+  /** Imagen de cabecera del perfil. Pública, en StorageService. */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  portada_url!: string | null;
+
   @Column({ type: 'varchar', length: 300, nullable: true })
   sitio_web!: string | null;
 
@@ -87,7 +108,7 @@ export class Experto {
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
   tarifa_desde!: number | null;
 
-  @Column({ type: 'varchar', length: 10, default: 'USD' })
+  @Column({ type: 'varchar', length: 10, default: 'MXN' })
   moneda!: string;
 
   @Column({ type: 'boolean', default: false })
