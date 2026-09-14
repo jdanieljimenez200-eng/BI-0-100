@@ -134,7 +134,7 @@ export default function TemaPage() {
       const apiMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
       setEstado('error');
       if (status === 403) {
-        setMensaje('Solo el dueño de una cuenta Pro Plus puede cambiar el tema del sistema.');
+        setMensaje('Solo el dueño de una cuenta con plan Negocio o superior puede cambiar el tema del sistema.');
       } else {
         setMensaje(apiMsg ?? 'No se pudo guardar. Inténtalo de nuevo.');
       }

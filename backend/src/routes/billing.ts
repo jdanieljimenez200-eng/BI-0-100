@@ -6,6 +6,7 @@ import { logger } from '../utils/logger';
 import { AppDataSource } from '../config/database';
 import { Usuario, Plan } from '../models/Usuario';
 import { getLimites, PLAN_LIMITES } from '../services/billing/planService';
+import { estadoCreditos, COSTO_CREDITOS } from '../services/billing/creditosIA';
 import {
   isStripeAvailable,
   isPurchasablePlan,
@@ -57,6 +58,23 @@ function isTransientDbError(err: unknown): boolean {
 
 const router = Router();
 
+// ─── GET /api/billing/planes ──────────────────────────────────────────────────
+/**
+ * Catálogo público de planes (sin sesión): precios, créditos y funciones.
+ *
+ * La página /pricing lo lee de aquí para que el precio que ve un visitante sea
+ * siempre el que se cobra. Antes estaba escrito a mano en el frontend y se
+ * separó de Stripe.
+ */
+router.get('/planes', (_req: Request, res: Response) => {
+  res.json({
+    moneda: 'MXN',
+    iva_incluido: true,
+    planes: PLAN_LIMITES,
+    costo_creditos: COSTO_CREDITOS,
+  });
+});
+
 // ─── GET /api/billing/status ──────────────────────────────────────────────────
 router.get('/status', authenticate, async (req: AuthRequest, res: Response) => {
   try {
@@ -80,9 +98,13 @@ router.get('/status', authenticate, async (req: AuthRequest, res: Response) => {
       AppDataSource.getRepository(AnalisisFinanzas).count({ where: { usuario_id: userIdStr } as FindOptionsWhere<AnalisisFinanzas> }),
     ]);
 
+    const creditos = await estadoCreditos(user.id, planType);
+
     res.json({
       plan: planType,
       limites,
+      creditos,
+      costo_creditos: COSTO_CREDITOS,
       uso: {
         productos,
         analisis: {

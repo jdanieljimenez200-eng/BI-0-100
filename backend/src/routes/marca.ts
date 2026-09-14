@@ -8,6 +8,8 @@ import { redactBriefData } from '../services/billing/redactAnalisis';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { upload } from '../middleware/upload';
 import { StorageService } from '../services/StorageService';
+import { getPlanFromDB } from '../middleware/requirePlan';
+import { conCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
 import { analizarLogo } from '../services/brief/logoAnalysisService';
 import { ah } from '../utils/asyncHandler';
 
@@ -187,11 +189,10 @@ router.post(
       }
 
       // 3. Analyze with AI (synchronous — ~5s)
-      const analysis = await analizarLogo({
-        buffer: req.file.buffer,
-        mimetype: req.file.mimetype,
-        briefData,
-      });
+      const plan = await getPlanFromDB(req.userId!);
+      const analysis = await conCreditos(req.userId!, plan, 'marca_logo', () =>
+        analizarLogo({ buffer: req.file!.buffer, mimetype: req.file!.mimetype, briefData })
+      );
 
       // 4. Save logo_url and analysis to marca (upsert)
       if (productoId) {
@@ -234,6 +235,7 @@ router.post(
         analysis,
       });
     } catch (err) {
+      if (err instanceof CreditosInsuficientesError) return responderSinCreditos(res, err);
       console.error('[marca/logo] Error:', err);
       const msg = err instanceof Error ? err.message : 'Error al analizar el logo';
       return res.status(500).json({ error: msg });

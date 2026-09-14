@@ -12,6 +12,7 @@ import { AnalisisBrief } from '../models/AnalisisBrief';
 import { AnalisisVentas } from '../models/AnalisisVentas';
 import type { ObjectLiteral, Repository } from 'typeorm';
 import { emitAnalysisUpdate } from '../events/sse';
+import { reembolsarCreditos } from '../services/billing/creditosIA';
 
 const QUEUE_NAME = 'analysis-queue';
 
@@ -163,6 +164,7 @@ export async function marcarAnalisisError(
         errorMessage: MENSAJE_ERROR_ANALISIS,
       });
     }
+    await reembolsarCreditos({ referenciaId: analisisId });
     updateJobStatus('failed');
     recordError(`analysis_failed_${moduleName}`);
   } catch (err) {

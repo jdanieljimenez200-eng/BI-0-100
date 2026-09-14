@@ -13,6 +13,7 @@ import { respuestaAnalisis } from '../services/billing/redactAnalisis';
 import { generarHistoriaMock, generarTipsMock, generarRebatidas, generarFollowUps, generarPalabrasClaveAds } from '../services/ventas/ventasService';
 import { redisClient } from '../config/redis';
 import { analysisQueue } from '../workers/analysisQueue';
+import { cobrarCreditos, conCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
 import { logger } from '../utils/logger';
 import { uploadAudio } from '../middleware/upload';
 import {
@@ -274,6 +275,18 @@ router.post(
       });
       await repo.save(analisis);
 
+      // Créditos de IA: se cobran antes de encolar y se devuelven si el análisis
+      // falla o sale de plantilla (worker y cola, ver services/billing/creditosIA.ts).
+      try {
+        await cobrarCreditos(usuarioId!, await getPlanFromDB(usuarioId!), 'ventas', analisis.id);
+      } catch (err) {
+        if (err instanceof CreditosInsuficientesError) {
+          await repo.delete(analisis.id);
+          return responderSinCreditos(res, err);
+        }
+        throw err;
+      }
+
       // Enqueue — si Redis falla la fila NUNCA queda en 'procesando'
       try {
         await analysisQueue.add(
@@ -304,6 +317,7 @@ router.post(
           estado_analisis: 'error',
           error_mensaje: 'No se pudo encolar el análisis. Reintenta.',
         });
+        await reembolsarCreditos({ referenciaId: analisis.id });
         return res.status(503).json({ error: 'Servicio de análisis temporalmente no disponible' });
       }
 
@@ -490,13 +504,17 @@ router.get('/:id/objeciones', authenticate, async (req: AuthRequest, res: Respon
     if (!perfil) return res.status(400).json({ error: 'Este análisis no tiene un Perfil de Cliente Ideal generado' });
 
     if (!analisis.rebatidas_objeciones_data) {
-      const rebatidas = await generarRebatidas(perfil, inputDesdeAnalisis(analisis));
+      // Se genera una sola vez por análisis y queda guardada: se cobra esa vez.
+      const rebatidas = await conCreditos(req.userId!, plan, 'ventas_objeciones', () =>
+        generarRebatidas(perfil, inputDesdeAnalisis(analisis))
+      );
       analisis.rebatidas_objeciones_data = rebatidas;
       await repo.save(analisis);
     }
 
     return res.json({ rebatidas: analisis.rebatidas_objeciones_data });
   } catch (err) {
+    if (err instanceof CreditosInsuficientesError) return responderSinCreditos(res, err);
     logger.error('GET /api/ventas/:id/objeciones error:', err);
     return res.status(500).json({ error: 'Error al generar rebatidas' });
   }
@@ -579,7 +597,7 @@ router.get('/:id/followups', authenticate, async (req: AuthRequest, res: Respons
  * en un vídeo subido directo (field: video), o pidiendo reusar el vídeo de
  * pitch ya subido al Producto (usar_video_producto=true). Cuando hay vídeo
  * (subido o reusado) se extraen frames y se analiza también visualmente con
- * Claude Fable — ver `evaluarGuionConVideo`.
+ * la visión de Claude — ver `evaluarGuionConVideo`.
  * Síncrono: responde con el resultado en ~5-15s (más si hay análisis visual).
  */
 router.post(
@@ -704,9 +722,11 @@ router.post(
       };
 
       const perfilCliente = analisis.perfil_cliente_data as PerfilClienteIdeal | null;
-      const evaluacion: EvaluacionGuion = frames.length > 0
-        ? await evaluarGuionConVideo(guion, frames, input, perfilCliente)
-        : await evaluarGuion(guion, input, perfilCliente);
+      const evaluacion: EvaluacionGuion = await conCreditos(req.userId!, plan, 'ventas_guion', () =>
+        frames.length > 0
+          ? evaluarGuionConVideo(guion, frames, input, perfilCliente)
+          : evaluarGuion(guion, input, perfilCliente)
+      );
 
       // Persistir en el historial (array jsonb)
       const historial = Array.isArray(analisis.evaluaciones_guion_data) ? analisis.evaluaciones_guion_data as unknown[] : [];
@@ -718,6 +738,7 @@ router.post(
 
       return res.json({ evaluacion, id: (entrada as { id: string }).id });
     } catch (err) {
+      if (err instanceof CreditosInsuficientesError) return responderSinCreditos(res, err);
       logger.error('POST /api/ventas/:id/guion error:', err);
       return res.status(500).json({ error: 'Error al evaluar el guion' });
     }
@@ -751,7 +772,7 @@ router.get('/:id/guiones', authenticate, async (req: AuthRequest, res: Response)
  * Registra un competidor/referente: nombre + redes sociales/página web
  * (texto de referencia, nunca se visitan) + opcionalmente un vídeo O una
  * foto. Con vídeo se transcribe y se analiza el texto; con foto se analiza
- * visualmente con Claude Fable; sin ninguno, corre sobre un placeholder
+ * visualmente con la visión de Claude; sin ninguno, corre sobre un placeholder
  * genérico marcado como degradado. Actualiza la comparativa global.
  */
 router.post(
@@ -759,6 +780,7 @@ router.post(
   authenticate,
   recibirCompetidorArchivos,
   async (req: AuthRequest, res: Response) => {
+    let cobroCompetidor: string | null = null;
     try {
       const repo = AppDataSource.getRepository(AnalisisVentas);
       const analisis = await repo.findOne({ where: { id: req.params.id, usuario_id: req.userId } });
@@ -811,6 +833,8 @@ router.post(
       let analisisComp: AnalisisCompetidor;
       let origen: 'video' | 'foto' | 'texto';
       let degradado: boolean;
+      // Un cobro por competidor (análisis + comparativa). Se devuelve si algo falla.
+      cobroCompetidor = await cobrarCreditos(req.userId!, plan, 'ventas_competidor');
 
       if (archivoVideo?.buffer?.length) {
         // Transcripción del video del competidor
@@ -862,6 +886,8 @@ router.post(
 
       return res.json({ competidor: entradaComp, comparativa });
     } catch (err) {
+      if (err instanceof CreditosInsuficientesError) return responderSinCreditos(res, err);
+      await reembolsarCreditos({ cobroId: cobroCompetidor });
       logger.error('POST /api/ventas/:id/competidores error:', err);
       return res.status(500).json({ error: 'Error al analizar competidor' });
     }

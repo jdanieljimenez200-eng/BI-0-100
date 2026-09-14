@@ -66,11 +66,11 @@ const CREATIVIDADES: readonly Creatividad[] = [
   },
   {
     id: 'alertas',
-    eyebrow: 'Plan Pro Plus',
+    eyebrow: 'Plan Negocio',
     titulo: 'Alertas automáticas del negocio',
     texto:
       'Avisos cuando tu margen o tu colchón de caja se salen de rango, sin tener que entrar a revisarlo.',
-    cta: 'Ver Pro Plus',
+    cta: 'Ver plan Negocio',
     href: '/dashboard/billing',
     color: '#10B981',
   },

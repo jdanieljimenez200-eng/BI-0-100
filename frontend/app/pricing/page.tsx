@@ -3,17 +3,46 @@
 import Link from 'next/link';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import api from '@/lib/api';
 import { gsap } from 'gsap';
 import { useGSAP } from '@gsap/react';
 import MotionAccordion from '@/components/motion/MotionAccordion';
 
 gsap.registerPlugin(useGSAP);
 
+/** Catálogo que publica el backend (GET /api/billing/planes): la única fuente de precios. */
+interface PlanCatalogo {
+  nombre: string;
+  precio_mxn: number;
+  precio_mxn_anual: number;
+  creditos_ia_mes: number;
+}
+interface Catalogo {
+  planes: Record<string, PlanCatalogo>;
+  costo_creditos: Record<string, number>;
+}
+
+const pesos = (v: number) => new Intl.NumberFormat('es-MX', { maximumFractionDigits: 0 }).format(v);
+
+/** Nombre legible de cada acción con IA, para la tabla de créditos. */
+const ACCIONES_CREDITOS: { clave: string; texto: string }[] = [
+  { clave: 'mercado', texto: 'Análisis de mercado' },
+  { clave: 'finanzas', texto: 'Proyección financiera' },
+  { clave: 'brief', texto: 'Brief de marca' },
+  { clave: 'marketing', texto: 'Estrategia de marketing con calendario' },
+  { clave: 'ventas', texto: 'Estrategia de ventas' },
+  { clave: 'legal', texto: 'Dictamen legal-fiscal' },
+  { clave: 'ventas_guion', texto: 'Evaluar un guion o video de venta' },
+  { clave: 'ventas_competidor', texto: 'Analizar un competidor' },
+  { clave: 'marketing_reporte_ads', texto: 'Diagnóstico de un reporte de anuncios' },
+  { clave: 'marca_logo', texto: 'Análisis de logo' },
+];
+
 const PLANES = [
   {
     key: 'freemium',
-    nombre: 'Freemium',
+    nombre: 'Gratis',
     precio: 'Gratis',
     periodo: 'siempre',
     descripcion: 'Para explorar y validar tu primera idea',
@@ -25,27 +54,28 @@ const PLANES = [
     features: [
       '1 producto activo',
       '1 análisis por módulo',
+      '5 créditos de IA al mes',
       'Análisis de Mercado',
       'Estrategia de Marketing',
       'Estrategia de Ventas',
       'Proyección Financiera',
     ],
-    limitaciones: ['Sin copy con IA', 'Sin re-análisis'],
+    limitaciones: ['Sin copy con IA', 'Sin análisis legal'],
   },
   {
     key: 'pro',
-    nombre: 'Pro',
-    precio: '$199',
+    nombre: 'Emprendedor',
+    precio: '$299',
     periodo: 'mes',
     descripcion: 'Para emprendedores que van en serio',
     color: 'border-brand-accent ring-1 ring-brand-accent shadow-[0_0_30px_rgba(231,76,60,0.15)] bg-gradient-to-b from-brand-accent/10 to-white/5',
     badge: 'Más popular',
-    cta: 'Empezar Pro',
+    cta: 'Empezar Emprendedor',
     ctaHref: '/auth/signup?plan=pro',
     ctaStyle: 'bg-brand-accent text-white hover:opacity-90 shadow-[0_0_20px_rgba(231,76,60,0.3)] mt-6',
     features: [
       'Hasta 5 productos activos',
-      'Re-análisis ilimitados',
+      '25 créditos de IA al mes',
       'Elige 1 herramienta del sistema',
       'Movimientos ilimitados',
       'Copy generado con IA',
@@ -58,18 +88,19 @@ const PLANES = [
   },
   {
     key: 'pro_plus',
-    nombre: 'Pro Plus',
-    precio: '$349',
+    nombre: 'Negocio',
+    precio: '$599',
     periodo: 'mes',
     descripcion: 'Para negocios que operan con varias herramientas',
     color: 'border-emerald-500/50 ring-1 ring-emerald-500/40 bg-gradient-to-b from-emerald-500/10 to-white/5',
     badge: 'Mejor valor',
-    cta: 'Empezar Pro Plus',
+    cta: 'Empezar Negocio',
     ctaHref: '/auth/signup?plan=pro_plus',
     ctaStyle: 'bg-emerald-600/80 text-white hover:bg-emerald-600 mt-6 border border-emerald-500/50',
     features: [
       'Hasta 10 productos activos',
-      'Todo lo del plan Pro',
+      '55 créditos de IA al mes',
+      'Todo lo del plan Emprendedor',
       'Elige 4 herramientas del sistema',
       'Alertas automáticas WhatsApp/email',
       'Hasta 5 trabajadores',
@@ -79,18 +110,19 @@ const PLANES = [
   },
   {
     key: 'business',
-    nombre: 'Business',
-    precio: '$499',
+    nombre: 'Empresa',
+    precio: '$1,199',
     periodo: 'mes',
     descripcion: 'Para equipos y agencias',
     color: 'border-purple-500/50 bg-white/5',
     badge: '',
-    cta: 'Empezar Business',
+    cta: 'Empezar Empresa',
     ctaHref: '/auth/signup?plan=business',
     ctaStyle: 'bg-purple-600/80 text-white hover:bg-purple-600 mt-6 border border-purple-500/50',
     features: [
       'Productos ilimitados',
-      'Todo lo del plan Pro Plus',
+      '120 créditos de IA al mes',
+      'Todo lo del plan Negocio',
       'Las 7 herramientas incluidas',
       'White-label en POS y tickets',
       'Hasta 10 trabajadores',
@@ -101,8 +133,8 @@ const PLANES = [
   {
     key: 'enterprise',
     nombre: 'Enterprise',
-    precio: 'A medida',
-    periodo: '',
+    precio: 'Desde $4,999',
+    periodo: 'mes',
     descripcion: 'Para grandes empresas y franquicias',
     color: 'border-yellow-500/50 bg-white/5',
     badge: '',
@@ -110,8 +142,8 @@ const PLANES = [
     ctaHref: 'mailto:hola@bi0a100.mx',
     ctaStyle: 'bg-yellow-500/80 text-white hover:bg-yellow-500 mt-6 border border-yellow-500/50',
     features: [
-      'Productos ilimitados',
-      'Todo lo del plan Business',
+      '600 créditos de IA al mes, ampliables',
+      'Todo lo del plan Empresa',
       'Onboarding personalizado',
       'SLA garantizado',
       'Integración con CRM',
@@ -123,6 +155,24 @@ const PLANES = [
 export default function PricingPage() {
   const container = useRef<HTMLDivElement>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const [catalogo, setCatalogo] = useState<Catalogo | null>(null);
+
+  // Precios, nombres y créditos salen del backend; lo escrito arriba solo se ve
+  // mientras carga (y coincide con planService.ts).
+  useEffect(() => {
+    api
+      .get<Catalogo>('/billing/planes')
+      .then(({ data }) => setCatalogo(data))
+      .catch(() => setCatalogo(null));
+  }, []);
+
+  const planes = PLANES.map((plan) => {
+    const c = catalogo?.planes[plan.key];
+    if (!c) return plan;
+    const precio =
+      c.precio_mxn === 0 ? 'Gratis' : plan.key === 'enterprise' ? `Desde $${pesos(c.precio_mxn)}` : `$${pesos(c.precio_mxn)}`;
+    return { ...plan, nombre: c.nombre, precio };
+  });
 
   useGSAP(() => {
     const tl = gsap.timeline({ defaults: { ease: "power3.out", duration: 0.8 } });
@@ -161,7 +211,7 @@ export default function PricingPage() {
 
         {/* Pricing cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-24 relative z-10">
-          {PLANES.map((plan) => (
+          {planes.map((plan) => (
             <div
               key={plan.key}
               className={`pricing-card backdrop-blur-md rounded-2xl p-8 flex flex-col relative border transition-all duration-300 hover:scale-[1.02] ${plan.color}`}
@@ -217,6 +267,31 @@ export default function PricingPage() {
           ))}
         </div>
 
+        {/* Créditos */}
+        <div className="max-w-3xl mx-auto relative z-10 mb-20">
+          <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 text-center mb-3">
+            ¿Qué es un crédito de IA?
+          </h2>
+          <p className="text-white/50 text-center text-sm mb-8 max-w-xl mx-auto">
+            Cada acción con inteligencia artificial usa créditos según lo que cuesta generarla. Se renuevan el día 1 de
+            cada mes, y si un análisis falla, el crédito se te devuelve. Precios en pesos mexicanos con IVA incluido.
+          </p>
+          <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
+            <table className="w-full text-sm">
+              <tbody>
+                {ACCIONES_CREDITOS.map((a) => (
+                  <tr key={a.clave} className="border-b border-white/5 last:border-0">
+                    <td className="px-5 py-3 text-white/75">{a.texto}</td>
+                    <td className="px-5 py-3 text-right font-bold text-white tabular-nums">
+                      {catalogo?.costo_creditos[a.clave] ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         {/* FAQ */}
         <div className="max-w-3xl mx-auto relative z-10 faq-container mb-12">
           <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 text-center mb-10">Preguntas frecuentes</h2>
@@ -233,6 +308,10 @@ export default function PricingPage() {
               {
                 q: '¿Puedo cambiar de plan?',
                 a: 'Por supuesto, puedes subir o bajar de plan en cualquier momento desde tu panel de facturación. Los cambios se aplican al instante.',
+              },
+              {
+                q: '¿Qué pasa si se me acaban los créditos?',
+                a: 'Tus herramientas (punto de venta, inventario, reportes…) siguen funcionando sin límite. Solo las acciones con IA esperan al día 1, o puedes subir de plan en ese momento.',
               },
               {
                 q: '¿Los análisis se guardan si bajo de plan?',

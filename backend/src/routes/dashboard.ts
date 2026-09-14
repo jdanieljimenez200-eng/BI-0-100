@@ -15,7 +15,8 @@ import { extraerAlertas, resumirNiveles } from '../services/alertas/extractorAna
 import { generarAlertasOperativas } from '../services/alertas/agregadorOperativo';
 import { generarResumenIaAlertas } from '../services/alertas/resumenIaService';
 import { generarResumenCompleto } from '../services/alertas/resumenCompletoService';
-import { requirePlanFeature } from '../middleware/requirePlan';
+import { requirePlanFeature, getPlanFromDB } from '../middleware/requirePlan';
+import { conCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
 import { parseFlagQuery } from '../utils/queryFlags';
 import { logger } from '../utils/logger';
 
@@ -350,9 +351,13 @@ router.post(
         return res.status(400).json({ error: 'producto_id es requerido' });
       }
 
-      const resumen = await generarResumenCompleto(req.userId!, productoId);
+      const plan = await getPlanFromDB(req.userId!);
+      const resumen = await conCreditos(req.userId!, plan, 'resumen_completo', () =>
+        generarResumenCompleto(req.userId!, productoId)
+      );
       res.json({ resumen });
     } catch (err) {
+      if (err instanceof CreditosInsuficientesError) return responderSinCreditos(res, err);
       logger.error('dashboard progreso resumen-completo error:', err);
       res.status(500).json({ error: 'Error interno del servidor' });
     }

@@ -11,6 +11,7 @@ import { requireAnalisisLock } from '../middleware/idempotency';
 import { validateBody } from '../middleware/validate';
 import { logger } from '../utils/logger';
 import { analysisQueue } from '../workers/analysisQueue';
+import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
 
 const router = Router();
 
@@ -101,6 +102,18 @@ router.post(
     });
     await analisisRepo.save(analisis);
 
+    // Créditos de IA: se cobran antes de encolar y se devuelven si el análisis
+    // falla o sale de plantilla (worker y cola, ver services/billing/creditosIA.ts).
+    try {
+      await cobrarCreditos(usuarioId!, await getPlanFromDB(usuarioId!), 'brief', analisis.id);
+    } catch (err) {
+      if (err instanceof CreditosInsuficientesError) {
+        await analisisRepo.delete(analisis.id);
+        return responderSinCreditos(res, err);
+      }
+      throw err;
+    }
+
     // Enqueue job — si Redis falla, la fila NUNCA debe quedar 'procesando'
     try {
       await analysisQueue.add(
@@ -128,6 +141,7 @@ router.post(
         estado_analisis: 'error',
         error_mensaje: 'No se pudo encolar el análisis. Reintenta.',
       });
+      await reembolsarCreditos({ referenciaId: analisis.id });
       return res.status(503).json({ error: 'Servicio de análisis temporalmente no disponible' });
     }
 

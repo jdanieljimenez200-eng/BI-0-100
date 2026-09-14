@@ -21,11 +21,20 @@ export interface PlanLimites {
   white_label: boolean;            // logo/color/dominio propios en POS, tickets y cotizaciones
   alertas_automaticas: boolean;    // alertas WhatsApp/email: stock bajo, metas, caída de ingresos
   comision_pct: number;            // % de application_fee en cobros del POS (Stripe Connect)
+  /**
+   * Créditos de IA que renuevan cada mes natural. Cada acción cuesta créditos
+   * según COSTO_CREDITOS (services/billing/creditosIA.ts). En freemium los
+   * análisis no gastan créditos (tienen su límite de 1 por módulo); los créditos
+   * solo cubren acciones bajo demanda.
+   */
+  creditos_ia_mes: number;
   nombre: string;
-  precio_mxn: number;              // 0 = gratis (precio de referencia histórico)
-  // Precios de cobro reales en Stripe (USD). El anual es el total del año.
-  precio_usd_mensual: number;      // 0 = gratis
-  precio_usd_anual: number;        // 0 = sin ciclo anual
+  // Precio de cobro en México, IVA incluido (Stripe en MXN). El anual es el total del año.
+  precio_mxn: number;              // 0 = gratis
+  precio_mxn_anual: number;        // 0 = sin ciclo anual
+  // Equivalente para otros países (Stripe en USD).
+  precio_usd_mensual: number;
+  precio_usd_anual: number;
   descripcion: string;
 }
 
@@ -37,11 +46,13 @@ export function getPrecioUsd(plan: Plan, ciclo: 'mensual' | 'anual' = 'mensual')
 
 export const PLAN_LIMITES: Record<Plan, PlanLimites> = {
   freemium: {
-    nombre: 'Freemium',
+    nombre: 'Gratis',
     precio_mxn: 0,
+    precio_mxn_anual: 0,
     precio_usd_mensual: 0,
     precio_usd_anual: 0,
     descripcion: 'Prueba TODO el sistema — 1 producto, 2 movimientos por herramienta',
+    creditos_ia_mes: 5,
     max_productos: 1,
     max_analisis_por_modulo: 1,
     max_analisis_brief: 1,
@@ -58,11 +69,13 @@ export const PLAN_LIMITES: Record<Plan, PlanLimites> = {
     comision_pct: 0,
   },
   pro: {
-    nombre: 'Pro',
-    precio_mxn: 199,
-    precio_usd_mensual: 19,
-    precio_usd_anual: 180,
-    descripcion: 'Elige 1 herramienta — hasta 5 productos, movimientos ilimitados',
+    nombre: 'Emprendedor',
+    precio_mxn: 299,
+    precio_mxn_anual: 2990,
+    precio_usd_mensual: 17,
+    precio_usd_anual: 170,
+    descripcion: 'Elige 1 herramienta — hasta 5 productos y 25 créditos de IA al mes',
+    creditos_ia_mes: 25,
     max_productos: 5,
     max_analisis_por_modulo: -1,
     max_analisis_brief: 5,
@@ -79,11 +92,13 @@ export const PLAN_LIMITES: Record<Plan, PlanLimites> = {
     comision_pct: 1.5,
   },
   pro_plus: {
-    nombre: 'Pro Plus',
-    precio_mxn: 349,
-    precio_usd_mensual: 35,
-    precio_usd_anual: 336,
-    descripcion: 'Elige 4 herramientas — hasta 10 productos, movimientos ilimitados',
+    nombre: 'Negocio',
+    precio_mxn: 599,
+    precio_mxn_anual: 5990,
+    precio_usd_mensual: 33,
+    precio_usd_anual: 330,
+    descripcion: 'Elige 4 herramientas — hasta 10 productos y 55 créditos de IA al mes',
+    creditos_ia_mes: 55,
     max_productos: 10,
     max_analisis_por_modulo: -1,
     max_analisis_brief: 10,
@@ -100,11 +115,13 @@ export const PLAN_LIMITES: Record<Plan, PlanLimites> = {
     comision_pct: 1.2,
   },
   business: {
-    nombre: 'Business',
-    precio_mxn: 499,
-    precio_usd_mensual: 49,
-    precio_usd_anual: 468,
-    descripcion: 'Para equipos y agencias — proyectos ilimitados',
+    nombre: 'Empresa',
+    precio_mxn: 1199,
+    precio_mxn_anual: 11990,
+    precio_usd_mensual: 65,
+    precio_usd_anual: 650,
+    descripcion: 'Todas las herramientas, productos ilimitados y 120 créditos de IA al mes',
+    creditos_ia_mes: 120,
     max_productos: -1,
     max_analisis_por_modulo: -1,
     max_analisis_brief: -1,
@@ -122,10 +139,12 @@ export const PLAN_LIMITES: Record<Plan, PlanLimites> = {
   },
   enterprise: {
     nombre: 'Enterprise',
-    precio_mxn: 1499,
-    precio_usd_mensual: 149,
-    precio_usd_anual: 1428,
-    descripcion: 'Para grandes empresas y franquicias',
+    precio_mxn: 4999,
+    precio_mxn_anual: 49990,
+    precio_usd_mensual: 279,
+    precio_usd_anual: 2790,
+    descripcion: 'Para franquicias y grupos — 600 créditos de IA al mes, ampliables',
+    creditos_ia_mes: 600,
     max_productos: -1,
     max_analisis_por_modulo: -1,
     max_analisis_brief: -1,

@@ -9,15 +9,18 @@ import api from '@/lib/api';
 interface PlanLimites {
   nombre: string;
   precio_mxn: number;
+  precio_mxn_anual: number;
   descripcion: string;
   max_productos: number;
   max_analisis_por_modulo: number;
+  creditos_ia_mes: number;
   ai_copy: boolean;
 }
 
 interface BillingStatus {
   plan: string;
   limites: PlanLimites;
+  creditos: { mes: number; usados: number; disponibles: number; renuevan_el: string };
   uso: {
     productos: number;
     analisis: { mercado: number; marketing: number; ventas: number; finanzas: number; total: number };
@@ -83,12 +86,8 @@ function Icon({ name, className = 'w-5 h-5', strokeWidth = 1.7 }: { name: IconNa
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MODULE_BARS = [
-  { key: 'mercado',     label: 'Mercado',     color: 'bg-mercado',     iconColor: 'text-mercado',     icon: 'mercado'     },
-  { key: 'marketing',   label: 'Marketing',   color: 'bg-marketing',   iconColor: 'text-marketing',   icon: 'marketing'   },
-  { key: 'ventas',      label: 'Ventas',      color: 'bg-ventas',      iconColor: 'text-ventas',      icon: 'ventas'       },
-  { key: 'finanzas',    label: 'Finanzas',    color: 'bg-finanzas',    iconColor: 'text-finanzas',    icon: 'finanzas'    },
-] as const;
+/** Precio en pesos con separador de miles: 1199 → "1,199". */
+const pesos = (v: number) => new Intl.NumberFormat('es-MX', { maximumFractionDigits: 0 }).format(v);
 
 const PLAN_ACCENT: Record<string, { text: string; ring: string; tint: string; badge: string; dot: string }> = {
   freemium:   { text: 'text-white/80',  ring: 'ring-white/10',      tint: 'bg-white/[.06]',     badge: 'bg-white/10 text-white/70',          dot: 'bg-white/40' },
@@ -102,6 +101,7 @@ const PLAN_FEATURES: Record<string, { label: string; included: boolean }[]> = {
   freemium: [
     { label: '1 producto activo',             included: true  },
     { label: '1 análisis por módulo',          included: true  },
+    { label: '5 créditos de IA al mes',        included: true  },
     { label: 'Resultados completos Mercado',   included: true  },
     { label: 'Competidores identificados',     included: false },
     { label: 'Copy con IA',                    included: false },
@@ -111,7 +111,7 @@ const PLAN_FEATURES: Record<string, { label: string; included: boolean }[]> = {
   ],
   pro: [
     { label: 'Hasta 5 productos activos',      included: true },
-    { label: 'Re-análisis ilimitados',         included: true },
+    { label: '25 créditos de IA al mes',       included: true },
     { label: 'Competidores identificados',     included: true },
     { label: 'Copy con IA completo',           included: true },
     { label: 'Calendario 2 semanas',           included: true },
@@ -121,7 +121,7 @@ const PLAN_FEATURES: Record<string, { label: string; included: boolean }[]> = {
   ],
   pro_plus: [
     { label: 'Hasta 10 productos activos',     included: true },
-    { label: 'Re-análisis ilimitados',         included: true },
+    { label: '55 créditos de IA al mes',       included: true },
     { label: 'Elige 4 herramientas',           included: true },
     { label: 'Copy con IA completo',           included: true },
     { label: 'Importación masiva CSV',         included: true },
@@ -131,8 +131,8 @@ const PLAN_FEATURES: Record<string, { label: string; included: boolean }[]> = {
   ],
   business: [
     { label: 'Productos ilimitados',           included: true },
-    { label: 'Re-análisis ilimitados',         included: true },
-    { label: 'Todo lo de Pro',                 included: true },
+    { label: '120 créditos de IA al mes',      included: true },
+    { label: 'Todo lo de Negocio',             included: true },
     { label: 'Contabilidad avanzada',          included: true },
     { label: 'Exportar para contador',         included: true },
     { label: 'Inputs de override financiero',  included: true },
@@ -140,8 +140,8 @@ const PLAN_FEATURES: Record<string, { label: string; included: boolean }[]> = {
     { label: 'Acceso anticipado a nuevos módulos', included: true },
   ],
   enterprise: [
-    { label: 'Productos ilimitados',           included: true },
-    { label: 'Todo lo de Business',            included: true },
+    { label: '600 créditos de IA al mes',      included: true },
+    { label: 'Todo lo de Empresa',             included: true },
     { label: 'Trabajadores ilimitados',        included: true },
     { label: 'White-label completo',           included: true },
     { label: 'Comisión POS mínima (0.9%)',     included: true },
@@ -283,8 +283,8 @@ function PlanCard({
       </div>
 
       <div className="flex items-baseline gap-1.5">
-        <span className={`text-[34px] font-bold tracking-tight leading-none ${a.text}`}>${plan.precio_mxn}</span>
-        <span className="text-[13px] text-white/40 font-medium">MXN / mes</span>
+        <span className={`text-[34px] font-bold tracking-tight leading-none ${a.text}`}>${pesos(plan.precio_mxn)}</span>
+        <span className="text-[13px] text-white/40 font-medium">MXN / mes · IVA incluido</span>
       </div>
 
       <div className="h-px bg-white/[.08]" />
@@ -382,6 +382,7 @@ function BillingContent() {
   const hasPaidPlan = !isFreemium;
   const a = PLAN_ACCENT[status.plan] ?? PLAN_ACCENT.freemium;
   const totalUso = status.uso.analisis.total;
+  const renuevan = new Date(status.creditos.renuevan_el).toLocaleDateString('es-MX', { day: 'numeric', month: 'long' });
 
   const planesComprables = status.planes_comprables;
   const sinPrecioStripe = (planKey: string) =>
@@ -439,7 +440,7 @@ function BillingContent() {
           <div className="flex flex-col items-start sm:items-end gap-3 flex-shrink-0">
             {status.limites.precio_mxn > 0 ? (
               <div className="sm:text-right">
-                <p className={`text-[32px] font-bold tracking-tight leading-none ${a.text}`}>${status.limites.precio_mxn}</p>
+                <p className={`text-[32px] font-bold tracking-tight leading-none ${a.text}`}>${pesos(status.limites.precio_mxn)}</p>
                 <p className="text-[12px] text-white/40 mt-1">MXN / mes</p>
               </div>
             ) : (
@@ -478,25 +479,26 @@ function BillingContent() {
             max={status.limites.max_productos}
             color="bg-white/50"
           />
-          {MODULE_BARS.map(({ key, label, color, icon, iconColor }, i) => (
-            <UsageRow
-              key={key}
-              label={`Análisis ${label}`}
-              iconName={icon}
-              iconColor={iconColor}
-              used={status.uso.analisis[key]}
-              max={status.limites.max_analisis_por_modulo}
-              color={color}
-              isLast={i === MODULE_BARS.length - 1}
-            />
-          ))}
+          <UsageRow
+            label="Créditos de IA este mes"
+            iconName="tip"
+            iconColor="text-mercado"
+            used={status.creditos.usados}
+            max={status.creditos.mes}
+            color="bg-mercado"
+            isLast
+          />
         </div>
+        <p className="mt-2 px-1 text-[12px] text-white/40">
+          Se renuevan el {renuevan}. Si un análisis falla o sale de plantilla, el crédito se devuelve.
+          {status.plan === 'freemium' && ' En el plan gratuito los análisis no gastan créditos: tienes uno por módulo.'}
+        </p>
 
         {isFreemium && (
           <div className="mt-3 flex items-center gap-3 bg-brand-primary/[.07] ring-1 ring-brand-primary/20 rounded-[18px] p-3.5 backdrop-blur-xl">
             <Icon name="tip" className="w-5 h-5 text-brand-primary flex-shrink-0" />
             <p className="text-[13px] text-white/70">
-              Con Plan Pro obtienes <span className="text-brand-primary font-semibold">re-análisis ilimitados</span> en todos los módulos.
+              Con el plan Emprendedor obtienes <span className="text-brand-primary font-semibold">25 créditos de IA al mes</span> para repetir análisis y usar las herramientas con IA.
             </p>
           </div>
         )}
@@ -509,7 +511,7 @@ function BillingContent() {
           </h2>
           <p className="text-[14px] text-white/45 mt-1">
             {isFreemium
-              ? 'Desbloquea más productos, herramientas, copy con IA y análisis ilimitados.'
+              ? 'Desbloquea más productos, herramientas y créditos de IA para repetir tus análisis.'
               : 'Compara lo que incluye cada plan y mejora cuando lo necesites.'}
           </p>
         </div>

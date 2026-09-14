@@ -8,7 +8,8 @@ import { ejecutarAnalisisLegal } from '../services/legal/legalOrchestrator';
 import { ejecutarAnalisisBrief } from '../services/brief/briefOrchestrator';
 import { ejecutarAnalisisVentas } from '../services/ventas/ventasOrchestrator';
 import { logger } from '../utils/logger';
-import { conSeguimientoIA } from '../utils/seguimientoIA';
+import { conSeguimientoIA, huboFallbackIA } from '../utils/seguimientoIA';
+import { reembolsarCreditos } from '../services/billing/creditosIA';
 
 /**
  * Sin producto no hay nada que reintentar: se falla de inmediato en vez de gastar
@@ -23,7 +24,11 @@ async function cargarProducto(productoId: string): Promise<Producto> {
 export async function procesarAnalisis(job: Job) {
   // Cada trabajo abre su propio seguimiento de secciones que salieron de plantilla.
   const { moduleName, analisisId, usuarioId } = job.data ?? {};
-  return conSeguimientoIA(() => ejecutarTrabajo(job), { usuarioId, modulo: moduleName, analisisId });
+  return conSeguimientoIA(async () => {
+    await ejecutarTrabajo(job);
+    // Si alguna sección salió de plantilla, el cliente no paga ese análisis.
+    if (huboFallbackIA()) await reembolsarCreditos({ referenciaId: analisisId });
+  }, { usuarioId, modulo: moduleName, analisisId });
 }
 
 async function ejecutarTrabajo(job: Job) {

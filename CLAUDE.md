@@ -14,7 +14,7 @@ Este documento es la **fuente única de verdad técnica** para Claude, Antigravi
 3. **Proveedores**: Directorio de suministros, comparativa de costos y RFQs.
 4. **Finanzas**: Punto de equilibrio, márgenes, flujo proyectado y simulador de escenarios.
 5. **Legal**: Cumplimiento normativo, contratos sugeridos, propiedad intelectual y riesgos.
-6. **Brief**: Diagnóstico y brief ejecutivo integral (a diferencia de los otros 5 módulos, su cuota es **global por cuenta** y no por producto). Implementado con **Claude 3 Haiku** (`@anthropic-ai/sdk`).
+6. **Brief**: Diagnóstico y brief ejecutivo integral (a diferencia de los otros 5 módulos, su cuota es **global por cuenta** y no por producto). Implementado con **Claude Sonnet 5** (`@anthropic-ai/sdk`).
 
 ---
 
@@ -46,7 +46,7 @@ Este documento es la **fuente única de verdad técnica** para Claude, Antigravi
 - **ORM & DB**: TypeORM 0.3 + PostgreSQL 15 (`AppDataSource` en `src/config/database.ts`).
   - **Identificadores**: Todas las entidades usan **UUID v4** como cadenas (`@PrimaryGeneratedColumn('uuid')`). **Prohibido usar `parseInt()`**.
 - **Colas y Tareas en Segundo Plano**: BullMQ 5 + ioredis 5 (`src/workers/analysisQueue.ts` y `src/workers/analysisWorker.ts`).
-- **Inteligencia Artificial**: `@anthropic-ai/sdk` (Claude 3 Haiku) con fallback determinista estructurado y validación Zod.
+- **Inteligencia Artificial**: `@anthropic-ai/sdk` 0.125, modelo por tarea (Haiku 4.5 / Sonnet 5 / Opus 5, ver *Modelos de IA*) con fallback determinista estructurado y validación Zod.
 - **Seguridad & Auth**: JWT (Access Token 15 min, Refresh Token 7 días), revocación en Redis vía `deny:${jti}`, `bcryptjs`, Helmet, CORS parametrizado y `cookie-parser`.
 - **Subida de Archivos**: Multer en memoria RAM (`memoryStorage()`), límite estricto de 50 MB para grabaciones de voz/video, subida directa a AWS S3 mediante `@aws-sdk/client-s3`.
 - **Observabilidad**: Morgan + Prometheus (`prom-client`) con `normalizePath()` anti-memory leaks + `@sentry/node`.
@@ -95,9 +95,13 @@ Este documento es la **fuente única de verdad técnica** para Claude, Antigravi
 - **`admin` (Superadministrador)**: Usuario con bandera `es_admin = true`. Acceso a métricas globales y administración de cuentas en `/api/admin`.
 
 ### Cuotas por Plan
-- **Freemium**: 1 análisis por módulo por producto.
-- **Pro / Pro+ / Business**: Análisis ilimitados (`-1`).
-- Los análisis que concluyan con estado `'fallido'` **no consumen cuota**.
+- **Freemium (Gratis)**: 1 análisis por módulo por producto; 5 créditos de IA al mes para acciones bajo demanda.
+- **Pro (Emprendedor) / Pro+ (Negocio) / Business (Empresa) / Enterprise**: 25 / 55 / 120 / 600 créditos de IA al mes (`creditos_ia_mes` en `planService.ts`). Cada acción cuesta créditos según `COSTO_CREDITOS` (`services/billing/creditosIA.ts`); sin créditos la API responde **402** con `upgrade_required`.
+- Los análisis con estado `'error'` o `resultado_estimado = true` (la IA cayó a plantilla) **no consumen cuota** y sus créditos se reembolsan.
+- Precios en MXN con IVA incluido: ver `docs/pricing/PROPUESTA_PLANES_2026-09.md`.
+
+### Modelos de IA
+Toda llamada a Claude pasa por `crearMensaje(seccion, tarea, params)` de `backend/src/config/anthropic.ts` (nunca `new Anthropic()` en un servicio): `mecanica` → Haiku 4.5, `estrategia`/`extensa` → Sonnet 5, `critica` → Opus 5. Cada llamada queda en `uso_ia` con su costo. Claves: `docs/deployment/CLAVES_IA.md`.
 
 ---
 
