@@ -5,7 +5,7 @@ import { AppDataSource } from '../config/database';
 import { AnalisisLegal } from '../models/AnalisisLegal';
 import { Producto } from '../models/Producto';
 import { authenticate } from '../middleware/auth';
-import { requireCanRunAnalisis, getPlanFromDB } from '../middleware/requirePlan';
+import { requireCanRunAnalisis, getPlanFromDB, requirePlanFeature } from '../middleware/requirePlan';
 import { respuestaAnalisis } from '../services/billing/redactAnalisis';
 import { requireAnalisisLock } from '../middleware/idempotency';
 import { validateBody } from '../middleware/validate';
@@ -52,6 +52,8 @@ const contarAnalisisLegal = (usuarioId: string, productoId?: string): Promise<nu
 router.post(
   '/analizar',
   authenticate,
+  // Legal usa el modelo más caro (Opus 5): solo planes con legal_analisis.
+  requirePlanFeature('legal_analisis', 'El análisis Legal-Fiscal'),
   requireAnalisisLock('legal'),
   requireCanRunAnalisis(contarAnalisisLegal),
   validateBody(AnalizarLegalSchema),

@@ -1088,7 +1088,7 @@ function ContabilidadInner({
                     })}
                   </div>
                   <input type="text" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-emerald-500/50 outline-none" placeholder="O escribe una nueva" />
-                  <p className="text-[10px] text-white/30 mt-1">Las categorías marcadas con PRO requieren plan Pro.</p>
+                  <p className="text-[10px] text-white/30 mt-1">Las categorías marcadas con PRO requieren un plan de pago.</p>
                 </div>
 
                 <label className="flex items-start gap-2 text-xs text-white/70 cursor-pointer pt-1">

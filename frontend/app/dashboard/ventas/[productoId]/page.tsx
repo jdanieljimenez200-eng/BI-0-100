@@ -503,8 +503,8 @@ export default function VentasScopePage() {
           <Field
             label="Demostración o pitch grabado"
             optional
-            hint="Con plan Pro+ puedes transcribirlo y evaluarlo en el Evaluador de Guiones."
-            help="Sube el vídeo con el que muestras el producto a clientes (demo, unboxing o pitch estructurado). Con plan Pro+, podrás transcribirlo y pedirle al Evaluador de Guiones que lo califique como un guion más."
+            hint="Con plan Negocio puedes transcribirlo y evaluarlo en el Evaluador de Guiones."
+            help="Sube el vídeo con el que muestras el producto a clientes (demo, unboxing o pitch estructurado). Con plan Negocio, podrás transcribirlo y pedirle al Evaluador de Guiones que lo califique como un guion más."
           >
             <VentasVideoUploader
               productoId={productoId}

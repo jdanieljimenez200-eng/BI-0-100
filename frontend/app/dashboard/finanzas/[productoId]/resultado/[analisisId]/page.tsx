@@ -942,7 +942,7 @@ export default function FinanzasResultadoPage() {
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-[11px] font-bold text-amber-300 border border-amber-400/30 bg-amber-500/10 transition-all hover:bg-amber-500/20 active:scale-[.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60"
               >
                 <Lock className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.8} />
-                <span>Viabilidad y ROI en Plan Pro</span>
+                <span>Viabilidad y ROI desde el plan Emprendedor</span>
               </Link>
             ) : (
               <>
@@ -968,7 +968,7 @@ export default function FinanzasResultadoPage() {
         <LockedSection
           plan={userPlan}
           className="mb-6"
-          titulo="Indicadores anuales en Plan Pro"
+          titulo="Indicadores anuales desde el plan Emprendedor"
           detalle="Ingresos y utilidad neta del año 1, ROI anual y margen neto promedio. El punto de equilibrio y sus escenarios ya están incluidos en tu plan."
         >
           <SkeletonTarjetas cantidad={4} />
@@ -1069,7 +1069,7 @@ export default function FinanzasResultadoPage() {
                 type="button"
                 disabled={t.bloqueada}
                 aria-disabled={t.bloqueada}
-                title={t.bloqueada ? 'Esta sección se incluye en el Plan Pro' : undefined}
+                title={t.bloqueada ? 'Esta sección se incluye desde el plan Emprendedor' : undefined}
                 onClick={() => { if (t.bloqueada) return; setTab(t.key); }}
                 className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 ${
                   active
@@ -1477,7 +1477,7 @@ export default function FinanzasResultadoPage() {
               {!isPro && (
                 <div className="flex items-center gap-2 text-xs bg-amber-500/10 border border-amber-500/20 rounded-control p-2.5 text-amber-300">
                   <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" strokeWidth={1.8} />
-                  <span>Edición de parámetros disponible en Plan Pro.</span>
+                  <span>Edición de parámetros disponible desde el plan Emprendedor.</span>
                 </div>
               )}
 
@@ -1643,7 +1643,7 @@ export default function FinanzasResultadoPage() {
                       onClick={() => isPro && setShowCsvModal(true)}
                       disabled={!isPro}
                       className="text-[10px] font-semibold px-3 py-1.5 rounded-lg border border-violet-500/30 text-violet-300 hover:bg-violet-500/10 hover:border-violet-500/50 transition disabled:opacity-30 disabled:cursor-not-allowed"
-                      title={isPro ? 'Importar movimientos desde Excel o CSV' : 'Disponible en Plan Pro'}
+                      title={isPro ? 'Importar movimientos desde Excel o CSV' : 'Disponible desde el plan Emprendedor'}
                     >
                       {isPro ? (
                         <span className="flex items-center gap-1.5">
@@ -1666,7 +1666,7 @@ export default function FinanzasResultadoPage() {
                       ) : (
                         <span className="flex items-center gap-1.5">
                           <Lock className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.8} />
-                          <span>Plan Pro</span>
+                          <span>Emprendedor+</span>
                         </span>
                       )}
                     </button>
@@ -1809,7 +1809,7 @@ export default function FinanzasResultadoPage() {
                   {gatedBlocked && (
                     <div className="flex items-center gap-2 bg-brand-primary/10 border border-brand-primary/30 rounded-control p-3 text-xs text-white/70">
                       <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" strokeWidth={1.8} />
-                      <span>La categoría <strong>{movForm.categoria}</strong> requiere Plan Pro para registrarse.</span>
+                      <span>La categoría <strong>{movForm.categoria}</strong> requiere un plan de pago para registrarse.</span>
                     </div>
                   )}
 
@@ -1872,7 +1872,7 @@ export default function FinanzasResultadoPage() {
                   {isMovLimitReached && (
                     <div className="flex items-center gap-2 bg-brand-primary/10 border border-brand-primary/30 rounded-control p-3 text-xs text-white/70">
                       <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" strokeWidth={1.8} />
-                      <span>Límite de 3 movimientos en Freemium. Actualiza a Plan Pro para registros ilimitados.</span>
+                      <span>Límite de 3 movimientos en Freemium. Actualiza a un plan de pago para registros ilimitados.</span>
                     </div>
                   )}
                   <button onClick={handleAddMovimiento} disabled={movLoading || !movForm.descripcion.trim() || !movForm.monto || montoN <= 0 || gatedBlocked || isMovLimitReached}

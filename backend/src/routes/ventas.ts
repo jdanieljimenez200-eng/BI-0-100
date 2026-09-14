@@ -498,7 +498,7 @@ router.get('/:id/objeciones', authenticate, async (req: AuthRequest, res: Respon
 
     const plan = await getPlanFromDB(req.userId!);
     const gate = getVentasGate(plan);
-    if (!gate.tiene_icp) return res.status(403).json({ error: 'El Perfil de Cliente Ideal requiere plan Pro o superior' });
+    if (!gate.tiene_icp) return res.status(403).json({ error: 'El Perfil de Cliente Ideal requiere plan Emprendedor o superior' });
 
     const perfil = analisis.perfil_cliente_data as PerfilClienteIdeal | null;
     if (!perfil) return res.status(400).json({ error: 'Este análisis no tiene un Perfil de Cliente Ideal generado' });
@@ -532,7 +532,7 @@ router.get('/:id/palabras-clave-ads', authenticate, async (req: AuthRequest, res
 
     const plan = await getPlanFromDB(req.userId!);
     const gate = getVentasGate(plan);
-    if (!gate.tiene_icp) return res.status(403).json({ error: 'El Perfil de Cliente Ideal requiere plan Pro o superior' });
+    if (!gate.tiene_icp) return res.status(403).json({ error: 'El Perfil de Cliente Ideal requiere plan Emprendedor o superior' });
 
     const perfil = analisis.perfil_cliente_data as PerfilClienteIdeal | null;
     if (!perfil) return res.status(400).json({ error: 'Este análisis no tiene un Perfil de Cliente Ideal generado' });
@@ -573,7 +573,7 @@ router.get('/:id/followups', authenticate, async (req: AuthRequest, res: Respons
     const plan = await getPlanFromDB(req.userId!);
     const gate = getVentasGate(plan);
     if (!gate.tiene_script_scorer) {
-      return res.status(403).json({ error: 'La secuencia de seguimiento requiere plan Pro+' });
+      return res.status(403).json({ error: 'La secuencia de seguimiento requiere plan Negocio o superior' });
     }
 
     if (!analisis.followups_data) {
@@ -613,7 +613,7 @@ router.post(
       const plan = await getPlanFromDB(req.userId!);
       const gate = getVentasGate(plan);
       if (!gate.tiene_script_scorer) {
-        return res.status(403).json({ error: 'El Evaluador de Guiones requiere plan Pro+' });
+        return res.status(403).json({ error: 'El Evaluador de Guiones requiere plan Negocio o superior' });
       }
 
       const archivos = (req as AuthRequest & { files?: Record<string, Express.Multer.File[]> }).files;
@@ -758,7 +758,7 @@ router.get('/:id/guiones', authenticate, async (req: AuthRequest, res: Response)
 
     const plan = await getPlanFromDB(req.userId!);
     const gate = getVentasGate(plan);
-    if (!gate.tiene_script_scorer) return res.status(403).json({ error: 'Requiere plan Pro+' });
+    if (!gate.tiene_script_scorer) return res.status(403).json({ error: 'Requiere plan Negocio o superior' });
 
     return res.json({ evaluaciones: Array.isArray(analisis.evaluaciones_guion_data) ? analisis.evaluaciones_guion_data : [] });
   } catch (err) {
@@ -789,7 +789,7 @@ router.post(
       const plan = await getPlanFromDB(req.userId!);
       const gate = getVentasGate(plan);
       if (!gate.tiene_competitor_intel) {
-        return res.status(403).json({ error: 'Competitor Intel requiere plan Pro+' });
+        return res.status(403).json({ error: 'El análisis de competidores requiere plan Negocio o superior' });
       }
 
       const nombre = typeof req.body?.nombre === 'string' ? req.body.nombre.trim().slice(0, 100) : '';
@@ -907,7 +907,7 @@ router.get('/:id/competidores', authenticate, async (req: AuthRequest, res: Resp
 
     const plan = await getPlanFromDB(req.userId!);
     const gate = getVentasGate(plan);
-    if (!gate.tiene_competitor_intel) return res.status(403).json({ error: 'Requiere plan Pro+' });
+    if (!gate.tiene_competitor_intel) return res.status(403).json({ error: 'Requiere plan Negocio o superior' });
 
     const datos = (analisis.competidores_data ?? { competidores: [], comparativa: null }) as {
       competidores: AnalisisCompetidor[];
@@ -932,7 +932,7 @@ router.delete('/:id/competidores/:compId', authenticate, async (req: AuthRequest
 
     const plan = await getPlanFromDB(req.userId!);
     const gate = getVentasGate(plan);
-    if (!gate.tiene_competitor_intel) return res.status(403).json({ error: 'Requiere plan Pro+' });
+    if (!gate.tiene_competitor_intel) return res.status(403).json({ error: 'Requiere plan Negocio o superior' });
 
     const datos = (analisis.competidores_data ?? { competidores: [], comparativa: null }) as {
       competidores: Array<AnalisisCompetidor & { id: string }>;

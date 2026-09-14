@@ -21,7 +21,7 @@ describe('planService', () => {
 
     it('retorna límites correctos para pro', () => {
       const l = getLimites('pro');
-      expect(l.max_productos).toBe(5);
+      expect(l.max_productos).toBe(3);
       expect(l.max_analisis_por_modulo).toBe(-1);
       expect(l.ai_copy).toBe(true);
     });
@@ -48,12 +48,12 @@ describe('planService', () => {
       expect(canAddProducto('freemium', 1)).toBe(false);
     });
 
-    it('pro con 4 productos puede agregar', () => {
-      expect(canAddProducto('pro', 4)).toBe(true);
+    it('pro con 2 productos puede agregar', () => {
+      expect(canAddProducto('pro', 2)).toBe(true);
     });
 
-    it('pro con 5 productos NO puede agregar', () => {
-      expect(canAddProducto('pro', 5)).toBe(false);
+    it('pro con 3 productos NO puede agregar', () => {
+      expect(canAddProducto('pro', 3)).toBe(false);
     });
 
     it('business con 9999 productos puede agregar (ilimitado)', () => {
@@ -91,10 +91,9 @@ describe('planService', () => {
       expect(canAddTrabajador('freemium', 0)).toBe(false);
     });
 
-    it('pro permite agregar hasta 2 trabajadores', () => {
+    it('pro permite 1 trabajador', () => {
       expect(canAddTrabajador('pro', 0)).toBe(true);
-      expect(canAddTrabajador('pro', 1)).toBe(true);
-      expect(canAddTrabajador('pro', 2)).toBe(false);
+      expect(canAddTrabajador('pro', 1)).toBe(false);
     });
 
     it('business permite hasta 10 trabajadores', () => {

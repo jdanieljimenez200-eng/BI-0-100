@@ -96,7 +96,7 @@ Este documento es la **fuente única de verdad técnica** para Claude, Antigravi
 
 ### Cuotas por Plan
 - **Freemium (Gratis)**: 1 análisis por módulo por producto; 5 créditos de IA al mes para acciones bajo demanda.
-- **Pro (Emprendedor) / Pro+ (Negocio) / Business (Empresa) / Enterprise**: 25 / 55 / 120 / 600 créditos de IA al mes (`creditos_ia_mes` en `planService.ts`). Cada acción cuesta créditos según `COSTO_CREDITOS` (`services/billing/creditosIA.ts`); sin créditos la API responde **402** con `upgrade_required`.
+- **Pro (Emprendedor) / Pro+ (Negocio) / Business (Empresa) / Enterprise**: 20 / 60 / 120 / 600 créditos de IA al mes (`creditos_ia_mes` en `planService.ts`). Cada acción cuesta créditos según `COSTO_CREDITOS` (`services/billing/creditosIA.ts`); sin créditos la API responde **402** con `upgrade_required`.
 - Los análisis con estado `'error'` o `resultado_estimado = true` (la IA cayó a plantilla) **no consumen cuota** y sus créditos se reembolsan.
 - Precios en MXN con IVA incluido: ver `docs/pricing/PROPUESTA_PLANES_2026-09.md`.
 

@@ -110,41 +110,40 @@ const PLAN_FEATURES: Record<string, { label: string; included: boolean }[]> = {
     { label: 'Contabilidad completa',          included: false },
   ],
   pro: [
-    { label: 'Hasta 5 productos activos',      included: true },
-    { label: '25 créditos de IA al mes',       included: true },
-    { label: 'Competidores identificados',     included: true },
-    { label: 'Copy con IA completo',           included: true },
-    { label: 'Calendario 2 semanas',           included: true },
-    { label: 'Exportar PDF',                   included: true },
-    { label: 'Estrategia de ventas completa',included: true },
-    { label: 'Contabilidad completa',          included: true },
+    { label: 'Hasta 3 productos activos',      included: true  },
+    { label: '20 créditos de IA al mes',       included: true  },
+    { label: '1 herramienta a elegir',         included: true  },
+    { label: 'Copy y calendario con IA',       included: true  },
+    { label: 'Perfil de cliente ideal',        included: true  },
+    { label: 'Exportar PDF e importar CSV',    included: true  },
+    { label: 'Análisis legal-fiscal',          included: false },
+    { label: 'Evaluador de guiones y competidores', included: false },
   ],
   pro_plus: [
     { label: 'Hasta 10 productos activos',     included: true },
-    { label: '55 créditos de IA al mes',       included: true },
+    { label: '60 créditos de IA al mes',       included: true },
     { label: 'Elige 4 herramientas',           included: true },
-    { label: 'Copy con IA completo',           included: true },
-    { label: 'Importación masiva CSV',         included: true },
-    { label: 'Alertas automáticas WhatsApp/email', included: true },
     { label: 'Análisis legal-fiscal',          included: true },
+    { label: 'Evaluador de guiones y competidores', included: true },
+    { label: 'Resumen con IA de las alertas del negocio', included: true },
     { label: 'Hasta 5 trabajadores',           included: true },
+    { label: 'Todo lo de Emprendedor',         included: true },
   ],
   business: [
     { label: 'Productos ilimitados',           included: true },
     { label: '120 créditos de IA al mes',      included: true },
+    { label: 'Las 7 herramientas incluidas',   included: true },
+    { label: 'Tu marca en POS, tickets y cotizaciones', included: true },
+    { label: 'Hasta 10 trabajadores',          included: true },
     { label: 'Todo lo de Negocio',             included: true },
-    { label: 'Contabilidad avanzada',          included: true },
-    { label: 'Exportar para contador',         included: true },
-    { label: 'Inputs de override financiero',  included: true },
     { label: 'Soporte prioritario',            included: true },
     { label: 'Acceso anticipado a nuevos módulos', included: true },
   ],
   enterprise: [
-    { label: '600 créditos de IA al mes',      included: true },
+    { label: '600 créditos de IA al mes, ampliables', included: true },
     { label: 'Todo lo de Empresa',             included: true },
     { label: 'Trabajadores ilimitados',        included: true },
-    { label: 'White-label completo',           included: true },
-    { label: 'Comisión POS mínima (0.9%)',     included: true },
+    { label: 'Marca propia completa',          included: true },
     { label: 'SLA personalizado',              included: true },
     { label: 'Soporte dedicado',               included: true },
     { label: 'Onboarding asistido',            included: true },
@@ -498,7 +497,7 @@ function BillingContent() {
           <div className="mt-3 flex items-center gap-3 bg-brand-primary/[.07] ring-1 ring-brand-primary/20 rounded-[18px] p-3.5 backdrop-blur-xl">
             <Icon name="tip" className="w-5 h-5 text-brand-primary flex-shrink-0" />
             <p className="text-[13px] text-white/70">
-              Con el plan Emprendedor obtienes <span className="text-brand-primary font-semibold">25 créditos de IA al mes</span> para repetir análisis y usar las herramientas con IA.
+              Con el plan Negocio obtienes <span className="text-brand-primary font-semibold">60 créditos de IA al mes</span>, 4 herramientas y el análisis legal.
             </p>
           </div>
         )}

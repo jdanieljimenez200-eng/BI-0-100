@@ -241,7 +241,7 @@ router.post(
       const gate = getPlanGate(plan, 'marketing');
       if (!gate.permite('marketing.reporte_ads')) {
         return res.status(403).json({
-          error: 'El Examinador de Estadísticas Pasadas requiere Plan Pro o superior',
+          error: 'El Examinador de Estadísticas Pasadas requiere un plan de pago',
           code: 'UPGRADE_REQUIRED',
         });
       }

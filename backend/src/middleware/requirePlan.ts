@@ -10,6 +10,7 @@ import {
   planHasFeature,
   planIncluyeHerramienta,
   planPermiteSeleccion,
+  getMaxHerramientas,
   PlanFeature,
 } from '../services/billing/planService';
 import { AuthRequest } from './auth';
@@ -161,10 +162,16 @@ export async function usuarioTieneHerramienta(usuario: Usuario, herramientaName:
     const cuentaId = usuario.account_role === 'trabajador' && usuario.owner_id
       ? usuario.owner_id
       : usuario.id;
-    const seleccionada = await AppDataSource.getRepository(HerramientaSeleccionada).findOne({
-      where: { usuario_id: cuentaId, herramienta_key: herramientaName },
+    // Solo cuentan las primeras N elegidas (N = tope del plan). Si la cuenta bajó
+    // de plan (p. ej. de Negocio con 4 a Emprendedor con 1), las que sobran quedan
+    // guardadas pero sin acceso hasta que deseleccione o vuelva a subir.
+    const vigentes = await AppDataSource.getRepository(HerramientaSeleccionada).find({
+      select: ['herramienta_key'],
+      where: { usuario_id: cuentaId },
+      order: { created_at: 'ASC' },
+      take: getMaxHerramientas(usuario.plan),
     });
-    return !!seleccionada;
+    return vigentes.some((h) => h.herramienta_key === herramientaName);
   }
   return false;
 }
@@ -241,11 +248,21 @@ export function requirePlanFeature(featureName: PlanFeature, featureDesc: string
       const usuario = await getUsuarioOr401(req, res);
       if (!usuario) return;
 
-      if (!planHasFeature(usuario.plan, featureName)) {
+      // Un trabajador usa lo que contrató la cuenta, no el plan de su propio usuario.
+      let plan = usuario.plan;
+      if (usuario.account_role === 'trabajador' && usuario.owner_id) {
+        const owner = await AppDataSource.getRepository(Usuario).findOne({ where: { id: usuario.owner_id }, select: ['id', 'plan'] });
+        plan = owner?.plan ?? plan;
+      }
+
+      if (!planHasFeature(plan, featureName)) {
         return res.status(403).json({
-          error: `'${featureDesc}' requiere un plan superior`,
+          error: `${featureDesc} requiere un plan superior`,
           feature: featureName,
-          plan: usuario.plan,
+          plan,
+          plan_actual: plan,
+          // El frontend lo trata como oferta de mejora, no como error del formulario.
+          upgrade_required: true,
         });
       }
       next();

@@ -102,11 +102,11 @@ const PLAN_BADGE: Record<string, string> = {
 };
 
 const PLAN_LABEL: Record<string, string> = {
-  freemium: 'Freemium',
-  pro: 'Pro',
-  pro_plus: 'Pro+',
-  'pro+': 'Pro+',
-  business: 'Business',
+  freemium: 'Gratis',
+  pro: 'Emprendedor',
+  pro_plus: 'Negocio',
+  'pro+': 'Negocio',
+  business: 'Empresa',
   enterprise: 'Enterprise',
 };
 

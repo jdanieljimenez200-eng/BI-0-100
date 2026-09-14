@@ -20,7 +20,7 @@ import type { Plan } from '../../models/Usuario';
  * Función pura, sin DB ni HTTP → cubierta por los tests unitarios.
  */
 
-export const CANDADO_PRO = '🔒 Disponible en Plan Pro';
+export const CANDADO_PRO = '🔒 Disponible desde el plan Emprendedor';
 
 type Fila = Record<string, unknown>;
 

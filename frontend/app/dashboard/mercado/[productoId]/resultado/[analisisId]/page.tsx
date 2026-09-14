@@ -1572,7 +1572,7 @@ export default function ResultadoMercadoPage() {
             <SectionHeader icon={<IconBrain />} title="Resumen Ejecutivo" tag="IA" tooltip="Síntesis generada por IA cruzando precio, competencia, tendencias e inversión. Se genera en los planes de pago." />
             <LockedSection
               plan={userPlan}
-              titulo="Resumen Ejecutivo disponible en Plan Pro"
+              titulo="Resumen Ejecutivo disponible desde el plan Emprendedor"
               detalle="La síntesis con IA, el puntaje ampliado y el plan de acción de 3 pasos."
               minHeight={300}
             >
@@ -1737,7 +1737,7 @@ export default function ResultadoMercadoPage() {
         {tapada('mercado.competencia') ? (
           <LockedSection
             plan={userPlan}
-            titulo="Competencia local en Plan Pro"
+            titulo="Competencia local desde el plan Emprendedor"
             detalle="Cuántos negocios compiten contigo, su rating promedio y el mapa de saturación."
             minHeight={320}
           >
@@ -1785,7 +1785,7 @@ export default function ResultadoMercadoPage() {
           <div className="reveal">
             <LockedSection
               plan={userPlan}
-              titulo="Posicionamiento de precio en Plan Pro"
+              titulo="Posicionamiento de precio desde el plan Emprendedor"
               detalle="Tu precio frente al promedio real del mercado en tu zona."
               minHeight={180}
             >
@@ -1804,7 +1804,7 @@ export default function ResultadoMercadoPage() {
             <SectionHeader icon={<IconTarget />} title="Comparativa de competidores" tooltip="Competidores reales de tu zona con precio, rating y reseñas. Disponible en los planes de pago." />
             <LockedSection
               plan={userPlan}
-              titulo="Comparativa de competidores en Plan Pro"
+              titulo="Comparativa de competidores desde el plan Emprendedor"
               detalle="Nombres reales, precios, ratings, reseñas y zona de cada jugador de tu mercado."
               minHeight={280}
             >
@@ -1936,7 +1936,7 @@ export default function ResultadoMercadoPage() {
           <div className="reveal">
             <LockedSection
               plan={userPlan}
-              titulo="Tendencias de búsqueda en Plan Pro"
+              titulo="Tendencias de búsqueda desde el plan Emprendedor"
               detalle="Volumen mensual, crecimiento y la serie de los últimos 12 meses."
               minHeight={320}
             >
@@ -2025,7 +2025,7 @@ export default function ResultadoMercadoPage() {
             <SectionHeader icon={<IconCalendar />} title="Ciclos de estacionalidad" tooltip="En qué meses sube o baja la demanda de tu mercado. Disponible en los planes de pago." />
             <LockedSection
               plan={userPlan}
-              titulo="Ciclos de estacionalidad en Plan Pro"
+              titulo="Ciclos de estacionalidad desde el plan Emprendedor"
               detalle="Los 12 meses con su factor de demanda para planificar marketing y liquidez."
               minHeight={170}
             >
@@ -2072,7 +2072,7 @@ export default function ResultadoMercadoPage() {
             <SectionHeader icon={<IconSearch />} title="Análisis DAFO" tooltip="Diagnóstico en 4 dimensiones: fortalezas, debilidades, oportunidades y amenazas. Disponible en los planes de pago." />
             <LockedSection
               plan={userPlan}
-              titulo="Análisis DAFO disponible en Plan Pro"
+              titulo="Análisis DAFO disponible desde el plan Emprendedor"
               detalle="Las 4 dimensiones con impacto, probabilidad y acción recomendada por punto."
               minHeight={340}
             >
@@ -2148,7 +2148,7 @@ export default function ResultadoMercadoPage() {
             <SectionHeader icon={<IconGlobe />} title="Tamaño del mercado" tooltip="TAM, SAM y SOM de tu zona con tres escenarios de penetración. Disponible en los planes de pago." />
             <LockedSection
               plan={userPlan}
-              titulo="Tamaño de mercado (TAM · SAM · SOM) en Plan Pro"
+              titulo="Tamaño de mercado (TAM · SAM · SOM) desde el plan Emprendedor"
               detalle="Cuánto dinero mueve tu categoría, qué parte puedes atender y tu ganancia estimada."
               minHeight={360}
             >

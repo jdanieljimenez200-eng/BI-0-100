@@ -36,30 +36,30 @@ type Creatividad = {
 const CREATIVIDADES: readonly Creatividad[] = [
   {
     id: 'analisis',
-    eyebrow: 'Plan Pro',
-    titulo: 'Análisis ilimitados por producto',
+    eyebrow: 'Créditos de IA',
+    titulo: 'Repite tus análisis cuando cambie tu idea',
     texto:
-      'El plan gratuito incluye un análisis por módulo y producto. Con Pro puedes repetir mercado, marketing, finanzas y ventas cada vez que cambie tu idea.',
+      'El plan gratuito incluye un análisis por módulo y producto. Con créditos de IA mensuales repites mercado, marketing, finanzas y ventas cada vez que lo necesites.',
     cta: 'Ver planes',
     href: '/dashboard/billing',
     color: '#3B82F6',
   },
   {
     id: 'legal',
-    eyebrow: 'Plan Pro',
+    eyebrow: 'Plan Negocio',
     titulo: 'Validación legal de tu producto',
     texto:
-      'Permisos, licencias y riesgos regulatorios revisados antes de invertir. El módulo legal se desbloquea desde el plan Pro.',
+      'Permisos, licencias y riesgos regulatorios revisados antes de invertir. El módulo legal se desbloquea desde el plan Negocio.',
     cta: 'Desbloquear módulo legal',
     href: '/dashboard/billing',
     color: '#A78BFA',
   },
   {
     id: 'herramientas',
-    eyebrow: 'Plan Pro',
+    eyebrow: 'Planes de pago',
     titulo: 'Herramientas sin tope de movimientos',
     texto:
-      'En el plan gratuito cada herramienta admite 2 movimientos. Con Pro operas punto de venta, inventario y contabilidad sin límite.',
+      'En el plan gratuito cada herramienta admite 2 movimientos. En cualquier plan de pago operas punto de venta, inventario y reportes sin límite.',
     cta: 'Comparar planes',
     href: '/dashboard/billing',
     color: '#06B6D4',
@@ -67,9 +67,9 @@ const CREATIVIDADES: readonly Creatividad[] = [
   {
     id: 'alertas',
     eyebrow: 'Plan Negocio',
-    titulo: 'Alertas automáticas del negocio',
+    titulo: 'Resumen con IA de tus alertas',
     texto:
-      'Avisos cuando tu margen o tu colchón de caja se salen de rango, sin tener que entrar a revisarlo.',
+      'Un resumen claro de lo que pide atención en tu negocio: margen, caja, inventario y clientes, en un solo vistazo.',
     cta: 'Ver plan Negocio',
     href: '/dashboard/billing',
     color: '#10B981',

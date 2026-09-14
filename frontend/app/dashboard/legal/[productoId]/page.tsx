@@ -520,7 +520,7 @@ export default function LegalFormPage() {
               <AvisoErrorApi
                 mensaje={error}
                 upgradeRequired={upgradeRequired}
-                titulo="El módulo Legal requiere plan Pro"
+                titulo="El módulo Legal requiere plan Negocio"
               />
 
               <div className="flex gap-3">

@@ -17,7 +17,7 @@ const FEATURE_PLANS: Record<PlanFeature, readonly Plan[]> = {
   ai_copy: ['pro', 'pro_plus', 'business', 'enterprise'],
   csv_import: ['pro', 'pro_plus', 'business', 'enterprise'],
   centro_mando: ['pro', 'pro_plus', 'business', 'enterprise'],
-  legal_analisis: ['pro', 'pro_plus', 'business', 'enterprise'],
+  legal_analisis: ['pro_plus', 'business', 'enterprise'],
   white_label: ['business', 'enterprise'],
   alertas_automaticas: ['pro_plus', 'business', 'enterprise'],
 };

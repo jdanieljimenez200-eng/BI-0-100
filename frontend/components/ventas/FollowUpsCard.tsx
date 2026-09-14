@@ -67,7 +67,7 @@ export default function FollowUpsCard({ analisisId, bloqueado }: Props) {
             <IconLock className="w-4 h-4" />
           </div>
           <p className="text-sm font-bold text-white">Secuencia de Seguimiento</p>
-          <p className="max-w-xs text-xs text-white/45">Mensajes listos para enviar en 3 momentos. Plan Pro+.</p>
+          <p className="max-w-xs text-xs text-white/45">Mensajes listos para enviar en 3 momentos. Plan Negocio.</p>
         </div>
       </div>
     );

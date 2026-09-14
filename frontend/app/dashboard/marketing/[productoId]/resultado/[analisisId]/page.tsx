@@ -1083,12 +1083,12 @@ function DayCard({ dia, diaIndex, semanaIndex, isPublished, onTogglePublished, b
             )}
           </div>
           <p className="text-xs text-white/50 mt-0.5">
-            Publicación programada — contenido completo disponible en Plan Pro
+            Publicación programada — contenido completo disponible desde el plan Emprendedor
           </p>
         </div>
         <div className="flex items-center gap-2.5 flex-shrink-0 flex-wrap">
           <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-400/20 text-amber-300 uppercase tracking-widest">
-            Plan Pro
+            Emprendedor+
           </span>
         </div>
       </div>
@@ -1456,7 +1456,7 @@ function WeekMap({ dias, publishedDays, semanaIndex }: {
           return (
             <button 
               key={d.dia}
-              title={isLocked ? 'Publicación programada (Plan Pro)' : undefined}
+              title={isLocked ? 'Publicación programada (plan Emprendedor)' : undefined}
               onClick={() => {
                 const el = document.getElementById(`daycard-${semanaIndex}-${i}`);
                 if (el) {
@@ -1910,7 +1910,7 @@ export default function MarketingResultadoPage() {
                       <Link
                         key={e.tipo}
                         href="/dashboard/billing"
-                        aria-label={`Estrategia ${tipoKey} disponible en Plan Pro. Mejorar plan`}
+                        aria-label={`Estrategia ${tipoKey} disponible desde el plan Emprendedor. Mejorar plan`}
                         className="text-left rounded-2xl border border-dashed border-amber-400/20 bg-[#0A0F17] p-5 sm:p-6 flex flex-col relative overflow-hidden transition-all duration-200 hover:border-amber-400/40 hover:bg-[#0C121D]"
                       >
                         <div className="flex items-start justify-between mb-4 w-full">
@@ -1918,7 +1918,7 @@ export default function MarketingResultadoPage() {
                             {icon}
                           </div>
                           <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/10 border border-amber-400/20 text-amber-300 px-2.5 py-0.5 rounded-full font-mono uppercase tracking-widest whitespace-nowrap">
-                            Plan Pro
+                            Emprendedor+
                           </span>
                         </div>
 
@@ -1926,7 +1926,7 @@ export default function MarketingResultadoPage() {
                           Estrategia {tipoKey}
                         </p>
                         <p className="text-xs text-white/40 font-normal mt-1 mb-5 flex-1 leading-relaxed">
-                          Idoneidad, precio sugerido y presupuesto de esta táctica disponibles en Plan Pro.
+                          Idoneidad, precio sugerido y presupuesto de esta táctica disponibles desde el plan Emprendedor.
                         </p>
 
                         <div className="space-y-2.5 bg-black/30 p-3.5 rounded-xl border border-white/[0.06] w-full">
@@ -2007,7 +2007,7 @@ export default function MarketingResultadoPage() {
                 return (
                   <LockedSection
                     plan={userPlan}
-                    titulo="Detalle de la estrategia disponible en Plan Pro"
+                    titulo="Detalle de la estrategia disponible desde el plan Emprendedor"
                     detalle="Descripción, público objetivo, canales principales, ROI estimado y ventaja competitiva de cada táctica."
                     minHeight={340}
                   >
@@ -2190,7 +2190,7 @@ export default function MarketingResultadoPage() {
                           type="button"
                           aria-pressed={semanaActiva === s.numero}
                           aria-disabled={semanaBloqueada}
-                          title={semanaBloqueada ? 'La semana 2 se genera en Plan Pro' : undefined}
+                          title={semanaBloqueada ? 'La semana 2 se genera desde el plan Emprendedor' : undefined}
                           onClick={() => { if (semanaBloqueada) return; setSemanaActiva(s.numero as 1 | 2); }}
                           className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
                             semanaActiva === s.numero
@@ -2306,7 +2306,7 @@ export default function MarketingResultadoPage() {
             {vistaBloqueada ? (
               <LockedSection
                 plan={userPlan}
-                titulo="Plan de inversión y horarios disponible en Plan Pro"
+                titulo="Plan de inversión y horarios disponible desde el plan Emprendedor"
                 detalle="Reparto del presupuesto por plataforma y franja horaria, mapa de calor de publicación y simulación de margen con descuento."
                 minHeight={340}
               >
@@ -2341,7 +2341,7 @@ export default function MarketingResultadoPage() {
             {bloqueaTendencias ? (
               <LockedSection
                 plan={userPlan}
-                titulo="Inteligencia de tendencias virales disponible en Plan Pro"
+                titulo="Inteligencia de tendencias virales disponible desde el plan Emprendedor"
                 detalle="Tendencias nacionales e internacionales con índice de viralidad, gancho publicitario y formato sugerido por plataforma."
                 minHeight={360}
               >

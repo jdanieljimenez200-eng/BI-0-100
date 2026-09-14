@@ -1,6 +1,6 @@
 # Propuesta de planes y precios — septiembre 2026
 
-> **Estado: aprobada el 2026-09-14 y aplicada.** **Estimación, no medición.** Los costos de IA salen del tamaño real de los
+> **Estado: aprobada el 2026-09-14 y aplicada; ajustada el mismo día con la estrategia 70/30 (sección 3b).** **Estimación, no medición.** Los costos de IA salen del tamaño real de los
 > prompts del código y de las tarifas oficiales de Anthropic, con los modelos
 > asignados en `backend/src/config/anthropic.ts`. En cuanto haya tráfico real, el
 > panel **Admin → Costos de IA** da el número exacto; si difiere más de un 30 %,
@@ -81,6 +81,32 @@ Para otros países, el mismo plan en USD redondeado. Anual = 10 meses (2 gratis)
 
 Las funciones por plan son las que ya define `planService.ts`; lo que cambia es
 precio, moneda y créditos en lugar de "ilimitado".
+
+## 3b. Ajuste 70/30 (anclaje hacia el plan medio)
+
+El plan de entrada se sube a **$449 MXN (75 % del Negocio)** y se recorta a
+propósito: 1 herramienta, 3 productos, 1 trabajador, **20 créditos** y **sin Legal
+ni evaluador de guiones/competidores**. El Negocio pasa a **60 créditos**. Por
+$150 más el Negocio da 3× créditos, 4× herramientas, 3× productos, Legal y los
+evaluadores: es la compra obvia. Empresa ($1,199) cuesta el doble del Negocio y
+ancla por arriba.
+
+| | Emprendedor | **Negocio** | Empresa |
+|---|---|---|---|
+| Precio | $449 | **$599** | $1,199 |
+| Créditos | 20 | **60** | 120 |
+| Créditos por cada $100 | 4.5 | **10** | 10 |
+| Herramientas | 1 | **4** | 7 |
+| Productos / trabajadores | 3 / 1 | **10 / 5** | ∞ / 10 |
+| Legal, guiones y competidores | — | **✓** | ✓ |
+
+Margen del Emprendedor a $449 con 20 créditos: ~91 % en uso máximo. El resto de
+la sección 4 sigue vigente para Negocio (60 créditos → ~84 %), Empresa y Enterprise.
+
+Se corrigió además lo que el código no cumplía: Legal no estaba bloqueado en el
+plan gratuito, las herramientas elegidas no se recortaban al bajar de plan, los
+movimientos contables manuales no tenían el tope gratuito, y las páginas
+anunciaban alertas por WhatsApp/email y comisión del POS que no existen.
 
 ## 4. Margen
 

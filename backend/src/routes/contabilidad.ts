@@ -54,11 +54,14 @@ router.use(authenticate);
 router.use(requireToolCapability('contabilidad'));
 // Desbloqueo por plan/selección para todas las rutas.
 //
-// SIN tope de movimientos a propósito: MovimientoContable lo alimentan también
-// POS, inventario y nómina por sincronización, así que contarlos aquí agotaría
-// el cupo freemium con movimientos que el usuario no registró en contabilidad.
-// Para aplicar el tope hace falta antes distinguir el origen del movimiento.
+// El tope de movimientos del plan gratuito se aplica solo al alta manual (ver
+// POST /:productoId): POS, inventario y nómina también escriben aquí y no
+// deben agotar el cupo con movimientos que el usuario no capturó.
 router.use(requireHerramientaAccess('contabilidad'));
+
+/** Movimientos capturados a mano en la cuenta: lo único que cuenta para el tope freemium. */
+const contarMovimientosManuales = (cuentaId: string) =>
+  AppDataSource.getRepository(MovimientoContable).count({ where: { usuario_id: cuentaId, fuente: 'manual' } });
 
 const repo = () => AppDataSource.getRepository(MovimientoContable);
 
@@ -75,7 +78,7 @@ router.get('/:productoId', ah(async (req: AuthRequest, res: Response) => {
 }));
 
 // POST /api/contabilidad/:productoId — create movement
-router.post('/:productoId', validateBody(CrearMovimientoContableSchema), ah(async (req: AuthRequest, res: Response) => {
+router.post('/:productoId', requireHerramientaAccess('contabilidad', contarMovimientosManuales), validateBody(CrearMovimientoContableSchema), ah(async (req: AuthRequest, res: Response) => {
   const producto = await AppDataSource.getRepository(Producto).findOne({
     where: { id: req.params.productoId, usuario_id: req.userId },
   });
@@ -119,7 +122,7 @@ router.post('/:productoId', validateBody(CrearMovimientoContableSchema), ah(asyn
     if (plan === 'freemium') {
       if (GATED_CATS_FREEMIUM.includes((categoria ?? '').trim())) {
         res.status(403).json({
-          error: `La categoría "${(categoria ?? '').trim()}" está disponible desde el plan Pro`,
+          error: `La categoría "${(categoria ?? '').trim()}" está disponible desde el plan Emprendedor`,
           upgrade_required: true,
           plan_actual: plan,
         });

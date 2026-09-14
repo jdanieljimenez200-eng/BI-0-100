@@ -76,16 +76,16 @@ describe('Equipo Business Logic & Security Tests', () => {
 
   describe('Control de Cuotas con Invitaciones Pendientes', () => {
     it('impide agregar trabajadores si las invitaciones pendientes saturan el cupo', () => {
-      const plan = 'pro'; // max_trabajadores = 2
-      const trabajadoresActuales = 1;
+      const plan = 'pro_plus'; // max_trabajadores = 5
+      const trabajadoresActuales = 4;
       const invitacionesPendientes = 1;
 
-      // 1 trabajador activo + 1 invitación vigente = 2 ocupados
+      // 4 trabajadores activos + 1 invitación vigente = 5 ocupados
       expect(canAddTrabajador(plan, trabajadoresActuales + invitacionesPendientes)).toBe(false);
     });
 
     it('permite agregar si el total de trabajadores e invitaciones no excede el cupo', () => {
-      const plan = 'pro'; // max_trabajadores = 2
+      const plan = 'pro_plus'; // max_trabajadores = 5
       const trabajadoresActuales = 1;
       const invitacionesPendientes = 0;
 
