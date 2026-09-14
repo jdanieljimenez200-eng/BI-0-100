@@ -4,6 +4,7 @@ import { AppDataSource } from '../config/database';
 import { Usuario, Plan } from '../models/Usuario';
 import { Producto } from '../models/Producto';
 import { HerramientaSeleccionada } from '../models/HerramientaSeleccionada';
+import { AsignacionTrabajador } from '../models/AsignacionTrabajador';
 import {
   canAddMovimiento,
   canAddProducto as planCanAddProducto,
@@ -12,6 +13,8 @@ import {
   planPermiteSeleccion,
   getMaxHerramientas,
   PlanFeature,
+  CapabilityKey,
+  computePermisosEfectivos,
 } from '../services/billing/planService';
 import { AuthRequest } from './auth';
 import { logger } from '../utils/logger';
@@ -183,12 +186,52 @@ export function requireToolCapability(herramientaName: string) {
       const usuario = await getUsuarioOr401(req, res);
       if (!usuario) return;
 
-      const tieneAcceso = await usuarioTieneHerramienta(usuario, herramientaName);
-      if (!tieneAcceso) {
-        return res.status(403).json({
-          error: `La herramienta '${herramientaName}' no está incluida en tu plan`,
-          plan: usuario.plan,
+      if (usuario.account_role === 'trabajador' && usuario.owner_id) {
+        req.trabajadorRealId = usuario.id;
+        req.cuentaEfectivaId = usuario.owner_id;
+        req.userId = usuario.owner_id;
+
+        const owner = await AppDataSource.getRepository(Usuario).findOne({
+          where: { id: usuario.owner_id },
         });
+
+        if (!owner) {
+          return res.status(404).json({ error: 'Cuenta principal de la organización no encontrada' });
+        }
+
+        const tieneAccesoOwner = await usuarioTieneHerramienta(owner, herramientaName);
+        if (!tieneAccesoOwner) {
+          return res.status(403).json({
+            error: `La herramienta '${herramientaName}' no está incluida en el plan de la organización`,
+            plan: owner.plan,
+          });
+        }
+
+        const asignaciones = await AppDataSource.getRepository(AsignacionTrabajador).find({
+          select: ['permisos'],
+          where: { trabajador_id: usuario.id, cuenta_id: usuario.owner_id, activo: true },
+        });
+        const permisos = computePermisosEfectivos('trabajador', asignaciones.map((a) => a.permisos));
+        const tienePermiso = permisos[herramientaName as CapabilityKey] === true;
+        if (!tienePermiso) {
+          return res.status(403).json({
+            error: `No tienes permisos para acceder a la herramienta '${herramientaName}'`,
+            capability: herramientaName,
+          });
+        }
+      } else {
+        // Si un middleware anterior de la cadena ya resolvió a un trabajador,
+        // `req.userId` apunta ahora al dueño: no se borra quién es la persona real.
+        if (req.cuentaEfectivaId !== usuario.id) req.trabajadorRealId = undefined;
+        req.cuentaEfectivaId = usuario.id;
+
+        const tieneAcceso = await usuarioTieneHerramienta(usuario, herramientaName);
+        if (!tieneAcceso) {
+          return res.status(403).json({
+            error: `La herramienta '${herramientaName}' no está incluida en tu plan`,
+            plan: usuario.plan,
+          });
+        }
       }
       next();
     } catch (err) {
@@ -211,26 +254,75 @@ export function requireHerramientaAccess(
       const usuario = await getUsuarioOr401(req, res);
       if (!usuario) return;
 
-      const tieneAcceso = await usuarioTieneHerramienta(usuario, herramientaName);
-      if (!tieneAcceso) {
-        return res.status(403).json({
-          error: `La herramienta '${herramientaName}' no está incluida en tu plan`,
-          plan: usuario.plan,
-        });
-      }
+      if (usuario.account_role === 'trabajador' && usuario.owner_id) {
+        req.trabajadorRealId = usuario.id;
+        req.cuentaEfectivaId = usuario.owner_id;
+        req.userId = usuario.owner_id;
 
-      if (getCount) {
-        const cuentaId = usuario.account_role === 'trabajador' && usuario.owner_id
-          ? usuario.owner_id
-          : usuario.id;
-        const current = await getCount(cuentaId);
-        if (!canAddMovimiento(usuario.plan, current)) {
-          return res.status(429).json({
-            error: 'Límite de movimientos de tu plan alcanzado',
-            upgrade_required: true,
-            plan: usuario.plan,
-            mensaje: 'Actualiza a Pro para movimientos ilimitados.',
+        const owner = await AppDataSource.getRepository(Usuario).findOne({
+          where: { id: usuario.owner_id },
+        });
+
+        if (!owner) {
+          return res.status(404).json({ error: 'Cuenta principal de la organización no encontrada' });
+        }
+
+        const tieneAccesoOwner = await usuarioTieneHerramienta(owner, herramientaName);
+        if (!tieneAccesoOwner) {
+          return res.status(403).json({
+            error: `La herramienta '${herramientaName}' no está incluida en el plan de la organización`,
+            plan: owner.plan,
           });
+        }
+
+        const asignaciones = await AppDataSource.getRepository(AsignacionTrabajador).find({
+          select: ['permisos'],
+          where: { trabajador_id: usuario.id, cuenta_id: usuario.owner_id, activo: true },
+        });
+        const permisos = computePermisosEfectivos('trabajador', asignaciones.map((a) => a.permisos));
+        const tienePermiso = permisos[herramientaName as CapabilityKey] === true;
+        if (!tienePermiso) {
+          return res.status(403).json({
+            error: `No tienes permisos para acceder a la herramienta '${herramientaName}'`,
+            capability: herramientaName,
+          });
+        }
+
+        if (getCount) {
+          const current = await getCount(usuario.owner_id);
+          if (!canAddMovimiento(owner.plan, current)) {
+            return res.status(429).json({
+              error: 'Límite de movimientos del plan alcanzado',
+              upgrade_required: true,
+              plan: owner.plan,
+              mensaje: 'Actualiza a un plan de pago para movimientos ilimitados.',
+            });
+          }
+        }
+      } else {
+        // Si un middleware anterior de la cadena ya resolvió a un trabajador,
+        // `req.userId` apunta ahora al dueño: no se borra quién es la persona real.
+        if (req.cuentaEfectivaId !== usuario.id) req.trabajadorRealId = undefined;
+        req.cuentaEfectivaId = usuario.id;
+
+        const tieneAcceso = await usuarioTieneHerramienta(usuario, herramientaName);
+        if (!tieneAcceso) {
+          return res.status(403).json({
+            error: `La herramienta '${herramientaName}' no está incluida en tu plan`,
+            plan: usuario.plan,
+          });
+        }
+
+        if (getCount) {
+          const current = await getCount(usuario.id);
+          if (!canAddMovimiento(usuario.plan, current)) {
+            return res.status(429).json({
+              error: 'Límite de movimientos de tu plan alcanzado',
+              upgrade_required: true,
+              plan: usuario.plan,
+              mensaje: 'Actualiza a un plan de pago para movimientos ilimitados.',
+            });
+          }
         }
       }
       next();

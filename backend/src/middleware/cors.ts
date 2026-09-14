@@ -45,21 +45,41 @@ export const corsMiddleware = cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   // X-Admin-Token y X-Admin-Totp: verificación en dos pasos del panel de admin.
   // Sin ellas, el preflight del navegador bloquea toda petición del panel.
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Token', 'X-Admin-Totp'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-bypass-rate-limit', 'X-Admin-Token', 'X-Admin-Totp'],
 });
 
 /** Rutas con alta frecuencia legítima: stream SSE y polling de estado. */
 const SSE_PATH = /^\/events\/?$/;
 const STATUS_PATH = /\/status\/?$/;
 
+/**
+ * Salto de los límites por IP para pruebas de carga y QA.
+ *
+ * Solo en entornos que se declaran explícitamente de desarrollo o test: si un
+ * despliegue arranca sin NODE_ENV, el código fijo del repo y RATE_LIMIT_DISABLED
+ * no deben poder apagar la protección. En producción solo vale el secreto
+ * RATE_LIMIT_BYPASS_SECRET (mínimo 32 caracteres).
+ */
+const ENTORNO_LOCAL = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
+
+const isBypassRequest = (req: { headers?: Record<string, unknown> }): boolean => {
+  if (ENTORNO_LOCAL && process.env.RATE_LIMIT_DISABLED === 'true') return true;
+  const token = req.headers ? req.headers['x-bypass-rate-limit'] : undefined;
+  if (typeof token !== 'string' || !token) return false;
+  if (ENTORNO_LOCAL && token === 'bi0a100-qa-bypass') return true;
+  const secreto = process.env.RATE_LIMIT_BYPASS_SECRET;
+  if (secreto && secreto.length >= 32 && token === secreto) return true;
+  return false;
+};
+
 const baseLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: process.env.RATE_LIMIT_MAX ? parseInt(process.env.RATE_LIMIT_MAX, 10) : 300,
   standardHeaders: true,
   legacyHeaders: false,
   // Un solo análisis en curso (1 req/3s = 300/15min) agotaba la ventana
   // completa por sí mismo y devolvía 429 al resto de la app.
-  skip: (req) => SSE_PATH.test(req.path) || STATUS_PATH.test(req.path),
+  skip: (req) => isBypassRequest(req) || SSE_PATH.test(req.path) || STATUS_PATH.test(req.path),
 });
 
 /** Límite general para toda la API (excluye SSE y los endpoints /status) */
@@ -69,7 +89,7 @@ export const apiLimiter = baseLimiter;
 export const analysisStatusLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
-  skip: (req) => !STATUS_PATH.test(req.path),
+  skip: (req) => isBypassRequest(req) || !STATUS_PATH.test(req.path),
   message: { error: 'Demasiadas consultas de estado. Reduce la frecuencia de sondeo.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -80,6 +100,7 @@ export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   skipSuccessfulRequests: true,
+  skip: (req) => isBypassRequest(req),
   message: { error: 'Demasiados intentos de inicio de sesión. Espera 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -89,6 +110,7 @@ export const loginLimiter = rateLimit({
 export const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
+  skip: (req) => isBypassRequest(req),
   message: { error: 'Demasiados registros desde esta IP. Intenta más tarde.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -98,7 +120,9 @@ export const signupLimiter = rateLimit({
 export const passwordResetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
+  skip: (req) => isBypassRequest(req),
   message: { error: 'Demasiadas solicitudes. Intenta más tarde.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
+
