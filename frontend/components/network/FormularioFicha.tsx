@@ -52,6 +52,7 @@ type Formulario = {
   pais: string;
   email_contacto: string;
   telefono: string;
+  whatsapp: string;
   mostrar_contacto: boolean;
   sitio_web: string;
   video_url: string;
@@ -73,13 +74,14 @@ function aFormulario(ficha?: FichaPropia): Formulario {
     pais: ficha?.pais ?? '',
     email_contacto: ficha?.email_contacto ?? '',
     telefono: ficha?.telefono ?? '',
+    whatsapp: ficha?.whatsapp ?? '',
     mostrar_contacto: ficha?.mostrar_contacto ?? false,
     sitio_web: ficha?.sitio_web ?? '',
     video_url: ficha?.video_url ?? '',
     tarifa_desde: ficha?.tarifa_desde === null || ficha?.tarifa_desde === undefined
       ? ''
       : String(ficha.tarifa_desde),
-    moneda: ficha?.moneda ?? 'USD',
+    moneda: ficha?.moneda ?? 'MXN',
     ofrece_consulta_gratis: ficha?.ofrece_consulta_gratis ?? false,
   };
 }
@@ -110,11 +112,12 @@ function aDatos(f: Formulario): DatosFicha {
     pais: opcional(f.pais)?.toUpperCase() ?? null,
     email_contacto: opcional(f.email_contacto),
     telefono: opcional(f.telefono),
+    whatsapp: opcional(f.whatsapp),
     mostrar_contacto: f.mostrar_contacto,
     sitio_web: opcional(f.sitio_web),
     video_url: opcional(f.video_url),
     tarifa_desde: f.tarifa_desde.trim() === '' ? null : Number(f.tarifa_desde),
-    moneda: texto(f.moneda) || 'USD',
+    moneda: texto(f.moneda) || 'MXN',
     ofrece_consulta_gratis: f.ofrece_consulta_gratis,
   };
 }
@@ -415,6 +418,26 @@ export default function FormularioFicha({
           La dirección web tiene que empezar por http:// o https://.
         </p>
 
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-4">
+          <label className={etiqueta} htmlFor="whatsapp">
+            WhatsApp para clientes
+          </label>
+          <input
+            id="whatsapp"
+            inputMode="tel"
+            value={f.whatsapp}
+            onChange={(e) => set('whatsapp', e.target.value)}
+            maxLength={24}
+            placeholder="52 33 1234 5678"
+            className={campo}
+          />
+          <p className="text-white/35 text-[11px] mt-1.5 leading-relaxed">
+            Con lada de país (52 para México). Es el botón principal de tu perfil y{' '}
+            <strong className="text-white/55">sí se publica</strong>: quien lo pulsa abre un chat
+            contigo. Déjalo vacío si no quieres recibir mensajes por ahí.
+          </p>
+        </div>
+
         <div>
           <span className={etiqueta}>Foto o logo</span>
           <div className="flex items-center gap-4">
@@ -474,7 +497,7 @@ export default function FormularioFicha({
               id="moneda"
               value={f.moneda}
               onChange={(e) => set('moneda', e.target.value.toUpperCase().slice(0, 10))}
-              placeholder="USD"
+              placeholder="MXN"
               className={campo}
             />
           </div>

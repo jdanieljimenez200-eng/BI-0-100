@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ModeracionResenas from '@/components/network/ModeracionResenas';
+import ModeracionImpulsos from '@/components/network/ModeracionImpulsos';
 import {
   fichasAdmin,
   cambiarEstadoFicha,
@@ -15,7 +16,7 @@ import {
   type FichaPropia,
 } from '@/lib/network';
 
-type Pestana = EstadoExperto | 'resenas';
+type Pestana = EstadoExperto | 'resenas' | 'impulsos';
 
 const PESTANAS: { clave: Pestana; texto: string }[] = [
   { clave: 'pendiente', texto: 'Por revisar' },
@@ -23,6 +24,7 @@ const PESTANAS: { clave: Pestana; texto: string }[] = [
   { clave: 'rechazado', texto: 'Rechazadas' },
   { clave: 'suspendido', texto: 'Suspendidas' },
   { clave: 'resenas', texto: 'Reseñas' },
+  { clave: 'impulsos', texto: 'Impulsos' },
 ];
 
 const FECHA = new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
@@ -57,7 +59,7 @@ export default function AdminNetworkPage() {
   const [verificar, setVerificar] = useState<Record<string, boolean>>({});
 
   const cargar = useCallback(async () => {
-    if (pestana === 'resenas') return;
+    if (pestana === 'resenas' || pestana === 'impulsos') return;
     setFichas(null);
     setError(null);
     try {
@@ -143,6 +145,8 @@ export default function AdminNetworkPage() {
 
       {pestana === 'resenas' ? (
         <ModeracionResenas />
+      ) : pestana === 'impulsos' ? (
+        <ModeracionImpulsos />
       ) : fichas === null ? (
         <p className="text-white/40 text-sm">Cargando…</p>
       ) : fichas.length === 0 ? (

@@ -23,6 +23,23 @@ const CONFIG: Record<CategoriaExperto, { titulo: string; subtitulo: string }> = 
     subtitulo:
       'Distribuidores y fabricantes de tu rubro. Los contactas y acuerdas directamente con ellos.',
   },
+  contabilidad: {
+    titulo: 'Contadores y asesores fiscales',
+    subtitulo:
+      'Para aterrizar los números de tu análisis: régimen, facturación y obligaciones. Los contactas directamente.',
+  },
+  diseno: {
+    titulo: 'Diseñadores y estudios de marca',
+    subtitulo: 'Logotipo, empaque e identidad visual para tu producto. Los contactas directamente.',
+  },
+  proveedores: {
+    titulo: 'Proveedores y fabricantes',
+    subtitulo: 'Materia prima, maquila y empaque para producir lo que validaste. Los contactas directamente.',
+  },
+  tecnologia: {
+    titulo: 'Desarrollo y tecnología',
+    subtitulo: 'Tienda en línea, sistemas y automatización para operar tu negocio. Los contactas directamente.',
+  },
 };
 
 /**
@@ -35,16 +52,29 @@ const CONFIG: Record<CategoriaExperto, { titulo: string; subtitulo: string }> = 
  * apartado de "expertos recomendados" vacío promete algo que no existe, y es
  * exactamente el hueco que antes se rellenaba con despachos inventados.
  */
-export default function ExpertosRecomendados({ categoria }: { categoria: CategoriaExperto }) {
+export default function ExpertosRecomendados({
+  categoria,
+  ciudad,
+}: {
+  categoria: CategoriaExperto;
+  /** Ciudad del negocio analizado: activa los impulsos de esa ciudad. */
+  ciudad?: string | null;
+}) {
   const [expertos, setExpertos] = useState<ExpertoPublico[] | null>(null);
   const cfg = CONFIG[categoria];
   const acento = ACENTO[categoria];
 
   useEffect(() => {
     let vigente = true;
-    listarExpertos({ categoria, limite: 6 })
-      .then((d) => {
-        if (vigente) setExpertos(d.expertos);
+    // Sin filtrar por ciudad los orgánicos: en una ciudad pequeña dejaría la
+    // sección vacía. La ciudad solo decide qué impulsos entran.
+    listarExpertos({ categoria, limite: 6, ...(ciudad ? { ciudad } : {}) })
+      .then(async (d) => {
+        let organicos = d.expertos;
+        if (ciudad) organicos = (await listarExpertos({ categoria, limite: 6 })).expertos;
+        const promo = d.promocionados ?? [];
+        const ids = new Set(promo.map((e) => e.id));
+        if (vigente) setExpertos([...promo, ...organicos.filter((e) => !ids.has(e.id))].slice(0, 6));
       })
       .catch(() => {
         // Si la red no responde, la sección simplemente no aparece. No hay nada
@@ -54,7 +84,7 @@ export default function ExpertosRecomendados({ categoria }: { categoria: Categor
     return () => {
       vigente = false;
     };
-  }, [categoria]);
+  }, [categoria, ciudad]);
 
   // `null` = todavía cargando. No se reserva hueco ni se pinta un esqueleto:
   // hasta saber si hay expertos, no se anuncia una sección que puede no existir.

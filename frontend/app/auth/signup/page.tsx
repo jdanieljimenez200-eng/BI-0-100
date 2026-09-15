@@ -30,6 +30,8 @@ const stats = [
 export default function SignupPage() {
   const router = useRouter();
   const [form, setForm] = useState({ name: '', email: '', password: '', codigo_invitacion: '' });
+  // «Tengo un negocio» o «Ofrezco servicios»: decide a dónde se entra al terminar.
+  const [tipoCuenta, setTipoCuenta] = useState<'negocio' | 'experto'>('negocio');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -45,7 +47,9 @@ export default function SignupPage() {
   const isFormValid = form.name && form.email && validateEmail(form.email) && form.password && !getPasswordError(form.password, true) && !loading;
 
   useEffect(() => {
-    const param = new URLSearchParams(window.location.search).get('error');
+    const query = new URLSearchParams(window.location.search);
+    if (query.get('tipo') === 'experto') setTipoCuenta('experto');
+    const param = query.get('error');
     if (param) {
       const KNOWN_ERRORS: Record<string, string> = {
         google_failed: 'No pudimos completar el registro con Google.',
@@ -72,7 +76,13 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      const { data } = await api.post('/auth/register', { name: form.name, email: form.email, password: form.password });
+      const { data } = await api.post('/auth/register', {
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        tipo_cuenta: tipoCuenta,
+        ...(form.codigo_invitacion ? { codigo_invitacion: form.codigo_invitacion } : {}),
+      });
       if (data.user) {
         localStorage.setItem('usuario', JSON.stringify({
           ...data.user,
@@ -89,7 +99,10 @@ export default function SignupPage() {
 
       if (formRef.current) gsap.to(formRef.current, { scale: 1.05, opacity: 0, filter: 'blur(10px)', duration: 0.8, ease: 'expo.in' });
       gsap.to('.lp-anim', { x: -50, opacity: 0, duration: 0.6, stagger: 0.05, ease: 'expo.in' });
-      gsap.delayedCall(0.6, () => router.push('/dashboard'));
+      // Un colaborador invitado entra al negocio que lo invitó, elija lo que elija.
+      const destino =
+        data.user?.tipo_cuenta === 'experto' ? '/network/registro?bienvenida=1' : '/dashboard';
+      gsap.delayedCall(0.6, () => router.push(destino));
     } catch (err: unknown) {
       const errorInfo = interpretarErrorApi(err, 'Error al crear la cuenta.');
       setError(errorInfo.mensaje);
@@ -200,6 +213,36 @@ export default function SignupPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5 relative z-20" noValidate>
+            <fieldset className="form-element">
+              <legend className="block text-xs font-bold text-white/50 uppercase tracking-widest mb-2">¿Qué te trae?</legend>
+              <div className="grid grid-cols-2 gap-2" role="radiogroup">
+                {([
+                  { valor: 'negocio', titulo: 'Tengo un negocio', detalle: 'Validar y hacer crecer mi idea' },
+                  { valor: 'experto', titulo: 'Ofrezco servicios', detalle: 'Aparecer en la red de expertos' },
+                ] as const).map((op) => {
+                  const activo = tipoCuenta === op.valor;
+                  return (
+                    <button
+                      key={op.valor}
+                      type="button"
+                      role="radio"
+                      aria-checked={activo}
+                      onClick={() => setTipoCuenta(op.valor)}
+                      disabled={loading}
+                      className={`text-left rounded-xl border px-3.5 py-3 transition-all duration-200 ${
+                        activo
+                          ? 'border-[#E74C3C]/60 bg-[#E74C3C]/10 shadow-[0_0_24px_rgba(231,76,60,0.15)]'
+                          : 'border-white/10 bg-[#03070C]/40 hover:border-white/25'
+                      }`}
+                    >
+                      <span className={`block text-sm font-bold ${activo ? 'text-white' : 'text-white/70'}`}>{op.titulo}</span>
+                      <span className="block text-[11px] text-white/40 mt-0.5 leading-snug">{op.detalle}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+
             <InputField
               id="signup-name"
               label="Nombre completo"

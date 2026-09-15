@@ -10,15 +10,34 @@ import api from '@/lib/api';
  * es uno del que nadie ha opinado todavía.
  */
 
-export type CategoriaExperto = 'legal' | 'marketing' | 'ventas';
+export type CategoriaExperto =
+  | 'legal'
+  | 'contabilidad'
+  | 'marketing'
+  | 'diseno'
+  | 'ventas'
+  | 'proveedores'
+  | 'tecnologia';
 export type EstadoExperto = 'pendiente' | 'aprobado' | 'rechazado' | 'suspendido';
 
-export const CATEGORIAS: CategoriaExperto[] = ['legal', 'marketing', 'ventas'];
+export const CATEGORIAS: CategoriaExperto[] = [
+  'legal',
+  'contabilidad',
+  'marketing',
+  'diseno',
+  'ventas',
+  'proveedores',
+  'tecnologia',
+];
 
 export const NOMBRE_CATEGORIA: Record<CategoriaExperto, string> = {
   legal: 'Legal',
+  contabilidad: 'Contabilidad y fiscal',
   marketing: 'Marketing',
-  ventas: 'Ventas',
+  diseno: 'Diseño y marca',
+  ventas: 'Ventas y distribución',
+  proveedores: 'Proveedores y fabricantes',
+  tecnologia: 'Tecnología',
 };
 
 /** Lo que ve cualquiera. Sin cédula, sin teléfono, sin email. */
@@ -33,6 +52,7 @@ export interface ExpertoPublico {
   ciudad: string;
   pais: string | null;
   avatar_url: string | null;
+  portada_url: string | null;
   sitio_web: string | null;
   tarifa_desde: number | null;
   moneda: string;
@@ -50,7 +70,27 @@ export interface FichaExperto extends ExpertoPublico {
   /** Solo llegan si el experto pidió mostrarlos. */
   email_contacto: string | null;
   telefono: string | null;
+  /** Solo dígitos con lada de país, listo para wa.me. */
+  whatsapp: string | null;
   fecha_aprobacion: string | null;
+  imagenes: ImagenPerfil[];
+  servicios: ServicioPerfil[];
+  /** El visitante es el dueño: no se le ofrece contactarse ni valorarse. */
+  es_mia?: boolean;
+}
+
+export interface ImagenPerfil {
+  id: string;
+  url: string;
+  descripcion: string;
+}
+
+export interface ServicioPerfil {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  precio_desde: number | null;
+  unidad: string;
 }
 
 export interface ResenaPublica {
@@ -79,9 +119,11 @@ export interface FichaPropia {
   pais: string | null;
   email_contacto: string | null;
   telefono: string | null;
+  whatsapp: string | null;
   mostrar_contacto: boolean;
   sitio_web: string | null;
   avatar_url: string | null;
+  portada_url: string | null;
   tarifa_desde: number | string | null;
   moneda: string;
   ofrece_consulta_gratis: boolean;
@@ -123,6 +165,8 @@ export interface FiltrosDirectorio {
 export async function listarExpertos(filtros: FiltrosDirectorio = {}) {
   const { data } = await api.get<{
     expertos: ExpertoPublico[];
+    /** Impulsados para esta búsqueda. Solo llegan en la primera página. */
+    promocionados?: ExpertoPublico[];
     total: number;
     pagina: number;
     limite: number;
@@ -153,6 +197,7 @@ export type DatosFicha = Partial<{
   pais: string | null;
   email_contacto: string | null;
   telefono: string | null;
+  whatsapp: string | null;
   mostrar_contacto: boolean;
   sitio_web: string | null;
   avatar_url: string | null;
@@ -207,6 +252,177 @@ export async function subirAvatar(id: string, fichero: File) {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return data.avatar_url;
+}
+
+export async function subirPortada(id: string, fichero: File) {
+  const datos = new FormData();
+  datos.append('portada', fichero);
+  const { data } = await api.post<{ portada_url: string }>(`/network/expertos/${id}/portada`, datos, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data.portada_url;
+}
+
+// ─── Galería y servicios ─────────────────────────────────────────────────────
+
+export async function contenidoFicha(id: string) {
+  const { data } = await api.get<{
+    imagenes: ImagenPerfil[];
+    servicios: ServicioPerfil[];
+    max_imagenes: number;
+    max_servicios: number;
+  }>(`/network/expertos/${id}/contenido`);
+  return data;
+}
+
+export async function subirImagenGaleria(id: string, fichero: File, descripcion = '') {
+  const datos = new FormData();
+  datos.append('imagen', fichero);
+  datos.append('descripcion', descripcion);
+  const { data } = await api.post<{ imagen: ImagenPerfil }>(`/network/expertos/${id}/imagenes`, datos, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data.imagen;
+}
+
+export async function borrarImagenGaleria(id: string, imagenId: string) {
+  await api.delete(`/network/expertos/${id}/imagenes/${imagenId}`);
+}
+
+export async function ordenarGaleria(id: string, ids: string[]) {
+  const { data } = await api.put<{ imagenes: ImagenPerfil[] }>(`/network/expertos/${id}/imagenes/orden`, { ids });
+  return data.imagenes;
+}
+
+export type DatosServicio = Omit<ServicioPerfil, 'id'>;
+
+export async function crearServicio(id: string, datos: DatosServicio) {
+  const { data } = await api.post<{ servicio: ServicioPerfil }>(`/network/expertos/${id}/servicios`, datos);
+  return data.servicio;
+}
+
+export async function editarServicio(id: string, servicioId: string, datos: Partial<DatosServicio>) {
+  const { data } = await api.patch<{ servicio: ServicioPerfil }>(
+    `/network/expertos/${id}/servicios/${servicioId}`,
+    datos
+  );
+  return data.servicio;
+}
+
+export async function borrarServicio(id: string, servicioId: string) {
+  await api.delete(`/network/expertos/${id}/servicios/${servicioId}`);
+}
+
+// ─── Contacto y métricas ─────────────────────────────────────────────────────
+
+export type CanalContacto = 'whatsapp' | 'telefono' | 'email' | 'web';
+
+/**
+ * Anota el clic de contacto sin retrasar la apertura del enlace: si la petición
+ * falla, el visitante igual llega a WhatsApp.
+ */
+export function registrarContacto(expertoId: string, canal: CanalContacto): void {
+  api.post(`/network/expertos/${expertoId}/contacto`, { canal }).catch(() => undefined);
+}
+
+export interface TotalesMetricas {
+  impresiones: number;
+  impresiones_impulsadas: number;
+  vistas: number;
+  clics_whatsapp: number;
+  clics_telefono: number;
+  clics_email: number;
+  clics_web: number;
+}
+
+export interface MetricasPerfil {
+  dias: number;
+  totales: TotalesMetricas;
+  serie: ({ fecha: string } & TotalesMetricas)[];
+}
+
+export async function metricasFicha(id: string, dias = 30) {
+  const { data } = await api.get<MetricasPerfil>(`/network/expertos/${id}/metricas`, { params: { dias } });
+  return data;
+}
+
+// ─── Impulsos ────────────────────────────────────────────────────────────────
+
+export type AlcanceImpulso = 'ciudad' | 'nacional';
+
+export interface TarifasImpulso {
+  moneda: 'MXN';
+  tarifa_dia: Record<AlcanceImpulso, number>;
+  dias_min: number;
+  dias_max: number;
+  cupo: number;
+}
+
+export interface Cotizacion {
+  monto_mxn: number;
+  tarifa_dia: number;
+  dias: number;
+  cupo: number;
+  ocupados: number;
+  disponible: boolean;
+  libera_el: string | null;
+}
+
+export interface Impulso {
+  id: string;
+  experto_id: string;
+  nombre_comercial: string;
+  categoria: CategoriaExperto;
+  alcance: AlcanceImpulso;
+  ciudad: string | null;
+  dias: number;
+  monto_mxn: number;
+  estado: 'pendiente_pago' | 'activo' | 'terminado' | 'cancelado';
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
+  fecha_creacion: string;
+  motivo_cancelacion: string | null;
+  metricas: { impresiones: number; vistas: number; clics: number };
+}
+
+export interface PedidoImpulso {
+  experto_id: string;
+  alcance: AlcanceImpulso;
+  ciudad?: string | null;
+  dias: number;
+}
+
+export async function tarifasImpulso() {
+  const { data } = await api.get<TarifasImpulso>('/network/impulsos/tarifas');
+  return data;
+}
+
+export async function cotizarImpulso(pedido: PedidoImpulso) {
+  const { data } = await api.get<Cotizacion>('/network/impulsos/cotizacion', { params: pedido });
+  return data;
+}
+
+export async function pagarImpulso(pedido: PedidoImpulso) {
+  const { data } = await api.post<{ url: string }>('/network/impulsos/checkout', pedido);
+  return data.url;
+}
+
+export async function misImpulsos() {
+  const { data } = await api.get<{ impulsos: Impulso[] }>('/network/mis-impulsos');
+  return data.impulsos;
+}
+
+export async function impulsosAdmin() {
+  const { data } = await api.get<{ impulsos: Impulso[] }>('/admin/network/impulsos');
+  return data.impulsos;
+}
+
+export async function cancelarImpulso(id: string, motivo: string) {
+  await api.patch(`/admin/network/impulsos/${id}/cancelar`, { motivo });
+}
+
+export function pesosMx(valor: number): string {
+  return `$${valor.toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN`;
 }
 
 // ─── Reseñas ─────────────────────────────────────────────────────────────────

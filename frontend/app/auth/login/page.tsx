@@ -161,7 +161,9 @@ export default function LoginPage() {
         successTl.to(leftPanelRef.current, { opacity: 0, x: -100, duration: 0.8, ease: 'power3.in' }, 0.2);
       }
 
-      successTl.call(() => router.push('/dashboard'), [], 0.8);
+      // Quien se registró para ofrecer servicios entra a su perfil de experto.
+      const destino = user.tipo_cuenta === 'experto' ? '/network/mis-fichas' : '/dashboard';
+      successTl.call(() => router.push(destino), [], 0.8);
     } catch (err: unknown) {
       const errorMsg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error

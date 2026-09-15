@@ -1,18 +1,21 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useHaySesion } from '@/lib/useSesion';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import FormularioFicha, { type FicherosFicha } from '@/components/network/FormularioFicha';
+import EditorContenido from '@/components/network/EditorContenido';
+import MetricasFicha from '@/components/network/MetricasFicha';
+import PanelImpulso from '@/components/network/PanelImpulso';
 import {
   misFichas,
   misPatrocinios,
+  misImpulsos,
   editarFicha,
   borrarFicha,
-  iniciarPatrocinio,
   subirAvatar,
   subirDocumento,
   errorLegible,
@@ -21,6 +24,7 @@ import {
   type DatosFicha,
   type EstadoExperto,
   type FichaPropia,
+  type Impulso,
   type Patrocinio,
 } from '@/lib/network';
 
@@ -28,51 +32,65 @@ const ESTADO: Record<EstadoExperto, { texto: string; clase: string; explicacion:
   pendiente: {
     texto: 'En revisión',
     clase: 'bg-amber-500/10 border-amber-500/30 text-amber-300',
-    explicacion: 'Todavía no aparece en el directorio. Nadie más que tú puede verla.',
+    explicacion: 'Todavía no aparece en el directorio. Mientras tanto, completa tus fotos y servicios.',
   },
   aprobado: {
-    texto: 'Publicada',
+    texto: 'Publicado',
     clase: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300',
     explicacion: 'Visible en el directorio.',
   },
   rechazado: {
-    texto: 'Rechazada',
+    texto: 'Rechazado',
     clase: 'bg-rose-500/10 border-rose-500/30 text-rose-300',
     explicacion: 'Corrige lo que se te indica y al guardar volverá a revisión automáticamente.',
   },
   suspendido: {
-    texto: 'Suspendida',
+    texto: 'Suspendido',
     clase: 'bg-white/5 border-white/20 text-white/60',
-    explicacion: 'Retirada del directorio por el equipo de revisión.',
+    explicacion: 'Retirado del directorio por el equipo de revisión.',
   },
 };
 
 const FECHA = new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium' });
 
+type Pestana = 'contenido' | 'datos' | 'estadisticas' | 'impulsar';
+const PESTANAS: { clave: Pestana; texto: string }[] = [
+  { clave: 'contenido', texto: 'Fotos y servicios' },
+  { clave: 'datos', texto: 'Datos del perfil' },
+  { clave: 'estadisticas', texto: 'Estadísticas' },
+  { clave: 'impulsar', texto: 'Impulsar' },
+];
+
 /**
- * Panel del experto: el estado de sus fichas, su edición y su patrocinio.
+ * Panel del experto: estado de sus perfiles, contenido, estadísticas e impulsos.
  *
  * Es también la página de vuelta del Checkout de Stripe. El pago lo confirma el
- * webhook, no esta pantalla: por eso, al volver con `?patrocinio=ok`, se dice que
- * puede tardar unos segundos en reflejarse en vez de afirmar que ya está activo.
+ * webhook, no esta pantalla: al volver con `?impulso=ok` se dice que puede tardar
+ * unos segundos en reflejarse en vez de afirmar que ya está activo.
  */
-export default function MisFichasPage() {
+function MisFichasContent() {
   const params = useSearchParams();
   const [fichas, setFichas] = useState<FichaPropia[] | null>(null);
   const [patrocinios, setPatrocinios] = useState<Patrocinio[]>([]);
-  const [editando, setEditando] = useState<string | null>(null);
+  const [impulsos, setImpulsos] = useState<Impulso[]>([]);
+  // Perfil abierto y la pestaña que muestra. Uno a la vez.
+  const [abierta, setAbierta] = useState<string | null>(null);
+  const [pestana, setPestana] = useState<Pestana>('contenido');
   const haySesion = useHaySesion();
   const [aviso, setAviso] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     try {
-      const [f, p] = await Promise.all([misFichas(), misPatrocinios()]);
+      const [f, p, i] = await Promise.all([misFichas(), misPatrocinios(), misImpulsos()]);
       setFichas(f);
       setPatrocinios(p);
+      setImpulsos(i);
+      // Con un solo perfil no hace falta pulsar «Administrar» para empezar.
+      if (f.length === 1) setAbierta((actual) => actual ?? f[0].id);
     } catch (e) {
       setFichas([]);
-      setError(errorLegible(e, 'No pudimos cargar tus fichas.'));
+      setError(errorLegible(e, 'No pudimos cargar tus perfiles.'));
     }
   }, []);
 
@@ -84,10 +102,18 @@ export default function MisFichasPage() {
     if (params.get('alta') === 'ok' && params.get('fallo')) {
       const que = params.get('fallo')!.split(',').join(' ni la ');
       setAviso(
-        `Ficha enviada, pero no se pudo subir el ${que}. Ábrela con "Editar" y vuelve a intentarlo: la ficha no se ha perdido.`
+        `Perfil enviado, pero no se pudo subir el ${que}. Vuelve a intentarlo en «Datos del perfil»: el perfil no se ha perdido.`
       );
     } else if (params.get('alta') === 'ok') {
-      setAviso('Ficha enviada. La revisamos y te avisamos por correo: hasta entonces no aparece en el directorio.');
+      setAviso('Perfil enviado. Lo revisamos y te avisamos por correo: hasta entonces no aparece en el directorio.');
+    } else if (params.get('impulso') === 'ok') {
+      setPestana('impulsar');
+      setAviso(
+        'Pago recibido. Tu impulso empieza en cuanto Stripe confirma el cobro; puede tardar unos segundos en aparecer como «En curso».'
+      );
+    } else if (params.get('impulso') === 'cancelado') {
+      setPestana('impulsar');
+      setAviso('No se ha cobrado nada y el espacio se libera. Puedes impulsar tu perfil cuando quieras.');
     } else if (params.get('patrocinio') === 'ok') {
       setAviso(
         'Pago recibido. El patrocinio se activa en cuanto Stripe nos confirma el cobro; puede tardar unos segundos en aparecer aquí.'
@@ -104,6 +130,9 @@ export default function MisFichasPage() {
         p.estado === 'activo' &&
         (!p.fecha_fin || new Date(p.fecha_fin) > new Date())
     );
+
+  const impulsoActivoDe = (expertoId: string) =>
+    impulsos.find((i) => i.experto_id === expertoId && i.estado === 'activo');
 
   const guardar = (id: string) => async (datos: DatosFicha, ficheros: FicherosFicha) => {
     const { mensaje } = await editarFicha(id, datos);
@@ -132,34 +161,24 @@ export default function MisFichasPage() {
       fallos.length
         ? `Cambios guardados, pero no se pudo subir ${fallos.join(' ni ')}. Vuelve a intentarlo.`
         : volvioARevision
-          ? 'Documento recibido. La ficha vuelve a revisión.'
+          ? 'Documento recibido. El perfil vuelve a revisión.'
           : mensaje
     );
-    setEditando(null);
     await cargar();
   };
 
   const darDeBaja = async (ficha: FichaPropia) => {
     const seguro = window.confirm(
-      `¿Dar de baja «${ficha.nombre_comercial}»? Se borra la ficha, sus reseñas y tus datos de contacto. No se puede deshacer.`
+      `¿Dar de baja «${ficha.nombre_comercial}»? Se borran el perfil, sus fotos, servicios, reseñas y tus datos de contacto. No se puede deshacer.`
     );
     if (!seguro) return;
     try {
       await borrarFicha(ficha.id);
-      setAviso('Ficha dada de baja.');
+      setAviso('Perfil dado de baja.');
+      setAbierta(null);
       await cargar();
     } catch (e) {
-      setError(errorLegible(e, 'No pudimos dar de baja la ficha.'));
-    }
-  };
-
-  const patrocinar = async (ficha: FichaPropia) => {
-    setError(null);
-    try {
-      const url = await iniciarPatrocinio(ficha.id);
-      window.location.href = url;
-    } catch (e) {
-      setError(errorLegible(e, 'No pudimos abrir el pago.'));
+      setError(errorLegible(e, 'No pudimos dar de baja el perfil.'));
     }
   };
 
@@ -168,11 +187,11 @@ export default function MisFichasPage() {
       <Navbar />
 
       <section className="pt-32 pb-8 px-6">
-        <div className="max-w-[900px] mx-auto">
+        <div className="max-w-[960px] mx-auto">
           <Link href="/network" className="text-white/40 hover:text-white text-xs font-semibold">
             ← Directorio
           </Link>
-          <h1 className="text-3xl font-extrabold tracking-tight mt-5">Mis fichas de experto</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight mt-5">Mi perfil de experto</h1>
 
           {aviso && (
             <div className="mt-5 rounded-xl border border-white/15 bg-white/[0.04] p-4">
@@ -188,7 +207,7 @@ export default function MisFichasPage() {
       </section>
 
       <section className="px-6 pb-24">
-        <div className="max-w-[900px] mx-auto space-y-5">
+        <div className="max-w-[960px] mx-auto space-y-5">
           {!haySesion ? (
             <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-8 text-center">
               <p className="text-white font-bold mb-2">Entra en tu cuenta</p>
@@ -203,28 +222,28 @@ export default function MisFichasPage() {
             <p className="text-white/40 text-sm">Cargando…</p>
           ) : fichas.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-8 text-center">
-              <p className="text-white font-bold mb-2">Todavía no tienes ninguna ficha</p>
+              <p className="text-white font-bold mb-2">Todavía no tienes un perfil</p>
               <p className="text-white/40 text-sm max-w-md mx-auto">
-                Si trabajas en legal, marketing o ventas, puedes presentarte y pasar por la revisión.
+                Crea tu perfil con tus servicios y fotos de tu trabajo. Pasa por una revisión y después aparece en el
+                directorio y en los análisis de negocios de tu rubro.
               </p>
               <Link
                 href="/network/registro"
                 className="inline-block mt-5 px-5 py-2.5 rounded-xl bg-white text-[#070E17] font-bold text-sm hover:bg-white/90"
               >
-                Presentar mi ficha
+                Crear mi perfil
               </Link>
             </div>
           ) : (
             fichas.map((ficha) => {
               const est = ESTADO[ficha.estado];
               const patrocinio = patrocinioDe(ficha.id);
+              const impulso = impulsoActivoDe(ficha.id);
               const tarifa = formatearTarifa(ficha.tarifa_desde, ficha.moneda);
+              const estaAbierta = abierta === ficha.id;
 
               return (
-                <article
-                  key={ficha.id}
-                  className="rounded-2xl border border-white/10 bg-white/[0.02] p-5"
-                >
+                <article key={ficha.id} className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -239,9 +258,9 @@ export default function MisFichasPage() {
                             Acreditación comprobada
                           </span>
                         )}
-                        {patrocinio && (
+                        {(impulso || patrocinio) && (
                           <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 text-[10px] font-bold uppercase tracking-widest">
-                            Patrocinada
+                            Promocionado
                           </span>
                         )}
                       </div>
@@ -267,6 +286,12 @@ export default function MisFichasPage() {
                           {ficha.total_resenas === 1 ? 'reseña' : 'reseñas'}
                         </p>
                       )}
+                      {impulso?.fecha_fin && (
+                        <p className="text-amber-200/60 text-xs mt-1">
+                          Impulso {impulso.alcance === 'nacional' ? 'nacional' : `en ${impulso.ciudad}`} hasta el{' '}
+                          {FECHA.format(new Date(impulso.fecha_fin))}
+                        </p>
+                      )}
                       {patrocinio?.fecha_fin && (
                         <p className="text-white/30 text-xs mt-1">
                           Patrocinio pagado hasta {FECHA.format(new Date(patrocinio.fecha_fin))}
@@ -280,21 +305,24 @@ export default function MisFichasPage() {
                           href={`/network/${ficha.id}`}
                           className="px-3 py-1.5 rounded-lg border border-white/15 text-white/70 text-xs font-bold hover:bg-white/5"
                         >
-                          Ver ficha
+                          Ver perfil público
                         </Link>
                       )}
                       <button
-                        onClick={() => setEditando(editando === ficha.id ? null : ficha.id)}
+                        onClick={() => setAbierta(estaAbierta ? null : ficha.id)}
                         className="px-3 py-1.5 rounded-lg border border-white/15 text-white/70 text-xs font-bold hover:bg-white/5"
                       >
-                        {editando === ficha.id ? 'Cerrar' : 'Editar'}
+                        {estaAbierta ? 'Cerrar' : 'Administrar'}
                       </button>
-                      {ficha.estado === 'aprobado' && !patrocinio && (
+                      {ficha.estado === 'aprobado' && !impulso && (
                         <button
-                          onClick={() => patrocinar(ficha)}
+                          onClick={() => {
+                            setAbierta(ficha.id);
+                            setPestana('impulsar');
+                          }}
                           className="px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-bold hover:brightness-125"
                         >
-                          Patrocinar
+                          Impulsar
                         </button>
                       )}
                       <button
@@ -306,13 +334,34 @@ export default function MisFichasPage() {
                     </div>
                   </div>
 
-                  {editando === ficha.id && (
-                    <div className="mt-6 pt-6 border-t border-white/5">
-                      <FormularioFicha
-                        ficha={ficha}
-                        alGuardar={guardar(ficha.id)}
-                        textoBoton="Guardar cambios"
-                      />
+                  {estaAbierta && (
+                    <div className="mt-6 pt-5 border-t border-white/5">
+                      <div className="flex gap-1 overflow-x-auto mb-6 -mx-1 px-1" role="tablist">
+                        {PESTANAS.map((p) => (
+                          <button
+                            key={p.clave}
+                            role="tab"
+                            aria-selected={pestana === p.clave}
+                            onClick={() => setPestana(p.clave)}
+                            className={`flex-shrink-0 px-3.5 py-2 rounded-lg text-xs font-bold transition-colors ${
+                              pestana === p.clave
+                                ? 'bg-white text-[#070E17]'
+                                : 'text-white/50 hover:text-white hover:bg-white/5'
+                            }`}
+                          >
+                            {p.texto}
+                          </button>
+                        ))}
+                      </div>
+
+                      {pestana === 'contenido' && (
+                        <EditorContenido expertoId={ficha.id} portadaUrl={ficha.portada_url} />
+                      )}
+                      {pestana === 'datos' && (
+                        <FormularioFicha ficha={ficha} alGuardar={guardar(ficha.id)} textoBoton="Guardar cambios" />
+                      )}
+                      {pestana === 'estadisticas' && <MetricasFicha expertoId={ficha.id} />}
+                      {pestana === 'impulsar' && <PanelImpulso ficha={ficha} impulsos={impulsos} />}
                     </div>
                   )}
                 </article>
@@ -320,12 +369,12 @@ export default function MisFichasPage() {
             })
           )}
 
-          {fichas && fichas.length > 0 && fichas.length < 3 && (
+          {fichas && fichas.length > 0 && fichas.length < 7 && (
             <Link
               href="/network/registro"
               className="block rounded-2xl border border-dashed border-white/10 p-5 text-center text-white/40 hover:text-white/70 hover:border-white/20 text-sm font-semibold transition-colors"
             >
-              + Presentar otra ficha en otra categoría
+              + Crear otro perfil en otra categoría
             </Link>
           )}
         </div>
@@ -333,5 +382,17 @@ export default function MisFichasPage() {
 
       <Footer />
     </main>
+  );
+}
+
+export default function MisFichasPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#080d14] flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+      </div>
+    }>
+      <MisFichasContent />
+    </Suspense>
   );
 }

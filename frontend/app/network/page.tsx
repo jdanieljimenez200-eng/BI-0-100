@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/landing/Navbar';
@@ -17,17 +17,10 @@ import {
 const POR_PAGINA = 12;
 
 function esCategoria(v: string | null): v is CategoriaExperto {
-  return v === 'legal' || v === 'marketing' || v === 'ventas';
+  return CATEGORIAS.includes(v as CategoriaExperto);
 }
 
-/**
- * Directorio público de la red de expertos.
- *
- * Solo lista fichas aprobadas —el backend no devuelve otras— y los patrocinados
- * llegan primero, etiquetados. Cuando no hay resultados se dice exactamente eso,
- * en vez de rellenar la cuadrícula con ejemplos.
- */
-export default function DirectorioNetworkPage() {
+function DirectorioNetworkContent() {
   const router = useRouter();
   const params = useSearchParams();
 
@@ -41,6 +34,7 @@ export default function DirectorioNetworkPage() {
   const [busqueda, setBusqueda] = useState(params.get('q') ?? '');
 
   const [expertos, setExpertos] = useState<ExpertoPublico[]>([]);
+  const [promocionados, setPromocionados] = useState<ExpertoPublico[]>([]);
   const [total, setTotal] = useState(0);
   const [pagina, setPagina] = useState(1);
   const [cargando, setCargando] = useState(true);
@@ -57,10 +51,15 @@ export default function DirectorioNetworkPage() {
         pagina,
         limite: POR_PAGINA,
       });
-      setExpertos(datos.expertos);
+      // Un impulsado ya sale arriba etiquetado: no se repite en la lista orgánica.
+      const promo = datos.promocionados ?? [];
+      const ids = new Set(promo.map((e) => e.id));
+      setPromocionados(promo);
+      setExpertos(datos.expertos.filter((e) => !ids.has(e.id)));
       setTotal(datos.total);
     } catch {
       setError('No pudimos cargar el directorio. Vuelve a intentarlo en un momento.');
+      setPromocionados([]);
       setExpertos([]);
       setTotal(0);
     } finally {
@@ -97,8 +96,8 @@ export default function DirectorioNetworkPage() {
             Directorio de expertos
           </h1>
           <p className="text-white/50 max-w-2xl leading-relaxed">
-            Profesionales de legal, marketing y ventas revisados uno a uno antes de aparecer aquí.
-            El trato y el pago los acuerdas directamente con ellos: la plataforma no cobra la
+            Abogados, contadores, agencias, diseñadores, proveedores y más, revisados uno a uno
+            antes de aparecer aquí. Los contactas directo por WhatsApp: la plataforma no cobra la
             consulta ni interviene en el acuerdo.
           </p>
 
@@ -107,13 +106,13 @@ export default function DirectorioNetworkPage() {
               href="/network/registro"
               className="px-5 py-2.5 rounded-xl bg-white text-[#070E17] font-bold text-sm hover:bg-white/90 transition-colors"
             >
-              Presentar mi ficha
+              Ofrecer mis servicios
             </Link>
             <Link
               href="/network/mis-fichas"
               className="px-5 py-2.5 rounded-xl border border-white/15 text-white/70 font-semibold text-sm hover:bg-white/5 transition-colors"
             >
-              Mis fichas
+              Mi perfil
             </Link>
           </div>
         </div>
@@ -202,23 +201,35 @@ export default function DirectorioNetworkPage() {
                 Reintentar
               </button>
             </div>
-          ) : expertos.length === 0 ? (
+          ) : expertos.length === 0 && promocionados.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
               <p className="text-white font-bold mb-2">Todavía no hay nadie aquí</p>
               <p className="text-white/40 text-sm max-w-md mx-auto">
                 {busqueda || ciudad || categoria
                   ? 'Ningún experto aprobado coincide con esa búsqueda. Prueba a quitar algún filtro.'
-                  : 'La red está empezando. Si eres profesional de legal, marketing o ventas, puedes presentar tu ficha y pasar por la revisión.'}
+                  : 'La red está empezando. Si ofreces servicios a negocios, crea tu perfil y pasa por la revisión.'}
               </p>
               <Link
                 href="/network/registro"
                 className="inline-block mt-5 px-5 py-2.5 rounded-xl bg-white text-[#070E17] font-bold text-sm hover:bg-white/90 transition-colors"
               >
-                Presentar mi ficha
+                Ofrecer mis servicios
               </Link>
             </div>
           ) : (
             <>
+              {promocionados.length > 0 && (
+                <div className="mb-8">
+                  <p className="text-amber-200/60 text-[11px] font-bold uppercase tracking-widest mb-4">
+                    Promocionados{ciudad.trim() ? ` en ${ciudad.trim()}` : ''}
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {promocionados.map((e) => (
+                      <ExpertoCard key={e.id} experto={e} />
+                    ))}
+                  </div>
+                </div>
+              )}
               <p className="text-white/30 text-xs mb-5">
                 {total} {total === 1 ? 'experto' : 'expertos'}
                 {categoria ? ` en ${NOMBRE_CATEGORIA[categoria]}` : ''}
@@ -257,5 +268,17 @@ export default function DirectorioNetworkPage() {
 
       <Footer />
     </main>
+  );
+}
+
+export default function DirectorioNetworkPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#080d14] flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+      </div>
+    }>
+      <DirectorioNetworkContent />
+    </Suspense>
   );
 }

@@ -27,6 +27,30 @@ export const ACENTO: Record<
     texto: 'text-emerald-400',
     sombra: 'shadow-[0_0_20px_rgba(16,185,129,0.25)]',
   },
+  contabilidad: {
+    bg: 'bg-teal-500/10',
+    borde: 'border-teal-500/30',
+    texto: 'text-teal-300',
+    sombra: 'shadow-[0_0_20px_rgba(20,184,166,0.25)]',
+  },
+  diseno: {
+    bg: 'bg-pink-500/10',
+    borde: 'border-pink-500/30',
+    texto: 'text-pink-300',
+    sombra: 'shadow-[0_0_20px_rgba(236,72,153,0.25)]',
+  },
+  proveedores: {
+    bg: 'bg-orange-500/10',
+    borde: 'border-orange-500/30',
+    texto: 'text-orange-300',
+    sombra: 'shadow-[0_0_20px_rgba(249,115,22,0.25)]',
+  },
+  tecnologia: {
+    bg: 'bg-cyan-500/10',
+    borde: 'border-cyan-500/30',
+    texto: 'text-cyan-300',
+    sombra: 'shadow-[0_0_20px_rgba(6,182,212,0.25)]',
+  },
 };
 
 function Estrellas({ valor, total }: { valor: number; total: number }) {
@@ -92,12 +116,21 @@ export default function ExpertoCard({ experto }: { experto: ExpertoPublico }) {
     >
       {/* Un anuncio tiene que decir que lo es, siempre y de forma visible. */}
       {experto.es_patrocinado && (
-        <div className="absolute -top-2.5 left-4 flex items-center gap-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full">
+        <div className="absolute -top-2.5 left-4 z-10 flex items-center gap-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full backdrop-blur">
           <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
             <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
           </svg>
-          Patrocinado
+          Promocionado
         </div>
+      )}
+
+      {experto.portada_url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={experto.portada_url}
+          alt=""
+          className="-mx-5 -mt-5 mb-4 h-28 w-[calc(100%+2.5rem)] max-w-none rounded-t-2xl object-cover"
+        />
       )}
 
       <div className="flex items-start gap-3 mb-3">
