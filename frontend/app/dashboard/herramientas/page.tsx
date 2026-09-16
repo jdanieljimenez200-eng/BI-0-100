@@ -12,6 +12,7 @@ import {
   Calendar,
   UserCheck,
   BarChart3,
+  Wrench,
   ArrowRight,
   Lock,
   Sparkles,
@@ -141,6 +142,16 @@ const META: Record<string, HerramientaMeta> = {
     icono: BarChart3,
     acentoTw: 'text-teal-300', glowTw: 'bg-teal-500/10', borderTw: 'border-teal-500/25',
     href: '/dashboard/herramientas/contabilidad', tag: 'Finanzas sync',
+  },
+  mantenimientos: {
+    cap: 'mantenimientos',
+    categoria: 'operaciones',
+    categoriaLabel: 'Operaciones & Equipos',
+    subtitulo: 'Nada se descompone de sorpresa',
+    descripcion: 'Registra tanque de gas, refrigerador, parrilla o tijeras y la app te dice cada cuánto darles mantenimiento, con aviso cuando toca.',
+    icono: Wrench,
+    acentoTw: 'text-orange-300', glowTw: 'bg-orange-500/10', borderTw: 'border-orange-500/25',
+    href: '/dashboard/herramientas/mantenimientos', tag: 'Finanzas sync',
   },
 };
 

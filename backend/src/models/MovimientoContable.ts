@@ -68,7 +68,7 @@ export class MovimientoContable {
   tiene_cfdi!: boolean;
 
   @Column({ default: 'manual', length: 20 })
-  fuente!: 'manual' | 'csv_import' | 'pos' | 'inventario' | 'nomina' | 'cotizacion';
+  fuente!: 'manual' | 'csv_import' | 'pos' | 'inventario' | 'nomina' | 'cotizacion' | 'mantenimiento';
 
   @Column({ nullable: true, type: 'uuid' })
   batch_id!: string | null;
@@ -76,7 +76,7 @@ export class MovimientoContable {
   // Trazabilidad: qué tipo de entidad y qué ID originó este movimiento.
   // Permite reconstruir el libro mayor con referencia exacta a la fuente.
   @Column({ type: 'varchar', length: 30, nullable: true })
-  referencia_tipo!: 'venta' | 'cotizacion' | 'pago_nomina' | 'compra_inventario' | 'ajuste_manual' | null;
+  referencia_tipo!: 'venta' | 'cotizacion' | 'pago_nomina' | 'compra_inventario' | 'ajuste_manual' | 'mantenimiento' | null;
 
   @Column({ type: 'uuid', nullable: true })
   referencia_id!: string | null;

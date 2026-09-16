@@ -32,10 +32,20 @@ export interface MetaNegocio {
   actual: number | string;   // avance real acumulado
 }
 
+export interface EquipoPendiente {
+  nombre: string;
+  // 'vencido' = ya pasó la fecha; 'proximo' = entra en la ventana de aviso.
+  estado: 'vencido' | 'proximo';
+  // Días que faltan; negativo = días de retraso.
+  dias_restantes: number;
+}
+
 export interface EntradaAlertas {
   stock?: ItemStock[];
   ingresos?: SerieIngresos | null;
   metas?: MetaNegocio[];
+  /** Equipos de la herramienta Mantenimientos que ya tocan o van con retraso. */
+  mantenimientos?: EquipoPendiente[];
   // Umbral de caída de ingresos que dispara alerta roja (fracción, ej. 0.2 = 20%).
   umbralCaidaIngresos?: number;
 }

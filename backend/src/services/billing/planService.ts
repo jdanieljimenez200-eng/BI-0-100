@@ -256,6 +256,7 @@ export const CAPABILITIES = [
   { key: 'cotizaciones', grupo: 'herramientas' as const, label: 'Cotizaciones', sensible: false },
   { key: 'nomina', grupo: 'herramientas' as const, label: 'Nómina', sensible: true },
   { key: 'contabilidad', grupo: 'herramientas' as const, label: 'Reportes', sensible: true },
+  { key: 'mantenimientos', grupo: 'herramientas' as const, label: 'Mantenimientos', sensible: false },
 ] as const;
 
 // Verificación de exhaustividad en tiempo de compilación: si PermisosTrabajador
@@ -288,8 +289,8 @@ export const HERRAMIENTAS_POR_PLAN: Record<Plan, readonly HerramientaCapabilityK
   freemium: TODAS_LAS_HERRAMIENTAS,
   pro: [],
   pro_plus: [],
-  business: ['pos', 'inventario', 'clientes', 'citas', 'cotizaciones', 'nomina', 'contabilidad'],
-  enterprise: ['pos', 'inventario', 'clientes', 'citas', 'cotizaciones', 'nomina', 'contabilidad'],
+  business: ['pos', 'inventario', 'clientes', 'citas', 'cotizaciones', 'nomina', 'contabilidad', 'mantenimientos'],
+  enterprise: ['pos', 'inventario', 'clientes', 'citas', 'cotizaciones', 'nomina', 'contabilidad', 'mantenimientos'],
 };
 
 /** Herramientas incluidas en el plan (para derivar disponibilidad de la cuenta). */

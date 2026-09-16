@@ -29,6 +29,7 @@ export const SERVICIOS_CATALOGO: Record<HerramientaKey, ServicioMeta> = {
   cotizaciones: { key: 'cotizaciones', label: 'Cotizaciones',      precio_mxn: 69 },
   clientes:     { key: 'clientes',     label: 'Clientes (CRM)',    precio_mxn: 69 },
   citas:        { key: 'citas',        label: 'Reservas & Citas',  precio_mxn: 69 },
+  mantenimientos: { key: 'mantenimientos', label: 'Mantenimientos', precio_mxn: 69 },
 };
 
 /** Lista ordenada por precio descendente (para render de UI). */

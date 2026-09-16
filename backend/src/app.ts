@@ -43,6 +43,7 @@ import posRoutes from './routes/pos';
 import negociosRoutes from './routes/negocios';
 import verticalRoutes from './routes/vertical';
 import ventasRoutes from './routes/ventas';
+import mantenimientosRoutes from './routes/mantenimientos';
 
 const app = express();
 app.set('trust proxy', 1); // Railway/Vercel/Nginx: IP real para rate-limit
@@ -161,6 +162,7 @@ app.use('/api/pos', posRoutes);
 app.use('/api/negocios', negociosRoutes);
 app.use('/api/vertical', verticalRoutes);
 app.use('/api/ventas', ventasRoutes);
+app.use('/api/mantenimientos', mantenimientosRoutes);
 
 // 404 Handler
 app.use((req: Request, res: Response): void => {

@@ -36,6 +36,8 @@ import { Experto } from '../models/Experto';
 import { ResenaExperto } from '../models/ResenaExperto';
 import { PatrocinioExperto } from '../models/PatrocinioExperto';
 import { AuditoriaAdmin } from '../models/AuditoriaAdmin';
+import { EquipoMantenimiento } from '../models/EquipoMantenimiento';
+import { MantenimientoRealizado } from '../models/MantenimientoRealizado';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -80,6 +82,8 @@ function buildDataSourceOptions() {
       ResenaExperto,
       PatrocinioExperto,
       AuditoriaAdmin,
+      EquipoMantenimiento,
+      MantenimientoRealizado,
     ],
     migrations: [__dirname + '/../migrations/*.{js,ts}'],
     // synchronize SOLO en dev, y desactivable con TYPEORM_SYNCHRONIZE=false

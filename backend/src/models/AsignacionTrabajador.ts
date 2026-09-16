@@ -33,6 +33,7 @@ export interface PermisosTrabajador {
   cotizaciones?: boolean;
   nomina?: boolean; // SENSIBLE — off por defecto
   contabilidad?: boolean; // SENSIBLE — off por defecto
+  mantenimientos?: boolean;
 }
 
 /**

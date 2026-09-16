@@ -1,4 +1,4 @@
-import { Alerta, EntradaAlertas, ItemStock, MetaNegocio, SerieIngresos } from './types';
+import { Alerta, EntradaAlertas, EquipoPendiente, ItemStock, MetaNegocio, SerieIngresos } from './types';
 
 // ── Utilidad: coacciona decimales de TypeORM (string | number) a número finito ─
 function num(v: number | string | null | undefined): number {
@@ -85,6 +85,33 @@ function alertasMetas(metas: MetaNegocio[]): Alerta[] {
 // ── Orquestador puro ────────────────────────────────────────────────────────────
 // Evalúa todas las reglas y devuelve las alertas ordenadas por severidad
 // (rojo → amarillo → verde). No toca DB ni envía nada: solo decide.
+// ── Alertas de mantenimiento ─────────────────────────────────────────────────
+// Rojo: la fecha ya pasó. Amarillo: entra en la ventana de aviso del equipo.
+// Un equipo parado por falta de servicio cuesta más que el servicio.
+function alertasMantenimiento(equipos: EquipoPendiente[]): Alerta[] {
+  return equipos.map((equipo) => {
+    const dias = Math.abs(equipo.dias_restantes);
+    if (equipo.estado === 'vencido') {
+      return {
+        nivel: 'rojo' as const,
+        tipo: 'mantenimiento',
+        mensaje:
+          dias === 0
+            ? `${equipo.nombre}: el mantenimiento vence hoy.`
+            : `${equipo.nombre}: mantenimiento vencido hace ${dias} ${dias === 1 ? 'día' : 'días'}.`,
+      };
+    }
+    return {
+      nivel: 'amarillo' as const,
+      tipo: 'mantenimiento',
+      mensaje:
+        dias === 0
+          ? `${equipo.nombre}: toca mantenimiento hoy.`
+          : `${equipo.nombre}: toca mantenimiento en ${dias} ${dias === 1 ? 'día' : 'días'}.`,
+    };
+  });
+}
+
 export function evaluarAlertas(entrada: EntradaAlertas): Alerta[] {
   const umbral =
     typeof entrada.umbralCaidaIngresos === 'number' && entrada.umbralCaidaIngresos > 0
@@ -98,6 +125,7 @@ export function evaluarAlertas(entrada: EntradaAlertas): Alerta[] {
     if (a) alertas.push(a);
   }
   alertas.push(...alertasMetas(entrada.metas ?? []));
+  alertas.push(...alertasMantenimiento(entrada.mantenimientos ?? []));
 
   const peso: Record<string, number> = { rojo: 0, amarillo: 1, verde: 2 };
   return alertas.sort((a, b) => peso[a.nivel] - peso[b.nivel]);

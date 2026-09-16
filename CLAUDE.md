@@ -105,7 +105,7 @@ Toda llamada a Claude pasa por `crearMensaje(seccion, tarea, params)` de `backen
 
 ---
 
-## 6. Catálogo de Rutas Backend (25 Módulos API)
+## 6. Catálogo de Rutas Backend (26 Módulos API)
 
 Montadas en `backend/src/app.ts`:
 1. `/api/auth`: Signup, login (rate limited), refresh token, logout, me, reset-password.
@@ -132,6 +132,7 @@ Montadas en `backend/src/app.ts`:
 22. `/api/events`: Server-Sent Events (SSE) en tiempo real con validación JTI en Redis.
 23. `/api/reportes`: Área de reportes de Contabilidad — series de ventas, ranking de productos, almacén, clientes, horarios y conversión de cotizaciones. Agregación en SQL; hereda el gating de `contabilidad`.
 24. `/api/config`: Parámetros públicos de configuración de la aplicación.
+26. `/api/mantenimientos`: Herramienta de mantenimiento preventivo de equipos (tanque de gas, refrigerador, parrilla, tijeras…). El «cada cuánto» sale del catálogo determinista `services/mantenimientos/catalogoIntervalos.ts` (50 tipos × intensidad de uso `bajo`/`normal`/`intenso`), gratis e instantáneo. Solo si el catálogo no reconoce el objeto y el cliente manda `permitir_ia: true`, `POST /sugerencia` lo estima con IA (Haiku, tarea `mecanica`) y cobra 1 crédito (`mantenimiento_sugerencia`); sin `ANTHROPIC_API_KEY` responde plantilla y **no cobra**. `POST /:id/registrar` guarda el servicio hecho y, si lleva costo, crea el egreso en `movimientos_contables` (`fuente: 'mantenimiento'`) en la misma transacción. El semáforo (al día / ya toca / vencido) se calcula con `estadoEquipo` y alimenta el panel de alertas operativas.
 25. `/api/network`: Red de expertos (directorio de profesionales en 7 categorías: legal, contabilidad, marketing, diseño, ventas, proveedores, tecnología), perfiles con portada, galería (12 fotos), servicios (15) y WhatsApp, reseñas, métricas diarias (`experto_metricas_dia`) e **impulsos**: campañas prepagadas por días con alcance ciudad o nacional, cupo por lugar y pago único en Stripe Checkout (`services/network/impulsosService.ts`; tarifas en `IMPULSO_TARIFA_CIUDAD_MXN` / `IMPULSO_TARIFA_NACIONAL_MXN`, por defecto $39 y $99 MXN/día). Los impulsados salen en `promocionados` (solo página 1) etiquetados como «Promocionado». Al registrarse se elige `usuarios.tipo_cuenta` (`negocio` / `experto`), que solo decide la redirección. **Las rutas `GET /expertos` y `GET /expertos/:id` son públicas sin token** y solo devuelven fichas con `estado = 'aprobado'`; el alta y la edición exigen autenticación, y la cola de revisión vive en `/api/admin/network` (montada **antes** de `/api/admin` en `app.ts`). `documento_url` (cédula) nunca se expone fuera de admin.
 
 > [!CAUTION]

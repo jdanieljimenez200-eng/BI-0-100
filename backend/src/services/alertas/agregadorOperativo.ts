@@ -3,7 +3,9 @@ import { Articulo } from '../../models/Articulo';
 import { MetaNegocio as MetaNegocioEntity } from '../../models/MetaNegocio';
 import { evaluarAlertas } from './alertasService';
 import { rangosPeriodo, resumirYFiltrar, ResumenNiveles, RangoFechas } from './periodos';
-import { Alerta, ItemStock, MetaNegocio, SerieIngresos } from './types';
+import { Alerta, EquipoPendiente, ItemStock, MetaNegocio, SerieIngresos } from './types';
+import { EquipoMantenimiento } from '../../models/EquipoMantenimiento';
+import { aISO, estadoEquipo } from '../mantenimientos/catalogoIntervalos';
 
 /**
  * Puente entre la base de datos y el servicio puro de alertas: resuelve stock,
@@ -125,6 +127,37 @@ export async function resolverAvanceMetas(
   return avances;
 }
 
+/**
+ * Equipos de la herramienta Mantenimientos que ya tocan o van con retraso.
+ *
+ * El semáforo se calcula en memoria con `estadoEquipo` (mismo criterio que la
+ * pantalla de la herramienta) en vez de replicar la fórmula en SQL: son pocas
+ * filas por cuenta y así solo existe una definición de «vencido».
+ */
+export async function obtenerMantenimientosPendientes(
+  usuarioId: string,
+  negocioId: string | null = null,
+  hoyISO: string = aISO(new Date()),
+): Promise<EquipoPendiente[]> {
+  const qb = AppDataSource.getRepository(EquipoMantenimiento)
+    .createQueryBuilder('e')
+    .where('e.usuario_id = :uid', { uid: usuarioId })
+    .andWhere('e.activo = true')
+    .andWhere('e.fecha_ultimo IS NOT NULL');
+  if (negocioId) qb.andWhere('(e.negocio_id = :negocioId OR e.negocio_id IS NULL)', { negocioId });
+
+  const equipos = await qb.take(300).getMany();
+
+  return equipos
+    .map((equipo) => ({ equipo, estado: estadoEquipo(equipo, hoyISO) }))
+    .filter(({ estado }) => estado.estado === 'vencido' || estado.estado === 'proximo')
+    .map(({ equipo, estado }) => ({
+      nombre: equipo.nombre,
+      estado: estado.estado as 'vencido' | 'proximo',
+      dias_restantes: estado.dias_restantes ?? 0,
+    }));
+}
+
 export interface OpcionesAlertasOperativas {
   usuarioId: string;
   negocioId?: string | null;
@@ -153,6 +186,8 @@ export interface AlertasOperativas {
   };
   metas_evaluadas: number;
   articulos_evaluados: number;
+  /** Equipos con mantenimiento vencido o próximo. */
+  equipos_pendientes: number;
 }
 
 /**
@@ -171,11 +206,12 @@ export async function generarAlertasOperativas(
     ? { usuario_id: usuarioId, activa: true, negocio_id: negocioId }
     : { usuario_id: usuarioId, activa: true };
 
-  const [ventasActual, ventasAnterior, stock, metas] = await Promise.all([
+  const [ventasActual, ventasAnterior, stock, metas, mantenimientos] = await Promise.all([
     agregarVentas(usuarioId, rangos.actual.desde, rangos.actual.hasta, negocioId),
     agregarVentas(usuarioId, rangos.anterior.desde, rangos.anterior.hasta, negocioId),
     obtenerStockCritico(usuarioId, negocioId),
     metasRepo.find({ where: whereMetas, order: { periodo_fin: 'ASC' }, take: 100 }),
+    obtenerMantenimientosPendientes(usuarioId, negocioId, rangos.actual.hasta),
   ]);
 
   // Las metas que aún no arrancan no producen diagnóstico.
@@ -198,6 +234,7 @@ export async function generarAlertasOperativas(
     stock,
     ingresos,
     metas: entradaMetas,
+    mantenimientos,
     umbralCaidaIngresos: opciones.umbralCaidaIngresos,
   });
 
@@ -219,5 +256,6 @@ export async function generarAlertasOperativas(
     },
     metas_evaluadas: entradaMetas.length,
     articulos_evaluados: stock.length,
+    equipos_pendientes: mantenimientos.length,
   };
 }

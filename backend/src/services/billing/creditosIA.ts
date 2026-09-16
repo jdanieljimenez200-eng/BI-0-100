@@ -32,6 +32,7 @@ export const COSTO_CREDITOS = {
   marketing_reporte_ads: 1,
   marca_logo: 1,
   resumen_completo: 1,
+  mantenimiento_sugerencia: 1,
 } as const;
 
 export type AccionIA = keyof typeof COSTO_CREDITOS;
