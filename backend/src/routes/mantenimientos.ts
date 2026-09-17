@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess, getPlanFromDB } from '../middleware/requirePlan';
-import { validateBody, exigirUuid } from '../middleware/validate';
+import { validateBody, exigirUuid, fechaISO } from '../middleware/validate';
 import { EquipoMantenimiento } from '../models/EquipoMantenimiento';
 import { MantenimientoRealizado } from '../models/MantenimientoRealizado';
 import { MovimientoContable } from '../models/MovimientoContable';
@@ -44,7 +44,6 @@ const contarEquipos = (cuentaId: string) =>
 const repoEquipos = () => AppDataSource.getRepository(EquipoMantenimiento);
 const repoHistorial = () => AppDataSource.getRepository(MantenimientoRealizado);
 
-const FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/;
 const IntensidadSchema = z.enum(['bajo', 'normal', 'intenso']);
 
 const CrearEquipoSchema = z.object({
@@ -53,7 +52,7 @@ const CrearEquipoSchema = z.object({
   intensidad_uso: IntensidadSchema.default('normal'),
   // Si no llega, se resuelve con el catálogo (o el genérico si no se reconoce).
   intervalo_dias: z.number().int().min(1).max(3650).optional(),
-  fecha_ultimo: z.string().regex(FECHA_ISO, 'fecha_ultimo inválida (YYYY-MM-DD)').nullable().optional(),
+  fecha_ultimo: fechaISO('fecha_ultimo inválida (YYYY-MM-DD)').nullable().optional(),
   ubicacion: z.string().trim().max(120).nullable().optional(),
   notas: z.string().trim().max(2000).nullable().optional(),
   emoji: z.string().trim().max(8).nullable().optional(),
@@ -74,7 +73,7 @@ const SugerenciaSchema = z.object({
 });
 
 const RegistrarSchema = z.object({
-  fecha: z.string().regex(FECHA_ISO, 'fecha inválida (YYYY-MM-DD)').optional(),
+  fecha: fechaISO('fecha inválida (YYYY-MM-DD)').optional(),
   costo: z.number().min(0).max(99_999_999).nullable().optional(),
   responsable: z.string().trim().max(160).nullable().optional(),
   notas: z.string().trim().max(2000).nullable().optional(),

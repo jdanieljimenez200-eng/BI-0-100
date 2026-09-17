@@ -4,7 +4,7 @@ import { EntityManager } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
-import { validateBody, exigirUuid } from '../middleware/validate';
+import { validateBody, exigirUuid, fechaISOOpcional } from '../middleware/validate';
 import { Cotizacion, CotizacionItem } from '../models/Cotizacion';
 import { Marca } from '../models/Marca';
 import { Plan } from '../models/Usuario';
@@ -39,11 +39,14 @@ const CrearCotizacionSchema = z.object({
   impuesto_nombre: z.string().optional().default('IVA'),
   moneda: z.string().optional().default('USD'),
   estado: z.enum(['borrador', 'enviada', 'aceptada', 'rechazada', 'vencida']).optional().default('borrador'),
-  fecha_vencimiento: z.string().optional(),
+  fecha_vencimiento: fechaISOOpcional('fecha_vencimiento inválida (YYYY-MM-DD)'),
   notas: z.string().optional(),
   negocio_id: z.string().uuid().nullable().optional(),
   producto_id: z.string().uuid().nullable().optional(),
 });
+
+// Editar: sin defaults (partial) y sin cambiar a qué cliente/negocio pertenece.
+const EditarCotizacionSchema = CrearCotizacionSchema.omit({ cliente_id: true, negocio_id: true, producto_id: true }).partial();
 
 const router = Router();
 exigirUuid(router, 'id');
@@ -219,7 +222,7 @@ router.post('/', requireHerramientaAccess('cotizaciones', contarCotizaciones), v
 }));
 
 // ─── PATCH /api/cotizaciones/:id ──────────────────────────────────────────────
-router.patch('/:id', ah(async (req: AuthRequest, res: Response) => {
+router.patch('/:id', validateBody(EditarCotizacionSchema), ah(async (req: AuthRequest, res: Response) => {
   const cot = await repo().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!cot) { res.status(404).json({ error: 'Cotización no encontrada' }); return; }
 

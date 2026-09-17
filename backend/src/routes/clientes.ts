@@ -1,13 +1,37 @@
 import { Router, Response } from 'express';
-import { exigirUuid } from '../middleware/validate';
+import { z } from 'zod';
+import { exigirUuid, fechaISOOpcional, validateBody } from '../middleware/validate';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
 import { Cliente } from '../models/Cliente';
 import { Cita } from '../models/Cita';
 import { Usuario } from '../models/Usuario';
+import { Negocio } from '../models/Negocio';
+import { Producto } from '../models/Producto';
 import { camposExpedientePorVertical, filtrarAtributosPermitidos } from '../services/vertical/camposExpediente';
 import { ah } from '../utils/asyncHandler';
+
+// Longitudes = columnas de `clientes`: sin tope, un texto largo era un 500.
+const textoOpcional = (max: number) => z.string().trim().max(max).nullable().optional();
+const ClienteSchema = z.object({
+  nombre: z.string().trim().min(1, 'nombre es requerido').max(200),
+  empresa: textoOpcional(200),
+  email: textoOpcional(200),
+  telefono: textoOpcional(30),
+  direccion: textoOpcional(2000),
+  notas: textoOpcional(10000),
+  categoria: textoOpcional(100),
+  // varchar(8) cuenta caracteres, no unidades UTF-16 (un emoji compuesto ocupa varias).
+  emoji: z.string().refine((e) => [...e].length <= 8, 'emoji demasiado largo').nullable().optional(),
+  estado: z.enum(['lead', 'cliente', 'inactivo']).optional(),
+  fecha_ultimo_contacto: fechaISOOpcional('fecha_ultimo_contacto inválida (YYYY-MM-DD)'),
+  negocio_id: z.string().uuid().nullable().optional(),
+  producto_id: z.string().uuid().nullable().optional(),
+  atributos_extra: z.record(z.unknown()).optional(),
+});
+// Al editar no se cambia a qué negocio/producto pertenece (el formulario los reenvía igual).
+const EditarClienteSchema = ClienteSchema.partial().extend({ activo: z.boolean().optional() });
 
 const router = Router();
 exigirUuid(router, 'id');
@@ -86,25 +110,17 @@ router.get('/:id/citas', ah(async (req: AuthRequest, res: Response) => {
 }));
 
 // ─── POST /api/clientes ──────────────────────────────────────────────────────
-router.post('/', requireHerramientaAccess('clientes', contarClientes), ah(async (req: AuthRequest, res: Response) => {
-  const { nombre, empresa, email, telefono, direccion, notas, categoria, emoji, estado, negocio_id, producto_id, fecha_ultimo_contacto, atributos_extra } = req.body as {
-    nombre: string;
-    empresa?: string;
-    email?: string;
-    telefono?: string;
-    direccion?: string;
-    notas?: string;
-    categoria?: string;
-    emoji?: string;
-    estado?: 'lead' | 'cliente' | 'inactivo';
-    negocio_id?: string | null;
-    producto_id?: string | null;
-    fecha_ultimo_contacto?: string;
-    atributos_extra?: Record<string, unknown>;
-  };
+router.post('/', requireHerramientaAccess('clientes', contarClientes), validateBody(ClienteSchema), ah(async (req: AuthRequest, res: Response) => {
+  const { nombre, empresa, email, telefono, direccion, notas, categoria, emoji, estado, negocio_id, producto_id, fecha_ultimo_contacto, atributos_extra } =
+    req.body as z.infer<typeof ClienteSchema>;
 
-  if (!nombre?.trim()) {
-    res.status(400).json({ error: 'nombre es requerido' });
+  // El expediente cuelga de un negocio/producto de ESTA cuenta, o de ninguno.
+  if (negocio_id && !(await AppDataSource.getRepository(Negocio).exists({ where: { id: negocio_id, usuario_id: req.userId! } }))) {
+    res.status(404).json({ error: 'Negocio no encontrado' });
+    return;
+  }
+  if (producto_id && !(await AppDataSource.getRepository(Producto).exists({ where: { id: producto_id, usuario_id: req.userId! } }))) {
+    res.status(404).json({ error: 'Producto no encontrado' });
     return;
   }
 
@@ -145,14 +161,16 @@ router.post('/', requireHerramientaAccess('clientes', contarClientes), ah(async 
 }));
 
 // ─── PATCH /api/clientes/:id ─────────────────────────────────────────────────
-router.patch('/:id', ah(async (req: AuthRequest, res: Response) => {
+router.patch('/:id', validateBody(EditarClienteSchema), ah(async (req: AuthRequest, res: Response) => {
   const cliente = await repo().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!cliente) { res.status(404).json({ error: 'Cliente no encontrado' }); return; }
 
   const updatable = ['nombre', 'empresa', 'email', 'telefono', 'direccion', 'notas', 'categoria', 'emoji', 'estado', 'activo', 'fecha_ultimo_contacto'] as const;
   for (const k of updatable) {
     if (k in req.body) {
-      (cliente as unknown as Record<string, unknown>)[k] = req.body[k];
+      // El esquema ya descartó nombre/estado vacíos; el resto vacío se guarda como null.
+      const valor = req.body[k];
+      (cliente as unknown as Record<string, unknown>)[k] = valor === '' ? null : valor;
     }
   }
 

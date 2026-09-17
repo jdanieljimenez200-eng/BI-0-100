@@ -51,6 +51,35 @@ export function validateVentasInput(data: unknown): z.infer<typeof VentasAnaliza
 }
 
 /**
+ * Fecha `YYYY-MM-DD` que además EXISTE en el calendario.
+ *
+ * Con solo el regex, `2026-13-45` o `2026-02-30` pasan la validación y llegan a
+ * una columna `date` de Postgres, que las rechaza: el usuario ve un 500 donde
+ * debería ver un 400. Se compara contra la fecha reconstruida en UTC para no
+ * depender de la zona horaria del servidor.
+ */
+export function fechaISO(mensaje = 'Fecha inválida (YYYY-MM-DD)') {
+  return z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, mensaje)
+    .refine((valor) => {
+      const fecha = new Date(`${valor}T00:00:00Z`);
+      return !Number.isNaN(fecha.getTime()) && fecha.toISOString().slice(0, 10) === valor;
+    }, mensaje);
+}
+
+/**
+ * Fecha opcional de formulario: `''` (campo vacío) y `null` se guardan como null.
+ * Sin esto, un input de fecha vacío llegaba a Postgres como '' y respondía 500.
+ */
+export function fechaISOOpcional(mensaje = 'Fecha inválida (YYYY-MM-DD)') {
+  return z
+    .union([z.literal('').transform(() => null), fechaISO(mensaje)])
+    .nullable()
+    .optional();
+}
+
+/**
  * Middlewares para validar request body, query y params contra schemas Zod.
  */
 export const validateBody = (schema: z.ZodSchema) => (

@@ -4,7 +4,7 @@ import { In } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
-import { validateBody, exigirUuid } from '../middleware/validate';
+import { validateBody, exigirUuid, fechaISO } from '../middleware/validate';
 import { ItemPOS } from '../models/ItemPOS';
 import { Venta } from '../models/Venta';
 import { VentaItem } from '../models/VentaItem';
@@ -67,7 +67,7 @@ const CrearVentaSchema = z.object({
   }).optional(),
   notas: z.string().optional(),
   aplicar_impuesto: z.boolean().optional(),
-  fecha: z.string().optional(),
+  fecha: fechaISO('fecha inválida (YYYY-MM-DD)').optional(),
 });
 
 /**

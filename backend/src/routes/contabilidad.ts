@@ -8,7 +8,7 @@ import { Producto } from '../models/Producto';
 import { CanalCobro } from '../models/CanalCobro';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess, requirePlanFeature, getPlanFromDB } from '../middleware/requirePlan';
-import { validateBody, exigirUuid } from '../middleware/validate';
+import { validateBody, exigirUuid, fechaISO } from '../middleware/validate';
 import { calcularCalibracion } from '../services/contabilidad/calibracionService';
 import {
   calcularDesgloseComision,
@@ -22,7 +22,7 @@ const CrearMovimientoContableSchema = z.object({
   tipo: z.enum(['ingreso', 'egreso'], { errorMap: () => ({ message: 'tipo debe ser ingreso o egreso' }) }),
   descripcion: z.string().trim().min(1, 'descripcion es requerida'),
   monto: z.number({ invalid_type_error: 'monto debe ser numérico' }).positive('monto debe ser un número positivo'),
-  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha inválida (YYYY-MM-DD)'),
+  fecha: fechaISO('fecha inválida (YYYY-MM-DD)'),
   categoria: z.string().optional(),
   parent_movimiento_id: z.string().uuid().nullable().optional(),
   es_auto_generado: z.boolean().optional(),
@@ -54,9 +54,15 @@ const CanalCobroInputSchema = z.object({
   notas: z.string().nullable().optional(),
 });
 
-/** Conciliar una liquidación: confirmar que el dinero ya entró al banco. Sin fecha se usa hoy. */
+/**
+ * Conciliar una liquidación: confirmar que el dinero ya entró al banco.
+ *
+ * La fecha se validaba... nada: llegaba del cuerpo y se guardaba tal cual en una
+ * columna `date`, así que cualquier texto reventaba la query con un 500 en vez
+ * de responder 400. Sin fecha se usa hoy.
+ */
 const ConciliarLiquidacionSchema = z.object({
-  fecha_liquidacion: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha_liquidacion inválida (YYYY-MM-DD)').optional(),
+  fecha_liquidacion: fechaISO('fecha_liquidacion inválida (YYYY-MM-DD)').optional(),
 });
 
 const SimularPreciosSchema = z.object({

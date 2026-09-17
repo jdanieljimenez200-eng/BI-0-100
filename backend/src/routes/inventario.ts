@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { exigirUuid } from '../middleware/validate';
+import { exigirUuid, fechaISO } from '../middleware/validate';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
@@ -161,6 +161,10 @@ router.post('/movimientos', requireHerramientaAccess('inventario', contarMovimie
     return;
   }
 
+  if (fecha !== undefined && fecha !== '' && !fechaISO().safeParse(fecha).success) {
+    res.status(400).json({ error: 'fecha inválida (YYYY-MM-DD)' });
+    return;
+  }
   const fechaMov = fecha || new Date().toISOString().slice(0, 10);
 
   // Pre-verificar producto si se registrará en finanzas

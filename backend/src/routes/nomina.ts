@@ -4,7 +4,7 @@ import { In } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
-import { validateBody, exigirUuid } from '../middleware/validate';
+import { validateBody, exigirUuid, fechaISO, fechaISOOpcional } from '../middleware/validate';
 import { Empleado } from '../models/Empleado';
 import { PagoNomina } from '../models/PagoNomina';
 import { MovimientoContable } from '../models/MovimientoContable';
@@ -18,7 +18,7 @@ const CrearEmpleadoSchema = z.object({
   moneda: z.string().optional().default('USD'),
   telefono: z.string().optional(),
   email: z.string().optional(),
-  fecha_inicio: z.string().optional(),
+  fecha_inicio: fechaISOOpcional('fecha_inicio inválida (YYYY-MM-DD)'),
   notas: z.string().optional(),
   negocio_id: z.string().uuid().nullable().optional(),
   producto_id: z.string().uuid().nullable().optional(),
@@ -27,11 +27,19 @@ const CrearEmpleadoSchema = z.object({
 const CrearPagoNominaSchema = z.object({
   empleado_id: z.string().uuid('empleado_id debe ser un UUID válido'),
   monto: z.number({ invalid_type_error: 'monto debe ser numérico' }).positive('monto debe ser mayor a 0').optional(),
-  periodo_inicio: z.string().min(1, 'periodo_inicio es requerido'),
-  periodo_fin: z.string().min(1, 'periodo_fin es requerido'),
-  fecha_pago: z.string().min(1, 'fecha_pago es requerida'),
+  periodo_inicio: fechaISO('periodo_inicio inválido (YYYY-MM-DD)'),
+  periodo_fin: fechaISO('periodo_fin inválido (YYYY-MM-DD)'),
+  fecha_pago: fechaISO('fecha_pago inválida (YYYY-MM-DD)'),
   notas: z.string().optional(),
+}).refine((p) => p.periodo_fin >= p.periodo_inicio, {
+  message: 'periodo_fin no puede ser anterior a periodo_inicio',
+  path: ['periodo_fin'],
 });
+
+// Editar: los mismos campos que el alta, todos opcionales, más `activo`.
+const EditarEmpleadoSchema = CrearEmpleadoSchema.omit({ negocio_id: true, producto_id: true })
+  .partial()
+  .extend({ activo: z.boolean().optional() });
 
 const router = Router();
 exigirUuid(router, 'id');
@@ -97,7 +105,7 @@ router.post('/empleados', validateBody(CrearEmpleadoSchema), ah(async (req: Auth
   res.status(201).json(emp);
 }));
 
-router.patch('/empleados/:id', ah(async (req: AuthRequest, res: Response) => {
+router.patch('/empleados/:id', validateBody(EditarEmpleadoSchema), ah(async (req: AuthRequest, res: Response) => {
   const emp = await repoEmp().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!emp) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
 
