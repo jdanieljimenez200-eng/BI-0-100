@@ -16,6 +16,7 @@
  * Ejecutar:  npx ts-node src/seeds/seed-usuario-completo.ts
  */
 
+import '../scripts/guardiaSeeds';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcryptjs';

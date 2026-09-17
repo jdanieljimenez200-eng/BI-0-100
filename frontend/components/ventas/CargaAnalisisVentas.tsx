@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 const ETAPAS = [
   'Leyendo el contexto de tu producto',
   'Generando tips de negociación',
-  'Buscando la historia de emprendedor de hoy',
+  'Componiendo una historia ilustrativa para tu rubro',
   'Mapeando por qué fracasan negocios como el tuyo',
   'Empaquetando tu plan de acción',
 ];
@@ -14,7 +14,7 @@ const ETAPAS = [
 const MENSAJES = [
   'Los mejores vendedores preparan antes de improvisar…',
   'Cruce de datos con benchmarks de tu categoría…',
-  'La historia de hoy podría cambiar tu semana…',
+  'Armando un ejemplo aplicado a tu tipo de negocio…',
   'El 82% de los negocios muere por errores evitables…',
   'Últimos detalles, casi listo…',
 ];

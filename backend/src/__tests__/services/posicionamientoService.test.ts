@@ -1,21 +1,22 @@
 import { generarEstrategias } from '../../services/marketing/posicionamientoService';
 
 describe('posicionamientoService.generarEstrategias', () => {
-  it('genera exactamente 3 estrategias', () => {
+  it('genera exactamente 4 estrategias (los 4 pilares de agencia)', () => {
     const estrategias = generarEstrategias('Tostadas', 'Alimentos y bebidas', 'producto', 250, 1000);
-    expect(estrategias).toHaveLength(3);
+    expect(estrategias).toHaveLength(4);
   });
 
-  it('los tipos son PREMIUM, VOLUMEN y ESPECIALIZADO', () => {
+  it('los tipos son SEGUIDORES, RECONOCIMIENTO, VENTAS y VENTAS_PLUS', () => {
     const estrategias = generarEstrategias('Gadget X', 'Tecnología y gadgets', 'producto', 500, 1000);
     const tipos = estrategias.map((e) => e.tipo).sort();
-    expect(tipos).toEqual(['ESPECIALIZADO', 'PREMIUM', 'VOLUMEN']);
+    expect(tipos).toEqual(['RECONOCIMIENTO', 'SEGUIDORES', 'VENTAS', 'VENTAS_PLUS']);
   });
 
-  it('exactamente una estrategia tiene recomendada=true', () => {
+  it('exactamente una estrategia tiene recomendada=true (VENTAS_PLUS)', () => {
     const estrategias = generarEstrategias('Ropa Y', 'Ropa y moda', 'producto', 350, 1000);
     const recomendadas = estrategias.filter((e) => e.recomendada);
     expect(recomendadas).toHaveLength(1);
+    expect(recomendadas[0].tipo).toBe('VENTAS_PLUS');
   });
 
   it('la estrategia recomendada tiene el mayor puntaje_fit', () => {
@@ -23,6 +24,7 @@ describe('posicionamientoService.generarEstrategias', () => {
     const recomendada = estrategias.find((e) => e.recomendada)!;
     const maxScore = Math.max(...estrategias.map((e) => e.puntaje_fit));
     expect(recomendada.puntaje_fit).toBe(maxScore);
+    expect(recomendada.puntaje_fit).toBe(98);
   });
 
   it('todos los puntajes están entre 0 y 100', () => {
@@ -35,41 +37,86 @@ describe('posicionamientoService.generarEstrategias', () => {
 
   it('funciona con categoría desconocida', () => {
     const estrategias = generarEstrategias('X', 'Categoría inventada XYZ', 'producto', 100, 500);
-    expect(estrategias).toHaveLength(3);
+    expect(estrategias).toHaveLength(4);
     expect(estrategias.filter((e) => e.recomendada)).toHaveLength(1);
   });
 
-  it('todas las estrategias tienen campos requeridos', () => {
+  it('todas las estrategias tienen campos requeridos y VENTAS_PLUS tiene artefactos completos', () => {
     const estrategias = generarEstrategias('Pan', 'Alimentos y bebidas', 'producto', 299, 1000);
     for (const e of estrategias) {
       expect(e.tipo).toBeTruthy();
+      expect(e.pilar).toBeTruthy();
       expect(e.nombre).toBeTruthy();
       expect(e.tagline).toBeTruthy();
       expect(Array.isArray(e.canales_principales)).toBe(true);
       expect(e.canales_principales.length).toBeGreaterThan(0);
       expect(e.nivel_inversion).toBeTruthy();
       expect(typeof e.puntaje_fit).toBe('number');
+      expect(e.roi).toBeDefined();
+      expect(e.roi.alcance).toBeTruthy();
+      expect(e.roi.leads).toBeTruthy();
     }
+
+    const ventasPlus = estrategias.find((e) => e.tipo === 'VENTAS_PLUS')!;
+    expect(ventasPlus.unit_economics).toBeDefined();
+    expect(ventasPlus.unit_economics?.presupuesto_simulado).toBe(1000);
+    expect(ventasPlus.unit_economics?.roas_estimado).toBeGreaterThan(0);
+    expect(ventasPlus.script_cierre).toBeDefined();
+    expect(ventasPlus.script_cierre?.paso1_filtro.pregunta).toContain('Pan');
+    expect(ventasPlus.secuencia_seguimiento).toBeDefined();
+    expect(ventasPlus.garantia_irresistible).toContain('Garantía de Satisfacción 30 Días');
+    expect(ventasPlus.order_bump_sugerido).toBeTruthy();
   });
 
-  it('con contexto de mercado: pocos competidores eleva PREMIUM y ESPECIALIZADO', () => {
-    const sinCtx = generarEstrategias('X', 'Tecnología y gadgets', 'producto', 500, 1000);
+  it('con contexto de mercado: incorpora competencia en la narrativa de RECONOCIMIENTO cuando total_competidores >= 5', () => {
     const conCtx = generarEstrategias('X', 'Tecnología y gadgets', 'producto', 500, 1000, {
       viabilidad_score: 80,
-      total_competidores: 2,
+      total_competidores: 6,
       precio_mercado_promedio: 500,
       tendencia: 'CRECIENTE',
       gap_detectado: null,
     });
 
-    const premiumSin = sinCtx.find((e) => e.tipo === 'PREMIUM')!.puntaje_fit;
-    const premiumCon = conCtx.find((e) => e.tipo === 'PREMIUM')!.puntaje_fit;
-    // Con pocos competidores y tendencia creciente, PREMIUM debe subir
-    expect(premiumCon).toBeGreaterThanOrEqual(premiumSin);
+    const reconoc = conCtx.find((e) => e.tipo === 'RECONOCIMIENTO')!;
+    expect(reconoc.por_que).toContain('Con 6 competidores en el radar');
   });
 
-  it('con reporte de ads con alto ROAS: incrementa fit de PREMIUM en delta acotado y cita métricas reales', () => {
-    const sinAds = generarEstrategias('Reloj Oro', 'Tecnología y gadgets', 'producto', 2000, 5000);
+  it('con PUV: incluye la propuesta de valor en las narrativas de por_que', () => {
+    const estrategias = generarEstrategias(
+      'SuperCafé',
+      'Alimentos y bebidas',
+      'producto',
+      100,
+      1000,
+      undefined,
+      'El único café orgánico tostado en leña de encino'
+    );
+
+    for (const e of estrategias) {
+      if (e.tipo !== 'VENTAS_PLUS') {
+        expect(e.por_que).toContain('El único café orgánico tostado en leña de encino');
+      }
+    }
+  });
+
+  it('con canalVenta: antepone los canales declarados por el usuario', () => {
+    const estrategias = generarEstrategias(
+      'Muebles Wood',
+      'Hogar y decoración',
+      'producto',
+      2500,
+      5000,
+      undefined,
+      undefined,
+      'TikTok Shop, Instagram y showroom físico'
+    );
+
+    const seguidores = estrategias.find((e) => e.tipo === 'SEGUIDORES')!;
+    expect(seguidores.canales_principales).toContain('TikTok Shop');
+    expect(seguidores.canales_principales).toContain('showroom físico');
+  });
+
+  it('con reporte de ads con alto ROAS: cita métricas reales en las narrativas', () => {
     const mockAds = {
       fuente: 'meta' as const,
       totales: {
@@ -81,7 +128,7 @@ describe('posicionamientoService.generarEstrategias', () => {
         ctr_promedio: 2.4,
         cpc_promedio: 2.0,
         cpa_promedio: 100,
-        roas_promedio: 3.5, // >= 3.0 -> +8 a PREMIUM
+        roas_promedio: 3.5,
       },
       campanas: [],
       alertas: [],
@@ -106,67 +153,12 @@ describe('posicionamientoService.generarEstrategias', () => {
       mockAds
     );
 
-    const fitSin = sinAds.find((e) => e.tipo === 'PREMIUM')!.puntaje_fit;
-    const fitCon = conAds.find((e) => e.tipo === 'PREMIUM')!.puntaje_fit;
+    const reconoc = conAds.find((e) => e.tipo === 'RECONOCIMIENTO')!;
+    expect(reconoc.por_que).toContain('Histórico en Meta Ads');
+    expect(reconoc.por_que).toContain('ROAS 3.5x');
+    expect(reconoc.por_que).toContain('CPA de $100');
 
-    // Delta acotado de +8 sin rebasar 100
-    expect(fitCon).toBeGreaterThan(fitSin);
-    expect(fitCon - fitSin).toBeLessThanOrEqual(10);
-    expect(fitCon).toBeLessThanOrEqual(100);
-
-    // Cita datos reales de pauta en por_que
-    const premium = conAds.find((e) => e.tipo === 'PREMIUM')!;
-    expect(premium.por_que).toContain('Histórico en Meta Ads');
-    expect(premium.por_que).toContain('ROAS 3.5x');
-    expect(premium.por_que).toContain('CPA de $100');
-  });
-
-  it('con reporte de ads con fugas de gasto: penaliza VOLUMEN dentro de límites acotados', () => {
-    const sinAds = generarEstrategias('Suscripción', 'Servicios profesionales', 'servicio', 500, 2000);
-    const mockAdsFugas = {
-      fuente: 'google_ads' as const,
-      totales: {
-        gasto_total: 5000,
-        impresiones_total: 30000,
-        clics_total: 500,
-        conversiones_total: 10,
-        ctr_promedio: 1.67,
-        cpc_promedio: 10,
-        cpa_promedio: 500, // > 250 -> penaliza volumen
-      },
-      campanas: [],
-      alertas: [{
-        tipo: 'gasto_sin_conversion' as const,
-        nivel: 'danger' as const,
-        titulo: 'Fuga',
-        descripcion: 'Gasto sin conversión',
-      }],
-      diagnostico_ia: {
-        resumen_ejecutivo: 'Test',
-        puntos_fuertes: ['Test'],
-        fugas_presupuesto: [],
-        recomendaciones_priorizadas: [],
-      },
-    };
-
-    const conAds = generarEstrategias(
-      'Suscripción',
-      'Servicios profesionales',
-      'servicio',
-      500,
-      2000,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      mockAdsFugas
-    );
-
-    const fitVolSin = sinAds.find((e) => e.tipo === 'VOLUMEN')!.puntaje_fit;
-    const fitVolCon = conAds.find((e) => e.tipo === 'VOLUMEN')!.puntaje_fit;
-
-    expect(fitVolCon).toBeLessThan(fitVolSin);
-    expect(fitVolSin - fitVolCon).toBeLessThanOrEqual(10);
-    expect(fitVolCon).toBeGreaterThanOrEqual(0);
+    const ventas = conAds.find((e) => e.tipo === 'VENTAS')!;
+    expect(ventas.por_que).toContain('Histórico en Meta Ads');
   });
 });

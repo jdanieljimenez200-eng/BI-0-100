@@ -1,3 +1,4 @@
+import './guardiaSeeds';
 import { AppDataSource } from '../config/database';
 import { AnalisisBrief } from '../models/AnalisisBrief';
 import { logger } from '../utils/logger';

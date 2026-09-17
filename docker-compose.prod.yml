@@ -9,28 +9,19 @@ services:
     ports:
       # Vinculado a localhost para que quede protegido tras un reverse proxy (Nginx, Caddy o Traefik)
       - "127.0.0.1:3001:3001"
+    # Todas las variables del backend salen de .env.production (plantilla:
+    # .env.production.template). Antes se copiaban una a una aquí y la lista se
+    # desincronizaba del código: faltaban los precios de Stripe y las claves del
+    # panel de admin, y el bucket iba con un nombre que el código no lee.
+    # Si falta algo imprescindible, el backend no arranca y lo dice en el log
+    # (backend/src/config/entorno.ts).
+    #
+    # Uso: docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+    env_file:
+      - .env.production
     environment:
       NODE_ENV: production
       PORT: 3001
-      DATABASE_URL: ${DATABASE_URL}
-      TYPEORM_MIGRATIONS_RUN: ${TYPEORM_MIGRATIONS_RUN:-true}
-      REDIS_URL: ${REDIS_URL}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      FRONTEND_URL: ${FRONTEND_URL}
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      # Transcripción de voz (opcional): sin clave, /api/ventas/transcribir → 503
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_TRANSCRIPTION_MODEL: ${OPENAI_TRANSCRIPTION_MODEL:-whisper-1}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      AWS_REGION: ${AWS_REGION:-us-east-1}
-      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
-      RESEND_API_KEY: ${RESEND_API_KEY}
-      SENTRY_DSN: ${SENTRY_DSN:-}
-      METRICS_TOKEN: ${METRICS_TOKEN:-}
     healthcheck:
       test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:${PORT:-3001}/health || exit 1"]
       interval: 30s
@@ -51,6 +42,9 @@ services:
       dockerfile: Dockerfile.prod
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
+        # Errores del navegador. SENTRY_DSN (abajo) solo cubre el servidor de Next.
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
     image: bi0a100-frontend:prod
     container_name: bi0a100-frontend-prod
     restart: always
@@ -60,7 +54,6 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: "0.0.0.0"
-      BACKEND_URL: http://backend:3001
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
       SENTRY_DSN: ${SENTRY_DSN:-}
     healthcheck:
@@ -89,6 +82,9 @@ services:
     volumes:
       - ./prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
       - ./alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      # Mismo valor que METRICS_TOKEN del backend (fuera de git, ver .gitignore):
+      #   mkdir -p prometheus && printf '%s' "$METRICS_TOKEN" > prometheus/metrics_token
+      - ./prometheus/metrics_token:/etc/prometheus/metrics_token:ro
       - prometheus_data:/prometheus
     command: --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.retention.time=30d
     depends_on:

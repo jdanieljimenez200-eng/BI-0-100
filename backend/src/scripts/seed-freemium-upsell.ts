@@ -25,6 +25,7 @@
  * Credenciales sembradas:
  *   freemium@bi0a100.test  /  Freemium123!   [freemium, user]
  */
+import './guardiaSeeds';
 import 'reflect-metadata';
 import * as dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';

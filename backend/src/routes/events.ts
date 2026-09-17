@@ -1,37 +1,71 @@
-import { Router, Response } from 'express';
-import { AuthRequest } from '../middleware/auth';
+import { randomBytes } from 'crypto';
+import { Router, Response, NextFunction } from 'express';
+import { authenticate, AuthRequest } from '../middleware/auth';
 import { addClient, removeClient } from '../events/sse';
 import { redisClient } from '../config/redis';
-import jwt from 'jsonwebtoken';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
-// GET /api/events
-// EventSource soporta Authorization header, cookie HttpOnly o ?token= (fallback)
-router.get('/', async (req: AuthRequest, res: Response) => {
-  const headerToken = req.headers.authorization?.split(' ')[1];
-  const cookieToken = req.cookies?.access_token;
-  const queryToken = typeof req.query.token === 'string' ? req.query.token : undefined;
-  const token = headerToken || cookieToken || queryToken;
-  if (!token) {
-    res.status(401).json({ error: 'Token requerido' });
+/** Vida de un ticket de SSE: solo tiene que llegar del POST al GET. */
+const TICKET_TTL_SECONDS = 60;
+const claveTicket = (ticket: string) => `sse_ticket:${ticket}`;
+
+/**
+ * POST /api/events/ticket — ticket de un solo uso para abrir el stream.
+ *
+ * EventSource no permite cabeceras, y antes el access token viajaba en
+ * `?token=`: quedaba escrito en logs de proxies, CDN y del propio servidor. El
+ * ticket no sirve para nada más que abrir UNA conexión SSE en el próximo minuto.
+ */
+router.post('/ticket', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!redisClient?.isReady) {
+    res.status(503).json({ error: 'Notificaciones en tiempo real no disponibles' });
     return;
   }
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET!, { algorithms: ['HS256'] }) as { userId: string; jti?: string };
-    if (payload.jti && redisClient?.isReady) {
-      const isDenied = await redisClient.get(`deny:${payload.jti}`);
-      if (isDenied) {
-        res.status(401).json({ error: 'Token revocado' });
-        return;
-      }
-    }
-    req.userId = payload.userId;
-  } catch {
-    res.status(401).json({ error: 'Token inválido o expirado' });
+    const ticket = randomBytes(24).toString('base64url');
+    await redisClient.setEx(claveTicket(ticket), TICKET_TTL_SECONDS, req.userId!);
+    res.json({ ticket, expira_en_s: TICKET_TTL_SECONDS });
+  } catch (err) {
+    logger.error('[SSE] No se pudo emitir el ticket:', err);
+    res.status(503).json({ error: 'Notificaciones en tiempo real no disponibles' });
+  }
+});
+
+/**
+ * Identifica al usuario del stream: por ticket (navegador) o por cabecera
+ * Authorization (clientes que sí pueden enviarla, con las mismas comprobaciones
+ * de denylist y bloqueo que el resto de la API).
+ */
+async function autenticarStream(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  const ticket = typeof req.query.ticket === 'string' ? req.query.ticket : undefined;
+  if (!ticket) {
+    await authenticate(req, res, next);
     return;
   }
-  // Headers obligatorios para Server-Sent Events (Tunnel Unidireccional)
+  if (!redisClient?.isReady) {
+    res.status(503).json({ error: 'Notificaciones en tiempo real no disponibles' });
+    return;
+  }
+  try {
+    // GETDEL: el ticket se consume al usarlo; una URL copiada no abre otro stream.
+    const userId = await redisClient.getDel(claveTicket(ticket));
+    if (!userId) {
+      res.status(401).json({ error: 'Ticket inválido o caducado' });
+      return;
+    }
+    req.userId = userId;
+    next();
+  } catch (err) {
+    logger.error('[SSE] No se pudo validar el ticket:', err);
+    res.status(503).json({ error: 'Notificaciones en tiempo real no disponibles' });
+  }
+}
+
+// GET /api/events?ticket=… — stream de Server-Sent Events
+router.get('/', autenticarStream, (req: AuthRequest, res: Response) => {
+  // Headers obligatorios para Server-Sent Events
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -40,13 +74,12 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     'X-Accel-Buffering': 'no',
   });
 
-  // Flush inicial para confirmar conexión 
+  // Flush inicial para confirmar conexión
   res.write('data: {"status":"connected"}\n\n');
 
-  // Registrar cliente en memoria
   addClient(req.userId!, res);
 
-  // Intervalo tonto para Heartbeat (previene timeout en AWS/Vercel/Nginx a los 60s)
+  // Heartbeat: evita que balanceadores y proxies corten la conexión inactiva (~60 s)
   const heartbeat = setInterval(() => {
     try {
       res.write(': heartbeat\n\n');

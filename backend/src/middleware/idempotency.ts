@@ -16,8 +16,13 @@ import { logger } from '../utils/logger';
  *                 persisten el estado real más allá de eso).
  *   NX:           si la clave existe, rechaza con 409.
  *
- * Se libera automáticamente por TTL. No se borra al completar el análisis
- * porque eso obligaría a propagar el lock release hasta el worker.
+ * Si la petición se acepta (202), el lock caduca solo por TTL: no se borra al
+ * completar el análisis porque eso obligaría a propagar el release hasta el worker.
+ *
+ * Si la petición termina en error (400 de validación, 402 sin créditos, 404,
+ * 5xx…) el lock se borra al responder: no se creó ningún análisis, y antes quien
+ * corregía el formulario y reenviaba en menos de 30 s recibía un 409 "Ya hay un
+ * análisis en curso" que no existía.
  */
 export function requireAnalisisLock(modulo: string, opciones: { porCuenta?: boolean } = {}) {
   return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -43,6 +48,10 @@ export function requireAnalisisLock(modulo: string, opciones: { porCuenta?: bool
         });
         return;
       }
+      res.once('finish', () => {
+        if (res.statusCode < 400) return;
+        redisClient.del(key).catch((err: unknown) => logger.warn('[idempotency] No se pudo liberar el lock:', err));
+      });
     } catch (err) {
       // Si Redis está caído, fallamos abierto para no bloquear a los usuarios.
       // El riesgo (doble-click) es menor que el de un outage de Redis bloqueando

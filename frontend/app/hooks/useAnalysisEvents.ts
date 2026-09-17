@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import api from '@/lib/api';
+import { API_BASE_URL } from '@/lib/config';
 
 export type AnalysisEvent = {
   id: string;
@@ -22,7 +23,7 @@ const SSE_POLL_DELAY = 20_000;
 /** Tras este tiempo el análisis se considera perdido y se deja de sondear. */
 const MAX_DURATION = 10 * 60 * 1000;
 
-/** Reintentos de SSE antes de rendirse (token inválido, proxy sin soporte, etc.). */
+/** Reconexiones de SSE antes de rendirse (proxy sin soporte, Redis caído, etc.). */
 const MAX_SSE_ERRORS = 3;
 
 function delayFor(elapsed: number, sseLive: boolean): number {
@@ -40,7 +41,10 @@ function statusOf(err: unknown): number | undefined {
  *
  * - SSE: el backend emite frames NOMBRADOS (`event: analysis-update`), por lo que
  *   se registra ese listener además de `message` (frame de handshake sin nombre).
- *   EventSource no permite headers custom: el token va en `?token=`.
+ *   EventSource no permite headers custom, y el access token en la URL acababa en
+ *   logs de proxies: se pide un ticket de un solo uso (POST /events/ticket) y es
+ *   lo único que va en `?ticket=`. Como el ticket se consume, cada reconexión
+ *   pide uno nuevo en vez de dejar que EventSource reintente con la misma URL.
  * - Polling: intervalo escalonado (3s → 6s → 12s), 20s si el SSE está vivo y
  *   pausado mientras la pestaña está oculta. Así el sondeo ya no agota el
  *   rate-limit de /api por sí solo.
@@ -62,6 +66,7 @@ export function useAnalysisEvents(
     let sseLive = false;
     let sseErrors = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let reconexion: ReturnType<typeof setTimeout> | null = null;
     let source: EventSource | null = null;
     const startedAt = Date.now();
 
@@ -70,6 +75,10 @@ export function useAnalysisEvents(
       if (timer) {
         clearTimeout(timer);
         timer = null;
+      }
+      if (reconexion) {
+        clearTimeout(reconexion);
+        reconexion = null;
       }
       source?.close();
     };
@@ -128,13 +137,6 @@ export function useAnalysisEvents(
     };
 
     // ── SSE (notificación inmediata cuando está disponible) ───────────────────
-    const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-    const token =
-      typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-    const url = token
-      ? `${base}/events?token=${encodeURIComponent(token)}`
-      : `${base}/events`;
-
     const handleFrame = (e: Event): void => {
       if (closed) return;
       const raw = (e as MessageEvent<string>).data;
@@ -163,23 +165,41 @@ export function useAnalysisEvents(
       sseErrors = 0;
     };
 
+    const conectarSse = async (): Promise<void> => {
+      if (closed || typeof EventSource === 'undefined') return; // sin EventSource: solo polling
+      let ticket: string;
+      try {
+        const { data } = await api.post<{ ticket: string }>('/events/ticket');
+        ticket = data.ticket;
+      } catch {
+        return; // sin ticket (Redis caído, sesión perdida): queda el polling
+      }
+      if (closed) return;
+      try {
+        const nuevo = new EventSource(`${API_BASE_URL}/events?ticket=${encodeURIComponent(ticket)}`);
+        nuevo.addEventListener('open', handleOpen);
+        nuevo.addEventListener('message', handleFrame);
+        nuevo.addEventListener('analysis-update', handleFrame);
+        nuevo.addEventListener('error', handleError);
+        source = nuevo;
+      } catch {
+        source = null;
+      }
+    };
+
     const handleError = (): void => {
       sseLive = false;
       sseErrors += 1;
-      // EventSource reintenta solo; si el fallo es persistente (token inválido,
-      // proxy que corta el stream) se cierra y queda el polling.
-      if (sseErrors >= MAX_SSE_ERRORS) source?.close();
+      // El ticket ya se consumió: el reintento automático de EventSource con la
+      // misma URL fallaría siempre. Se cierra y se reconecta con un ticket nuevo,
+      // hasta MAX_SSE_ERRORS; después queda solo el polling.
+      source?.close();
+      source = null;
+      if (closed || sseErrors >= MAX_SSE_ERRORS) return;
+      reconexion = setTimeout(() => void conectarSse(), 2_000 * sseErrors);
     };
 
-    try {
-      source = new EventSource(url, { withCredentials: true });
-      source.addEventListener('open', handleOpen);
-      source.addEventListener('message', handleFrame);
-      source.addEventListener('analysis-update', handleFrame);
-      source.addEventListener('error', handleError);
-    } catch {
-      source = null; // entorno sin EventSource: solo polling
-    }
+    void conectarSse();
 
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', onVisible);
@@ -189,18 +209,9 @@ export function useAnalysisEvents(
     void tick();
 
     return () => {
-      closed = true;
-      if (timer) clearTimeout(timer);
-      timer = null;
+      stop();
       if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', onVisible);
-      }
-      if (source) {
-        source.removeEventListener('open', handleOpen);
-        source.removeEventListener('message', handleFrame);
-        source.removeEventListener('analysis-update', handleFrame);
-        source.removeEventListener('error', handleError);
-        source.close();
       }
     };
   }, [analysisId, statusEndpoint]); // onUpdate excluido intencionalmente (va en ref)

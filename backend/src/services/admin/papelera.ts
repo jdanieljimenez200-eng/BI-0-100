@@ -297,8 +297,7 @@ export async function purgarPapelera(opciones: { ahora?: Date } = {}): Promise<R
               [cuenta.id]
             );
 
-            // `temas_usuario` no tiene clave foránea: la cascada no lo alcanza.
-            await manager.query(`DELETE FROM temas_usuario WHERE usuario_id = $1`, [cuenta.id]);
+            // `temas_usuario` se borra por cascada (FK_temas_usuario_usuario, migración 1775550000000).
             const borrado = await manager.query(
               `DELETE FROM usuarios WHERE id = $1 AND eliminado_en IS NOT NULL AND eliminado_en <= $2`,
               [cuenta.id, limite]

@@ -1,3 +1,4 @@
+import './guardiaSeeds';
 import 'reflect-metadata';
 import { AppDataSource } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';

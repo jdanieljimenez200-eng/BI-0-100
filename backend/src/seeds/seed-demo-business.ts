@@ -3,6 +3,7 @@
  * Ejecutar: npx ts-node src/seeds/seed-demo-business.ts
  */
 
+import '../scripts/guardiaSeeds';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcryptjs';

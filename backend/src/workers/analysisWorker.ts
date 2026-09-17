@@ -10,6 +10,7 @@ import { ejecutarAnalisisVentas } from '../services/ventas/ventasOrchestrator';
 import { logger } from '../utils/logger';
 import { conSeguimientoIA, huboFallbackIA } from '../utils/seguimientoIA';
 import { reembolsarCreditos } from '../services/billing/creditosIA';
+import { esErrorTransitorio } from '../utils/erroresTransitorios';
 
 /**
  * Sin producto no hay nada que reintentar: se falla de inmediato en vez de gastar
@@ -82,12 +83,18 @@ async function ejecutarTrabajo(job: Job) {
       moduleName,
     });
   } catch (err) {
+    const transitorio = !(err instanceof UnrecoverableError) && esErrorTransitorio(err);
     logger.error(`[Worker] Analysis failed`, {
       jobId: job.id,
       analisisId,
       moduleName,
+      transitorio,
       error: err instanceof Error ? err.message : String(err),
     });
-    throw err; // BullMQ will handle retries
+    // Solo se reintenta lo transitorio (BD, red, proveedor saturado). Un error de
+    // datos o de código fallaría igual en cada intento y cada intento repite las
+    // llamadas de IA ya hechas: hasta ×3 el coste para acabar en error de todos modos.
+    if (err instanceof UnrecoverableError || transitorio) throw err;
+    throw new UnrecoverableError(err instanceof Error ? err.message : String(err));
   }
 }

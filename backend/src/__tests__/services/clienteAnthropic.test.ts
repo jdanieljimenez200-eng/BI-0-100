@@ -70,6 +70,10 @@ describe('config/anthropic', () => {
     expect(costoUsd('claude-haiku-4-5', { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 1_000_000 })).toBeCloseTo(0.1, 6);
     expect(costoUsd('claude-opus-5', { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 1_000_000 })).toBeCloseTo(6.25, 6);
     expect(costoUsd('modelo-desconocido', { input_tokens: 5, output_tokens: 5 })).toBe(0);
+    // Id con sufijo de versión: se cobra con el precio del modelo base.
+    expect(costoUsd('claude-sonnet-5-20260801', { input_tokens: 1_000_000, output_tokens: 1_000_000 })).toBe(12);
+    // Un prefijo parcial no confunde modelos distintos.
+    expect(costoUsd('claude-opus-4-8-20260101', { input_tokens: 1_000_000, output_tokens: 0 })).toBe(5);
   });
 
   it('estrategia va a Sonnet 5 sin temperature, con razonamiento y holgura de tokens', async () => {

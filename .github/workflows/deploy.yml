@@ -73,8 +73,9 @@ jobs:
         with:
           node-version: '20'
 
+      # Versión fijada: `@latest` cambiaba el comportamiento del deploy sin ningún commit.
       - name: Install Vercel CLI
-        run: npm install -g vercel@latest
+        run: npm install -g vercel@59.17.0
 
       - name: Pull Vercel environment (production)
         working-directory: frontend

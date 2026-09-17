@@ -30,13 +30,32 @@ export async function signupTestUser(
     );
   }
 
+  const refreshToken = refreshDeRespuesta(response);
+  if (!refreshToken) throw new Error('signupTestUser: la respuesta no trae la cookie del refresh token');
+
   return {
     accessToken: response.body.accessToken,
-    refreshToken: response.body.refreshToken,
+    refreshToken,
     userId: response.body.user.id,
     email,
     password,
   };
+}
+
+/** Valor de la cookie HttpOnly del refresh token en una respuesta, si la trae. */
+export function refreshDeRespuesta(response: { headers: Record<string, unknown> }): string | undefined {
+  const cabecera = response.headers['set-cookie'];
+  const cookies = Array.isArray(cabecera) ? (cabecera as string[]) : typeof cabecera === 'string' ? [cabecera] : [];
+  for (const cookie of cookies) {
+    const m = /^bi_refresh=([^;]*)/.exec(cookie);
+    if (m && m[1]) return decodeURIComponent(m[1]);
+  }
+  return undefined;
+}
+
+/** Cookie del refresh token lista para `.set('Cookie', …)`. */
+export function cookieRefresh(refreshToken: string): string {
+  return `bi_refresh=${encodeURIComponent(refreshToken)}`;
 }
 
 // ─── Admin con verificación en dos pasos ─────────────────────────────────────

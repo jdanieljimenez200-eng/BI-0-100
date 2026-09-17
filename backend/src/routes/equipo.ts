@@ -1,4 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
+import { exigirUuid } from '../middleware/validate';
 import { body, param, validationResult } from 'express-validator';
 import bcrypt from 'bcryptjs';
 
@@ -21,6 +22,7 @@ import {
 import { bloquearSesiones } from '../services/auth/bloqueoSesion';
 
 const router = Router();
+exigirUuid(router, 'id');
 router.use(authenticate);
 
 // ─── Guard: solo el dueño de la cuenta gestiona su equipo ─────────────────────

@@ -1,3 +1,4 @@
+import './guardiaSeeds';
 import 'reflect-metadata';
 import { AppDataSource } from '../config/database';
 import { Usuario } from '../models/Usuario';

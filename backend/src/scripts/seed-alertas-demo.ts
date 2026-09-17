@@ -11,6 +11,7 @@
  * Uso:
  *   docker exec bi0a100-backend-1 sh -c "cd /app && npx ts-node --transpile-only src/scripts/seed-alertas-demo.ts"
  */
+import './guardiaSeeds';
 import 'reflect-metadata';
 import 'dotenv/config';
 

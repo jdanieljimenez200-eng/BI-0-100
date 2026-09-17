@@ -7,7 +7,7 @@ import { MovimientoContable } from '../models/MovimientoContable';
 import { Producto } from '../models/Producto';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess, requirePlanFeature, getPlanFromDB } from '../middleware/requirePlan';
-import { validateBody } from '../middleware/validate';
+import { validateBody, exigirUuid } from '../middleware/validate';
 import { calcularCalibracion } from '../services/contabilidad/calibracionService';
 import { ah } from '../utils/asyncHandler';
 
@@ -50,6 +50,7 @@ function validateRow(row: ImportRow): string | null {
 }
 
 const router = Router();
+exigirUuid(router, 'id', 'productoId');
 router.use(authenticate);
 router.use(requireToolCapability('contabilidad'));
 // Desbloqueo por plan/selección para todas las rutas.

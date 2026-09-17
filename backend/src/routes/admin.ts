@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { exigirUuid } from '../middleware/validate';
 import { body, query, validationResult } from 'express-validator';
 import { AppDataSource } from '../config/database';
 import { Usuario, Plan, type AdminRol } from '../models/Usuario';
@@ -20,6 +21,7 @@ import { cancelarSuscripcion } from '../services/billing/stripeService';
 import { registrarAccionAdmin, MotivoSchema } from '../services/admin/auditoria';
 
 const router = Router();
+exigirUuid(router, 'id');
 
 // Todos los endpoints requieren auth + admin
 router.use(authenticate as (req: Request, res: Response, next: () => void) => void);

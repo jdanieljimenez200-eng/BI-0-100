@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { exigirUuid } from '../middleware/validate';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
@@ -6,6 +7,7 @@ import { Negocio } from '../models/Negocio';
 import { ah } from '../utils/asyncHandler';
 
 const router = Router();
+exigirUuid(router, 'id');
 router.use(authenticate);
 
 const NegocioInputSchema = z.object({

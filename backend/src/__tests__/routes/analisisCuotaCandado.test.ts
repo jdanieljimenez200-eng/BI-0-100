@@ -94,6 +94,16 @@ describeWithDb('Entrada de análisis: cuota, candado y validación', () => {
     expect((await post('brief/analizar', { producto_id: productoB, ...BRIEF })).status).toBe(409);
   });
 
+  it('con Redis, un error de validación libera el candado: corregir y reenviar no da 409', async () => {
+    if (!redisClient?.isReady) return;
+    await q(`DELETE FROM analisis_brief WHERE usuario_id = $1`, [usuarioId]);
+    const invalido = await post('brief/analizar', { producto_id: productoA });
+    expect(invalido.status).toBe(400);
+    // El lock se borra en el evento 'finish' de la respuesta.
+    await new Promise((r) => setTimeout(r, 50));
+    expect((await post('brief/analizar', { producto_id: productoA, ...BRIEF })).status).toBe(202);
+  });
+
   it('un brief real sí consume la cuota', async () => {
     await q(`DELETE FROM analisis_brief WHERE usuario_id = $1`, [usuarioId]);
     await q(

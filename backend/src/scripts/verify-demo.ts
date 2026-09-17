@@ -2,6 +2,7 @@
  * Verificación end-to-end de la cuenta DEMO (solo local).
  * Arranca el server real → login → resumen → detalle de análisis por módulo.
  */
+import './guardiaSeeds';
 import { initializeApp } from '../app';
 
 const BASE = 'http://localhost:3001';

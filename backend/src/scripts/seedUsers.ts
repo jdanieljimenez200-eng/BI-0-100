@@ -12,6 +12,7 @@
  * NUNCA ejecutar esto contra una base de datos de producción ni subir estas
  * credenciales a un entorno real: son contraseñas fijas y conocidas.
  */
+import './guardiaSeeds';
 import 'reflect-metadata';
 import * as dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';

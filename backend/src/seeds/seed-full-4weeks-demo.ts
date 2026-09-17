@@ -11,6 +11,7 @@
  * Ejecutar: npx ts-node src/seeds/seed-full-4weeks-demo.ts
  */
 
+import '../scripts/guardiaSeeds';
 import 'reflect-metadata';
 import { AppDataSource } from '../config/database';
 import * as bcrypt from 'bcryptjs';

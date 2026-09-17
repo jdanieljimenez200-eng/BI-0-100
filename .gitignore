@@ -13,6 +13,8 @@ build/
 .env
 .env.local
 .env.production
+# Token con el que Prometheus lee /metrics en producción
+prometheus/metrics_token
 
 # Logs
 *.log
@@ -63,6 +65,9 @@ snippets/
 agency-agents/
 gsap-skills/
 ui-ux-pro-max-skill/
+# Clon de github.com/alirezarezvani/claude-skills. Estaba registrado como
+# submódulo sin .gitmodules: un clon del repo no podía descargarlo.
+.agents/claude-skills/
 5/
 # Ficheros subidos por usuarios en desarrollo. Nunca al repositorio: son datos
 # de terceros. `almacen-privado` guarda documentos de identidad (cédulas de la

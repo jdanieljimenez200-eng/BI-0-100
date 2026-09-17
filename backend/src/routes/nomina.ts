@@ -4,7 +4,7 @@ import { In } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
-import { validateBody } from '../middleware/validate';
+import { validateBody, exigirUuid } from '../middleware/validate';
 import { Empleado } from '../models/Empleado';
 import { PagoNomina } from '../models/PagoNomina';
 import { MovimientoContable } from '../models/MovimientoContable';
@@ -34,6 +34,7 @@ const CrearPagoNominaSchema = z.object({
 });
 
 const router = Router();
+exigirUuid(router, 'id');
 router.use(authenticate);
 router.use(requireToolCapability('nomina'));
 // Desbloqueo por plan/selección para todas las rutas (sin getCount: el tope de

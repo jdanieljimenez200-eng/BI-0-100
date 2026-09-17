@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import path from 'path';
+import { timingSafeEqual } from 'crypto';
 import express, { Request, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -7,10 +8,13 @@ import morgan from 'morgan';
 import { AppDataSource } from './config/database';
 import { logger } from './utils/logger';
 import { verificarClaveAnthropic } from './config/anthropic';
+import { verificarEntornoProduccion } from './config/entorno';
 import { initRedis, redisClient } from './config/redis';
 import { corsMiddleware, apiLimiter, analysisStatusLimiter } from './middleware/cors';
 import { errorHandler } from './middleware/errorHandler';
-import { stopAnalysisWorker, startAnalysisWorker } from './workers/analysisQueue';
+import { stopAnalysisWorker, startAnalysisWorker, estadoWorker } from './workers/analysisQueue';
+import { initSentry, reportarError, vaciarSentry } from './config/sentry';
+import { iniciarPuenteSSE, detenerPuenteSSE } from './events/sse';
 import { recordRequest, exportMetrics } from './utils/metrics';
 
 // Route imports
@@ -75,13 +79,27 @@ app.use((req, res, next) => {
 });
 
 // Métricas Prometheus (fuera de /api para no consumir rate-limit)
+//
+// En producción exigen SIEMPRE token: antes, sin METRICS_TOKEN definido el
+// endpoint quedaba público (rutas, volumen de tráfico, errores). Sin token
+// configurado responde 404, como si no existiera.
+export function tokenMetricasValido(recibido: string | undefined, esperado: string): boolean {
+  if (!recibido) return false;
+  const a = Buffer.from(recibido);
+  const b = Buffer.from(esperado);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 app.get('/metrics', (req: Request, res: Response) => {
-  if (process.env.NODE_ENV === 'production' && process.env.METRICS_TOKEN) {
-    const authHeader = req.headers.authorization;
-    const tokenHeader = req.headers['x-metrics-token'];
-    const expected = process.env.METRICS_TOKEN;
-    const isAuthorized = authHeader === `Bearer ${expected}` || tokenHeader === expected;
-    if (!isAuthorized) {
+  if (process.env.NODE_ENV === 'production') {
+    const esperado = process.env.METRICS_TOKEN;
+    if (!esperado) {
+      res.status(404).json({ error: 'Route not found' });
+      return;
+    }
+    const bearer = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : undefined;
+    const cabecera = typeof req.headers['x-metrics-token'] === 'string' ? req.headers['x-metrics-token'] : undefined;
+    if (!tokenMetricasValido(bearer, esperado) && !tokenMetricasValido(cabecera, esperado)) {
       res.status(401).send('Unauthorized');
       return;
     }
@@ -113,12 +131,44 @@ app.use('/api', analysisStatusLimiter);
 app.use('/api', apiLimiter);
 
 // Health Check (alias /api/health para balanceadores que prefieren el prefijo)
-const healthHandler = (_req: Request, res: Response): void => {
-  res.json({
-    status: 'ok',
+//
+// Responde 503 si Postgres o Redis no están operativos: el HEALTHCHECK de Docker
+// y el de Railway solo miran el código HTTP, y un 200 fijo mantenía en rotación
+// una instancia que no podía atender a nadie. `isInitialized` no basta para la
+// base (sigue en true si Postgres cae después del arranque): se hace un SELECT 1
+// con tiempo límite.
+const HEALTH_DB_TIMEOUT_MS = 2000;
+
+async function baseDeDatosResponde(): Promise<boolean> {
+  if (!AppDataSource.isInitialized) return false;
+  let temporizador: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      AppDataSource.query('SELECT 1'),
+      new Promise((_, rechazar) => {
+        temporizador = setTimeout(() => rechazar(new Error('timeout')), HEALTH_DB_TIMEOUT_MS);
+      }),
+    ]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (temporizador) clearTimeout(temporizador);
+  }
+}
+
+const healthHandler = async (_req: Request, res: Response): Promise<void> => {
+  const database = (await baseDeDatosResponde()) ? 'connected' : 'disconnected';
+  const redis = redisClient && redisClient.isReady ? 'connected' : 'disconnected';
+  const sano = database === 'connected' && redis === 'connected';
+  res.status(sano ? 200 : 503).json({
+    status: sano ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
-    database: AppDataSource.isInitialized ? 'connected' : 'disconnected',
-    redis: redisClient && redisClient.isReady ? 'connected' : 'disconnected',
+    uptime_s: Math.round(process.uptime()),
+    database,
+    redis,
+    // Informativo: con RUN_WORKER=false el worker vive en otro proceso.
+    worker: estadoWorker(),
   });
 };
 app.get('/health', healthHandler);
@@ -181,9 +231,25 @@ let server: ReturnType<typeof app.listen> | null = null;
 
 export async function initializeApp(): Promise<void> {
   try {
+    // Primero Sentry: así un fallo de arranque también queda reportado.
+    initSentry();
+
+    // Una excepción no capturada deja el proceso en estado indefinido: se
+    // registra, se reporta y se sale con código 1 para que el orquestador lo
+    // reinicie limpio. Se instala aquí y no al importar el módulo para no
+    // alterar a quien importa `app` sin arrancarlo (tests con supertest).
+    process.on('uncaughtException', (err) => {
+      logger.error('[process] Uncaught exception:', err);
+      reportarError(err, { tipo: 'uncaughtException' });
+      void vaciarSentry().finally(() => process.exit(1));
+    });
+
     // Sin API key válida en producción no se arranca: se serviría plantilla a
     // todos los clientes como si fuera IA.
     verificarClaveAnthropic();
+    // Almacenamiento, Stripe y panel de admin: sin sus variables, producción
+    // arrancaría "sana" y fallaría al primer cliente (ver config/entorno.ts).
+    verificarEntornoProduccion();
 
     // Initialize Database
     await AppDataSource.initialize();
@@ -192,6 +258,9 @@ export async function initializeApp(): Promise<void> {
     // Initialize Redis (initRedis asigna redisClient y abre la conexión)
     await initRedis();
     logger.info('[boot] Redis initialized');
+
+    // Eventos SSE entre procesos (worker aparte o varias réplicas)
+    await iniciarPuenteSSE();
 
     // Start in-process worker (desactivable con RUN_WORKER=false para
     // ejecutarlo en un proceso/servicio aparte)
@@ -213,6 +282,8 @@ export async function initializeApp(): Promise<void> {
     });
   } catch (error) {
     logger.error('[boot] Failed to initialize app:', error);
+    reportarError(error, { fase: 'arranque' });
+    await vaciarSentry();
     process.exit(1);
   }
 }
@@ -224,6 +295,7 @@ async function shutdown(signal: string): Promise<void> {
       await new Promise<void>((resolve) => server!.close(() => resolve()));
     }
     await stopAnalysisWorker();
+    await detenerPuenteSSE();
     if (redisClient && redisClient.isReady) {
       await redisClient.quit();
     }
@@ -231,9 +303,12 @@ async function shutdown(signal: string): Promise<void> {
       await AppDataSource.destroy();
     }
     logger.info('[shutdown] Cierre completado');
+    await vaciarSentry();
     process.exit(0);
   } catch (err) {
     logger.error('[shutdown] Error durante el cierre:', err);
+    reportarError(err, { fase: 'cierre' });
+    await vaciarSentry();
     process.exit(1);
   }
 }
@@ -244,6 +319,7 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 // Evitar crash silencioso por promesas no manejadas
 process.on('unhandledRejection', (reason) => {
   logger.error('[process] Unhandled rejection:', reason);
+  reportarError(reason, { tipo: 'unhandledRejection' });
 });
 
 // Ejecutar cuando este archivo es el entrypoint directo

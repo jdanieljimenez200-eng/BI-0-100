@@ -9,7 +9,7 @@ import { requireCanRunAnalisis, getPlanFromDB } from '../middleware/requirePlan'
 import { respuestaAnalisis } from '../services/billing/redactAnalisis';
 import { getPlanGate } from '../services/billing/gatingAnalisis';
 import { requireAnalisisLock } from '../middleware/idempotency';
-import { validateBody } from '../middleware/validate';
+import { validateBody, exigirUuid } from '../middleware/validate';
 import { logger } from '../utils/logger';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, conCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
@@ -22,6 +22,7 @@ import {
 
 
 const router = Router();
+exigirUuid(router, 'id', 'productoId');
 
 // El body real que manda el formulario (frontend/app/dashboard/marketing/[productoId]/page.tsx).
 // Antes un comentario en el frontend afirmaba que un id de plataforma fuera de

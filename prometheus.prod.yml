@@ -5,11 +5,17 @@ global:
     environment: 'production'
     service: 'bi0a100'
 
-# Alertas
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets: []
+# Alertas: alert_rules.yml se evalúa y las alertas activas se ven en
+# http://127.0.0.1:9090/alerts. Para que NOTIFIQUEN (correo, Slack…) hace falta
+# un Alertmanager: añade el servicio y su destino aquí, p. ej.
+#
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+#
+# Antes había un bloque con `targets: []`, que aparentaba tener alertas
+# configuradas sin enviar ninguna.
 
 rule_files:
   - "alert_rules.yml"
@@ -18,6 +24,13 @@ scrape_configs:
   - job_name: 'bi0a100-backend'
     metrics_path: '/metrics'
     scheme: 'http'
+    # En producción /metrics exige METRICS_TOKEN (backend/src/app.ts). Prometheus
+    # no expande variables de entorno en su configuración, así que el token se
+    # lee de un archivo montado por docker-compose.prod.yml:
+    #   printf '%s' "$METRICS_TOKEN" > prometheus/metrics_token
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/metrics_token
     static_configs:
       - targets: ['backend:3001']
     scrape_interval: 15s

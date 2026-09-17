@@ -9,7 +9,6 @@ import { gsap } from 'gsap';
 import { useGSAP } from '@gsap/react';
 import InputField from '@/components/auth/InputField';
 import PasswordStrength from '@/components/auth/PasswordStrength';
-import { GoogleAuthButton } from '@/components/auth/GoogleAuthButton';
 import { validateEmail, getPasswordStrength, getEmailError, getPasswordError } from '@/components/auth/AuthValidation';
 
 gsap.registerPlugin(useGSAP);
@@ -93,9 +92,8 @@ export default function SignupPage() {
       if (data.accessToken) {
         localStorage.setItem('accessToken', data.accessToken);
       }
-      if (data.refreshToken) {
-        localStorage.setItem('refreshToken', data.refreshToken);
-      }
+      // El refresh token llega en una cookie HttpOnly; se limpia el de sesiones antiguas.
+      localStorage.removeItem('refreshToken');
 
       if (formRef.current) gsap.to(formRef.current, { scale: 1.05, opacity: 0, filter: 'blur(10px)', duration: 0.8, ease: 'expo.in' });
       gsap.to('.lp-anim', { x: -50, opacity: 0, duration: 0.6, stagger: 0.05, ease: 'expo.in' });
@@ -354,14 +352,6 @@ export default function SignupPage() {
               </button>
             </div>
           </form>
-
-          <div className="form-element flex items-center gap-4 my-8">
-            <span className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-            <span className="text-[11px] uppercase tracking-widest text-white/40 font-bold">o también puedes</span>
-            <span className="h-px flex-1 bg-gradient-to-l from-transparent via-white/10 to-transparent" />
-          </div>
-
-          <GoogleAuthButton className="form-element" />
 
           <p className="form-element text-center text-sm text-white/60 mt-7 font-light hover:text-white/80 transition-colors duration-300">
             ¿Ya tienes cuenta?{' '}

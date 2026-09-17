@@ -14,6 +14,7 @@
  * Ejecutar:  npx ts-node src/seeds/seed-herramientas-data.ts
  */
 
+import '../scripts/guardiaSeeds';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';

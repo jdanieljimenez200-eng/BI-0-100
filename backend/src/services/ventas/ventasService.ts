@@ -144,7 +144,7 @@ export function generarHistoriaMock(input: VentasAnalisisInput, fechaISO: string
     pais: input.pais || 'MX',
     como_lo_logro:
       `Empezó vendiendo solo a su círculo cercano y documentó cada entrega en un cuaderno. Al tercer mes ` +
-      `identificó que el 80% de sus repeat buyers venían por el mismo uso case, recortó catálogo y se especializó. ` +
+      `identificó que el 80% de sus clientes recurrentes compraban para el mismo uso, recortó catálogo y se especializó. ` +
       'Con el ahorro de inventario financió su primer lote de contenido orgánico.',
     mentalidad_clave:
       '"Vender es servir dos veces: antes y después de cobrar." Nunca negoció sin saber su número mínimo aceptable.',

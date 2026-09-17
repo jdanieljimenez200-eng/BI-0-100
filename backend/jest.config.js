@@ -24,7 +24,6 @@ module.exports = {
       },
     }],
   },
-  modulePathIgnorePatterns: ['<rootDir>/src/routes/productos.ts', '<rootDir>/src/services/ventas/'],
   collectCoverageFrom: [
     'src/services/**/*.ts',
     '!src/services/**/*.d.ts',

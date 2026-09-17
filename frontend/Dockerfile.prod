@@ -21,6 +21,15 @@ RUN test -n "$NEXT_PUBLIC_API_URL" || { \
       exit 1; \
     }
 
+# Opcionales, también horneadas en el bundle:
+# - NEXT_PUBLIC_SENTRY_DSN: sin ella, instrumentation-client.ts no reporta errores del navegador
+#   (SENTRY_DSN, en runtime, solo cubre el servidor).
+# - NEXT_PUBLIC_APP_URL: URL canónica para metadatos, sitemap y robots.
+ARG NEXT_PUBLIC_SENTRY_DSN
+ENV NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
+ARG NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+
 RUN npm run build
 
 # ─── Stage 2: Production runtime ─────────────────────────────────────────────

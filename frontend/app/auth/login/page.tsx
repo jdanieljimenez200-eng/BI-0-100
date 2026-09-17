@@ -9,7 +9,6 @@ import { useGSAP } from '@gsap/react';
 import InputField from '@/components/auth/InputField';
 import PasswordStrength from '@/components/auth/PasswordStrength';
 import AuthChart from '@/components/auth/AuthChart';
-import { GoogleAuthButton } from '@/components/auth/GoogleAuthButton';
 import { validateEmail, getPasswordStrength, getEmailError, getPasswordError } from '@/components/auth/AuthValidation';
 
 gsap.registerPlugin(useGSAP);
@@ -134,14 +133,15 @@ export default function LoginPage() {
 
     try {
       const response = await api.post('/auth/login', { email, password });
-      const { accessToken, refreshToken, user } = response.data;
+      // El refresh token llega en una cookie HttpOnly: nunca pasa por JavaScript.
+      const { accessToken, user } = response.data;
 
-      if (!accessToken || !refreshToken || !user) {
+      if (!accessToken || !user) {
         throw new Error('Respuesta de login incompleta');
       }
 
       localStorage.setItem('accessToken', accessToken);
-      localStorage.setItem('refreshToken', refreshToken);
+      localStorage.removeItem('refreshToken');
       localStorage.setItem('usuario', JSON.stringify({
         ...user,
         nombre: user.name ?? user.nombre ?? '',
@@ -320,14 +320,6 @@ export default function LoginPage() {
               </button>
             </div>
           </form>
-
-          <div className="form-element flex items-center gap-4 my-8">
-            <span className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-            <span className="text-[11px] uppercase tracking-widest text-white/40 font-bold">o también puedes</span>
-            <span className="h-px flex-1 bg-gradient-to-l from-transparent via-white/10 to-transparent" />
-          </div>
-
-          <GoogleAuthButton className="form-element" />
 
           <p className="form-element text-center text-sm text-white/60 mt-7 font-light hover:text-white/80 transition-colors duration-300">
             ¿Sin cuenta aún?{' '}

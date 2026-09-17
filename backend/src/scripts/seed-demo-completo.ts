@@ -14,6 +14,7 @@
  *   docker compose up -d postgres redis
  *   npm run seed:demo        (desde backend/)
  */
+import './guardiaSeeds';
 import 'reflect-metadata';
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';

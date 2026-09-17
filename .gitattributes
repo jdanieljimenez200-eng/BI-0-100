@@ -1,0 +1,8 @@
+# Scripts y archivos que se ejecutan dentro de Linux (contenedores, CI): siempre LF.
+# Con CRLF, bash falla con "$'\r': command not found" y un Dockerfile puede
+# romper las líneas continuadas con "\".
+*.sh            text eol=lf
+Dockerfile*     text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+.env*           text eol=lf

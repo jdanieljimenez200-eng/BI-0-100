@@ -126,9 +126,69 @@ export const uploadVideo = crearUploader({
   mensajeError: 'Solo se permite vídeo (mp4, webm, mov)',
 });
 
+// ─── Cupo de subidas pesadas en memoria ───────────────────────────────────────
+//
+// Vídeo y audio llegan a RAM completos (hasta 50 MB por archivo) y ahí siguen
+// mientras el handler los procesa (S3, ffmpeg, transcripción). Sin cupo, diez
+// subidas simultáneas son ~500 MB y bastan para matar el contenedor por OOM.
+// El cupo se reserva ANTES de que multer lea el cuerpo y se libera cuando la
+// respuesta termina o la conexión se cierra.
+
+export const MAX_SUBIDAS_PESADAS_POR_USUARIO = 2;
+
+function maxSubidasPesadasGlobal(): number {
+  const valor = parseInt(process.env.MAX_SUBIDAS_PESADAS_SIMULTANEAS || '', 10);
+  return Number.isFinite(valor) && valor > 0 ? valor : 8;
+}
+
+const subidasPesadasPorUsuario = new Map<string, number>();
+let subidasPesadasEnCurso = 0;
+
+/** Solo para tests. */
+export function _subidasPesadasEnCurso(): number {
+  return subidasPesadasEnCurso;
+}
+
+/**
+ * Reserva un cupo de subida pesada. Si no hay, responde 429 y devuelve false.
+ * Se identifica por usuario autenticado y, sin él, por IP.
+ */
+export function reservarCupoSubidaPesada(req: Request, res: Response): boolean {
+  const clave = (req as Request & { userId?: string }).userId ?? `ip:${req.ip ?? 'desconocida'}`;
+  const delUsuario = subidasPesadasPorUsuario.get(clave) ?? 0;
+
+  if (delUsuario >= MAX_SUBIDAS_PESADAS_POR_USUARIO || subidasPesadasEnCurso >= maxSubidasPesadasGlobal()) {
+    res.setHeader('Retry-After', '15');
+    res.status(429).json({
+      error:
+        delUsuario >= MAX_SUBIDAS_PESADAS_POR_USUARIO
+          ? 'Ya tienes subidas grandes en curso. Espera a que terminen e inténtalo de nuevo.'
+          : 'Hay muchas subidas grandes en curso ahora mismo. Inténtalo de nuevo en unos segundos.',
+    });
+    return false;
+  }
+
+  subidasPesadasPorUsuario.set(clave, delUsuario + 1);
+  subidasPesadasEnCurso++;
+
+  let liberado = false;
+  const liberar = (): void => {
+    if (liberado) return;
+    liberado = true;
+    subidasPesadasEnCurso--;
+    const restantes = (subidasPesadasPorUsuario.get(clave) ?? 1) - 1;
+    if (restantes <= 0) subidasPesadasPorUsuario.delete(clave);
+    else subidasPesadasPorUsuario.set(clave, restantes);
+  };
+  res.once('finish', liberar);
+  res.once('close', liberar);
+  return true;
+}
+
 const subirVideoSingle = uploadVideo.single('video');
 
 export function recibirVideo(req: Request, res: Response, next: NextFunction): void {
+  if (!reservarCupoSubidaPesada(req, res)) return;
   subirVideoSingle(req, res, (err: unknown) => {
     if (!err) {
       next();
@@ -216,6 +276,7 @@ const uploadGuion = multer({
 ]);
 
 export function recibirGuionArchivos(req: Request, res: Response, next: NextFunction): void {
+  if (!reservarCupoSubidaPesada(req, res)) return;
   uploadGuion(req, res, (err: unknown) => {
     if (!err) {
       next();
@@ -259,6 +320,7 @@ const uploadCompetidor = multer({
 ]);
 
 export function recibirCompetidorArchivos(req: Request, res: Response, next: NextFunction): void {
+  if (!reservarCupoSubidaPesada(req, res)) return;
   uploadCompetidor(req, res, (err: unknown) => {
     if (!err) {
       next();

@@ -3,6 +3,7 @@ import type { Message, MessageCreateParamsNonStreaming } from '@anthropic-ai/sdk
 import { AppDataSource } from './database';
 import { logger } from '../utils/logger';
 import { contextoIA } from '../utils/seguimientoIA';
+import { recordError } from '../utils/metrics';
 
 /**
  * Único punto de contacto con Claude.
@@ -71,9 +72,34 @@ export interface UsoTokens {
   cache_read_input_tokens?: number | null;
 }
 
+/**
+ * Precio de un modelo. La API puede devolver el id con sufijo de versión
+ * (`claude-opus-5-20260101`) o un modelo de respaldo: se acepta el id base como
+ * prefijo. Si no hay precio conocido, el coste se registra en 0 pero se avisa y
+ * se cuenta en métricas: antes quedaba en 0 en silencio y el panel de costos
+ * infravaloraba el gasto real.
+ */
+const modelosSinPrecioAvisados = new Set<string>();
+
+export function precioDeModelo(modelo: string): { input: number; output: number } | null {
+  const exacto = PRECIOS_USD_POR_MILLON[modelo];
+  if (exacto) return exacto;
+  const base = Object.keys(PRECIOS_USD_POR_MILLON)
+    .filter((id) => modelo.startsWith(`${id}-`))
+    .sort((a, b) => b.length - a.length)[0];
+  return base ? PRECIOS_USD_POR_MILLON[base] : null;
+}
+
 export function costoUsd(modelo: string, uso: UsoTokens): number {
-  const precio = PRECIOS_USD_POR_MILLON[modelo];
-  if (!precio) return 0;
+  const precio = precioDeModelo(modelo);
+  if (!precio) {
+    recordError('ia_modelo_sin_precio');
+    if (!modelosSinPrecioAvisados.has(modelo)) {
+      modelosSinPrecioAvisados.add(modelo);
+      logger.warn(`[IA] Modelo sin precio en PRECIOS_USD_POR_MILLON: ${modelo}. Su costo se registra en 0.`);
+    }
+    return 0;
+  }
   const escritura = uso.cache_creation_input_tokens ?? 0;
   const lectura = uso.cache_read_input_tokens ?? 0;
   const total =

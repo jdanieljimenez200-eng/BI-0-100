@@ -9,6 +9,17 @@ echo "🔍 PRE-DEPLOY VALIDATION CHECKLIST"
 echo "=================================="
 echo ""
 
+# Variables de producción: se toman de .env.production si existe (sin pisar las
+# que ya estén exportadas en la terminal o en el CI).
+if [ -f .env.production ]; then
+  echo "✓ Cargando .env.production"
+  while IFS= read -r linea || [ -n "$linea" ]; do
+    case "$linea" in ''|\#*) continue ;; esac
+    nombre="${linea%%=*}"
+    if [ -z "${!nombre+x}" ]; then export "$linea"; fi
+  done < .env.production
+fi
+
 # 1. TypeScript check
 echo "✓ TypeScript validation..."
 cd backend
@@ -22,7 +33,7 @@ cd ..
 # 2. Tests
 echo "✓ Running tests..."
 cd backend
-npm test -- --passWithNoTests || { echo "⚠️  Some tests failed (but proceeding)"; }
+npm test -- --passWithNoTests || { echo "❌ Backend tests failed"; exit 1; }
 cd ..
 
 # 3. Build validation
@@ -49,24 +60,29 @@ fi
 
 # 5. Env vars check
 echo "✓ Checking environment variables..."
+# Antes solo avisaba (⚠️) y el script terminaba en "ALL CHECKS PASSED" aunque
+# faltaran variables de las que dependen pagos, subidas y el panel de admin.
 REQUIRED_VARS=(
   "DATABASE_URL"
   "REDIS_URL"
-  "JWT_SECRET"
-  "JWT_REFRESH_SECRET"
   "FRONTEND_URL"
-  "AWS_ACCESS_KEY_ID"
-  "AWS_SECRET_ACCESS_KEY"
-  "STRIPE_SECRET_KEY"
-  "STRIPE_WEBHOOK_SECRET"
   "ANTHROPIC_API_KEY"
+  "NEXT_PUBLIC_API_URL"
 )
-
+FALTAN=0
 for var in "${REQUIRED_VARS[@]}"; do
   if [ -z "${!var}" ]; then
-    echo "⚠️  Missing $var (set in .env.production)"
+    echo "❌ Falta $var (defínela en .env.production o en el entorno)"
+    FALTAN=1
   fi
 done
+[ "$FALTAN" -eq 0 ] || exit 1
+
+# El resto del contrato (JWT y admin, almacenamiento, Stripe por plan, correo,
+# métricas) lo comprueba el mismo código que usa el backend al arrancar.
+(cd backend && NODE_ENV=production npx ts-node --transpile-only -e \
+  "require('./src/config/entorno').verificarEntornoProduccion()") \
+  || { echo "❌ Variables de producción incompletas (ver arriba)"; exit 1; }
 
 # 5b. Secretos: ninguna clave real en el repo, en variables públicas ni en el bundle
 echo "✓ Checking secrets..."
@@ -95,18 +111,24 @@ if [ ! -d "backend/src/migrations" ]; then
   exit 1
 fi
 
-# 7. Git check
+# 7. Git check — lo que se despliega es lo commiteado; un árbol sucio significa
+# que lo verificado aquí no es lo que llegará a producción.
 echo "✓ Git status..."
-if [ -n "$(git status --porcelain)" ]; then
-  echo "⚠️  Uncommitted changes detected"
-  git status --short
+if [ -n "$(git --no-pager status --porcelain)" ]; then
+  git --no-pager status --short
+  if [ "${ALLOW_DIRTY:-}" = "1" ]; then
+    echo "⚠️  Cambios sin commitear (ALLOW_DIRTY=1: se continúa)"
+  else
+    echo "❌ Hay cambios sin commitear. Haz commit, o ALLOW_DIRTY=1 para una verificación local."
+    exit 1
+  fi
 fi
 
 echo ""
 echo "✅ ALL CHECKS PASSED — Ready for deploy"
 echo ""
 echo "Next steps:"
-echo "1. git push origin main"
+echo "1. git push origin main (el deploy se dispara desde main tras CI en verde)"
 echo "2. Watch deploy on Railway/Render/Docker"
 echo "3. Check logs: railway logs (or docker compose logs)"
 echo "4. Test health: curl https://api.tudominio.com/health"

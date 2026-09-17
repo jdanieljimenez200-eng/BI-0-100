@@ -72,13 +72,33 @@ export function setActiveConnections(count: number) {
 /**
  * Exporta métricas en formato Prometheus (compatible con /metrics)
  */
+const escaparEtiqueta = (valor: string): string => valor.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+
+/**
+ * Etiquetas de una petición a partir de su clave `MÉTODO ruta código`.
+ *
+ * `method`, `path` y `status_code` van separadas para poder filtrar en PromQL:
+ * `alert_rules.yml` (HighHttp5xxRate) filtra por `status_code=~"5.."`, que no
+ * existía cuando solo se publicaba `endpoint` y la alerta nunca podía dispararse.
+ * `endpoint` se mantiene por compatibilidad con paneles existentes.
+ */
+function etiquetasPeticion(clave: string): string {
+  const partes = clave.split(' ');
+  const metodo = partes[0] ?? '';
+  const codigo = partes[partes.length - 1] ?? '';
+  const ruta = partes.slice(1, -1).join(' ');
+  return (
+    `endpoint="${escaparEtiqueta(clave)}",method="${escaparEtiqueta(metodo)}",` +
+    `path="${escaparEtiqueta(ruta)}",status_code="${escaparEtiqueta(codigo)}"`
+  );
+}
+
 export function exportMetrics(): string {
   let output = '# HELP http_requests_total Total HTTP requests\n';
   output += '# TYPE http_requests_total counter\n';
 
   for (const [key, count] of Object.entries(metrics.requestCount)) {
-    const safeKey = key.replace(/"/g, '\\"');
-    output += `http_requests_total{endpoint="${safeKey}"} ${count}\n`;
+    output += `http_requests_total{${etiquetasPeticion(key)}} ${count}\n`;
   }
 
   output += '\n# HELP http_request_duration_ms HTTP request duration in milliseconds\n';

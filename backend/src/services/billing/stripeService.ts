@@ -111,8 +111,9 @@ export async function createCheckoutSession(params: {
     success_url: params.successUrl,
     cancel_url: params.cancelUrl,
     locale: 'es',
-    // La moneda la define el Price en el Dashboard (USD según la estrategia de
-    // precios). No se fuerza aquí para no chocar con la moneda del Price.
+    // La moneda la define el Price en el Dashboard (MXN con IVA incluido, ver
+    // docs/pricing/PROPUESTA_PLANES_2026-09.md). No se fuerza aquí para no chocar
+    // con la moneda del Price.
     allow_promotion_codes: true,
     metadata: {
       plan: params.plan,

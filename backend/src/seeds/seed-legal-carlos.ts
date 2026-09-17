@@ -1,3 +1,4 @@
+import '../scripts/guardiaSeeds';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';

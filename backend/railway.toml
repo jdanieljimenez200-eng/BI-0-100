@@ -3,6 +3,11 @@
   dockerfilePath = "Dockerfile.prod"
 
 [deploy]
+  # Migraciones ANTES de sustituir la versión en marcha: se ejecutan una sola vez
+  # por deploy, sobre la imagen nueva, y si fallan el deploy se detiene sin tocar
+  # la versión actual. Sin esto, `railway up` arrancaba código nuevo contra un
+  # esquema viejo (TYPEORM_MIGRATIONS_RUN no está definida por defecto en Railway).
+  preDeployCommand = ["npm run migration:run:prod"]
   healthcheckPath = "/health"
   healthcheckTimeout = 300
   restartPolicyType = "ON_FAILURE"

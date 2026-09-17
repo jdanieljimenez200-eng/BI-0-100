@@ -4,7 +4,7 @@ import { EntityManager } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
-import { validateBody } from '../middleware/validate';
+import { validateBody, exigirUuid } from '../middleware/validate';
 import { Cotizacion, CotizacionItem } from '../models/Cotizacion';
 import { Marca } from '../models/Marca';
 import { Plan } from '../models/Usuario';
@@ -46,6 +46,7 @@ const CrearCotizacionSchema = z.object({
 });
 
 const router = Router();
+exigirUuid(router, 'id');
 router.use(authenticate);
 router.use(requireToolCapability('cotizaciones'));
 // Desbloqueo por plan/selección para todas las rutas (sin getCount: el tope de

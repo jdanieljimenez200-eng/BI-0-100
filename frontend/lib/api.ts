@@ -6,6 +6,10 @@ const api: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // El refresh token vive en una cookie HttpOnly del API (Path=/api/auth): el
+  // navegador solo la envía, y solo acepta la que devuelven login/signup/refresh,
+  // si la petición va con credenciales.
+  withCredentials: true,
 });
 
 // Interceptor para agregar token de acceso
@@ -45,14 +49,14 @@ function esFalloDeVerificacion(error: { config?: { url?: string }; response?: { 
 
 // El refresh token rota una sola vez en el backend (one-time use, ver
 // POST /auth/refresh): si dos peticiones en paralelo reciben 401 y cada una
-// dispara su propio refresh, la segunda manda un refreshToken ya consumido
-// por la primera y falla, cerrando la sesión aunque la primera sí funcionó.
+// dispara su propio refresh, la segunda manda un token ya consumido.
 // Se comparte una única promesa de refresh entre todos los 401 concurrentes.
 let refreshEnCurso: Promise<string> | null = null;
 
 function limpiarSesionYRedirigir() {
   if (typeof window === 'undefined') return;
   localStorage.removeItem('accessToken');
+  // Sesiones anteriores a la cookie HttpOnly guardaban aquí el refresh token.
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('usuario');
   // Evita un loop de redirect si la petición que falló ocurrió en una página
@@ -62,17 +66,31 @@ function limpiarSesionYRedirigir() {
   }
 }
 
-async function refrescarToken(): Promise<string> {
-  const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
-  if (!refreshToken) throw new Error('No hay refresh token disponible');
+const esperar = (ms: number) => new Promise((resolver) => setTimeout(resolver, ms));
 
-  const response = await axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken });
-  const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data;
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('accessToken', newAccessToken);
-    localStorage.setItem('refreshToken', newRefreshToken);
+/**
+ * Renueva el access token con la cookie HttpOnly del refresh token.
+ *
+ * Si otra PESTAÑA acaba de rotarlo, el backend responde 409 REFRESH_EN_CURSO:
+ * la cookie nueva ya está en el navegador, así que un reintento breve basta.
+ */
+async function refrescarToken(): Promise<string> {
+  for (let intento = 0; ; intento++) {
+    try {
+      const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
+      const nuevoAccessToken: string = response.data.accessToken;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('accessToken', nuevoAccessToken);
+        localStorage.removeItem('refreshToken');
+      }
+      return nuevoAccessToken;
+    } catch (err) {
+      const enCurso =
+        axios.isAxiosError(err) && err.response?.status === 409 && err.response.data?.codigo === 'REFRESH_EN_CURSO';
+      if (!enCurso || intento >= 2) throw err;
+      await esperar(300 * (intento + 1));
+    }
   }
-  return newAccessToken;
 }
 
 // Interceptor para manejar errores de autenticación

@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { exigirUuid } from '../middleware/validate';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
@@ -15,6 +16,7 @@ import {
 } from '../services/inventario/inventarioService';
 
 const router = Router();
+exigirUuid(router, 'id');
 router.use(authenticate);
 router.use(requireToolCapability('inventario'));
 // Desbloqueo por plan/selección para todas las rutas (sin getCount: el tope de

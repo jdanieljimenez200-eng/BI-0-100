@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { exigirUuid } from '../middleware/validate';
 import multer from 'multer';
 import { Not } from 'typeorm';
 import { AppDataSource } from '../config/database';
@@ -15,7 +16,7 @@ import { redisClient } from '../config/redis';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, conCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
 import { logger } from '../utils/logger';
-import { uploadAudio } from '../middleware/upload';
+import { uploadAudio, reservarCupoSubidaPesada } from '../middleware/upload';
 import {
   isTranscripcionAvailable,
   transcribirAudio,
@@ -23,6 +24,7 @@ import {
 import type { TipNegociacion, VentasAnalisisInput } from '../services/ventas/types';
 
 const router = Router();
+exigirUuid(router, 'id', 'productoId');
 
 const TIPOS_VENTA = new Set(['B2C_directo', 'B2B', 'hibrido', 'servicios']);
 const CANALES = new Set(['directo', 'marketplace', 'redes_sociales', 'telefono', 'combinado']);
@@ -164,6 +166,7 @@ const subirAudio = uploadAudio.single('audio');
  * como 500 con "Internal Server Error", ocultando la causa real al usuario.
  */
 function recibirAudio(req: Request, res: Response, next: NextFunction): void {
+  if (!reservarCupoSubidaPesada(req, res)) return;
   subirAudio(req, res, (err: unknown) => {
     if (!err) {
       next();

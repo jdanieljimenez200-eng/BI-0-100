@@ -12,6 +12,7 @@
  * Credenciales sembradas:
  *   test@bi0a100.test  /  Test123!   [pro, user]
  */
+import './guardiaSeeds';
 import 'reflect-metadata';
 import * as dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';

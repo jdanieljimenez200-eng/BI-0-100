@@ -1,0 +1,10 @@
+{
+  // Build de producción (npm run build → dist/, lo que copia Dockerfile.prod).
+  // Sin .d.ts ni .map: nadie importa este paquete como librería, y los mapas solo
+  // engordaban la imagen. `npm run typecheck` sigue usando tsconfig.json.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "sourceMap": false
+  }
+}

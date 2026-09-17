@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { exigirUuid } from '../middleware/validate';
 import { body, validationResult } from 'express-validator';
 import { AppDataSource } from '../config/database';
 import { Marca } from '../models/Marca';
@@ -14,6 +15,7 @@ import { analizarLogo } from '../services/brief/logoAnalysisService';
 import { ah } from '../utils/asyncHandler';
 
 const router = Router();
+exigirUuid(router, 'productoId');
 router.use(authenticate);
 
 /**

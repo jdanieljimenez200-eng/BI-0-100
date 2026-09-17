@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { exigirUuid } from '../middleware/validate';
 import multer from 'multer';
 import { AppDataSource } from '../config/database';
 import { Producto } from '../models/Producto';
@@ -9,6 +10,7 @@ import { upload, recibirVideo } from '../middleware/upload';
 import { StorageService } from '../services/StorageService';
 
 const router = Router();
+exigirUuid(router, 'id');
 
 function parsePrecio(raw: unknown): number {
   const n = parseFloat(String(raw ?? ''));

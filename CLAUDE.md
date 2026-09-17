@@ -24,8 +24,8 @@ Este documento es la **fuente única de verdad técnica** para Claude, Antigravi
 |---|---|---|---|---|
 | **Frontend (Next.js)** | Dev / Prod | `3000` | `3000` | `http://localhost:3000` |
 | **Backend (Express)** | Dev / Prod | `3001` | `3001` | `http://localhost:3001` |
-| **Health Check** | Todo | `3001` | `3001` | `http://localhost:3001/health` |
-| **Métricas Prometheus** | Todo | `3001` | `3001` | `http://localhost:3001/metrics` (requiere `METRICS_TOKEN` en prod) |
+| **Health Check** | Todo | `3001` | `3001` | `http://localhost:3001/health` (503 si Postgres o Redis no responden) |
+| **Métricas Prometheus** | Todo | `3001` | `3001` | `http://localhost:3001/metrics` (en prod exige `METRICS_TOKEN`; sin él responde 404) |
 | **Prometheus Server** | Todo | `9090` | `9090` | `http://localhost:9090` |
 | **PostgreSQL 15** | Todo | `5432` | `5432` | `postgresql://bi0a100_user:bi0a100_password@localhost:5432/bi0a100_db` |
 | **Redis 7 (AOF)** | Todo | `6379` | `6379` | `redis://localhost:6379` (interno Docker: `redis:6379`) |
@@ -45,19 +45,20 @@ Este documento es la **fuente única de verdad técnica** para Claude, Antigravi
 - **Runtime & Servidor**: Node.js 20 + Express 4.18 + TypeScript 5 (CommonJS, `dist/app.js`).
 - **ORM & DB**: TypeORM 0.3 + PostgreSQL 15 (`AppDataSource` en `src/config/database.ts`).
   - **Identificadores**: Todas las entidades usan **UUID v4** como cadenas (`@PrimaryGeneratedColumn('uuid')`). **Prohibido usar `parseInt()`**.
-- **Colas y Tareas en Segundo Plano**: BullMQ 5 + ioredis 5 (`src/workers/analysisQueue.ts` y `src/workers/analysisWorker.ts`).
+- **Colas y Tareas en Segundo Plano**: BullMQ 5 + ioredis 5 (`src/workers/analysisQueue.ts` y `src/workers/analysisWorker.ts`). BullMQ exige ioredis; el resto (auth, denylist, locks, rate limit, SSE pub/sub) usa `redis` (node-redis) de `config/redis.ts`. Los dos clientes son deliberados. Solo se reintentan errores transitorios (`utils/erroresTransitorios.ts`).
+- **Dependencias dobles conocidas**: `resend` + `nodemailer` (SMTP como alternativa en `emailService`), `express-validator` (admin, billing, equipo, marca, vertical) + `zod` (resto; preferir zod en código nuevo).
 - **Inteligencia Artificial**: `@anthropic-ai/sdk` 0.125, modelo por tarea (Haiku 4.5 / Sonnet 5 / Opus 5, ver *Modelos de IA*) con fallback determinista estructurado y validación Zod.
 - **Seguridad & Auth**: JWT (Access Token 15 min, Refresh Token 7 días), revocación en Redis vía `deny:${jti}`, `bcryptjs`, Helmet, CORS parametrizado y `cookie-parser`.
 - **Subida de Archivos**: Multer en memoria RAM (`memoryStorage()`), límite estricto de 50 MB para grabaciones de voz/video, subida directa a AWS S3 mediante `@aws-sdk/client-s3`.
-- **Observabilidad**: Morgan + Prometheus (`prom-client`) con `normalizePath()` anti-memory leaks + `@sentry/node`.
+- **Observabilidad**: Morgan + exportador Prometheus propio (`utils/metrics.ts`, etiquetas `method`/`path`/`status_code`, `normalizePath()` para UUIDs) + `@sentry/node` inicializado en `initializeApp` si hay `SENTRY_DSN` (reportar siempre con `reportarError` de `config/sentry.ts`).
 
 ### Frontend (`/frontend`)
 - **Framework**: Next.js 16 (React 19, Turbopack, App Router, `output: 'standalone'`).
 - **Estilos & UI**: Tailwind CSS + Lucide React Icons.
-- **Animaciones**: GSAP 3 (GreenSock) para efectos de interface y transiciones suaves (optimizadas con `requestAnimationFrame` sin forzar re-renders de React).
+- **Animaciones**: GSAP 3 (GreenSock) en auth y landing (optimizadas con `requestAnimationFrame` sin forzar re-renders de React) y `framer-motion` en el dashboard (~55 componentes). `react-is` es dependencia de pares de `recharts`: no quitarla.
 - **Gestión de Estado**: Zustand (`analysisStore.ts`) para estado global de análisis + React Context para temas.
 - **Cliente HTTP**: Axios centralizado (`lib/api.ts` y `lib/config.ts`) con interceptores para rotación automática de JWT, detección de desconexión y `AbortController`.
-- **Proxy Server-Side**: `app/api/[...path]/route.ts` reenvía peticiones hacia el backend Docker interno (`http://backend:3001`).
+- **Sin proxy en Next**: el navegador llama al API con `NEXT_PUBLIC_API_URL` (absoluta). El refresh token va en la cookie HttpOnly `bi_refresh` (`Path=/api/auth`), así que frontend y API deben compartir dominio registrable (`app.tudominio.com` + `api.tudominio.com`); el access token (15 min) va en `localStorage`. SSE usa ticket de un solo uso (`POST /api/events/ticket`), nunca el JWT en la URL.
 
 ### Infraestructura & Docker
 - **Docker Compose v2**: Especificación moderna sin tag `version:`.
@@ -132,7 +133,7 @@ Montadas en `backend/src/app.ts`:
 22. `/api/events`: Server-Sent Events (SSE) en tiempo real con validación JTI en Redis.
 23. `/api/reportes`: Área de reportes de Contabilidad — series de ventas, ranking de productos, almacén, clientes, horarios y conversión de cotizaciones. Agregación en SQL; hereda el gating de `contabilidad`.
 24. `/api/config`: Parámetros públicos de configuración de la aplicación.
-26. `/api/mantenimientos`: Herramienta de mantenimiento preventivo de equipos (tanque de gas, refrigerador, parrilla, tijeras…). El «cada cuánto» sale del catálogo determinista `services/mantenimientos/catalogoIntervalos.ts` (50 tipos × intensidad de uso `bajo`/`normal`/`intenso`), gratis e instantáneo. Solo si el catálogo no reconoce el objeto y el cliente manda `permitir_ia: true`, `POST /sugerencia` lo estima con IA (Haiku, tarea `mecanica`) y cobra 1 crédito (`mantenimiento_sugerencia`); sin `ANTHROPIC_API_KEY` responde plantilla y **no cobra**. `POST /:id/registrar` guarda el servicio hecho y, si lleva costo, crea el egreso en `movimientos_contables` (`fuente: 'mantenimiento'`) en la misma transacción. El semáforo (al día / ya toca / vencido) se calcula con `estadoEquipo` y alimenta el panel de alertas operativas.
+26. `/api/mantenimientos`: Herramienta de mantenimiento preventivo de equipos (tanque de gas, refrigerador, parrilla, tijeras…). El «cada cuánto» sale del catálogo determinista `services/mantenimientos/catalogoIntervalos.ts` (~50 tipos × intensidad de uso `bajo`/`normal`/`intenso`), gratis e instantáneo; solo si el catálogo no reconoce el objeto, `POST /sugerencia` lo estima con IA (Haiku, tarea `mecanica`) y cobra 1 crédito (`mantenimiento_sugerencia`). `POST /:id/registrar` guarda el servicio hecho y, si lleva costo, crea el egreso en `movimientos_contables` (`fuente: 'mantenimiento'`) dentro de la misma transacción. El semáforo (al día / ya toca / vencido) se calcula con `estadoEquipo` y alimenta el panel de alertas operativas.
 25. `/api/network`: Red de expertos (directorio de profesionales en 7 categorías: legal, contabilidad, marketing, diseño, ventas, proveedores, tecnología), perfiles con portada, galería (12 fotos), servicios (15) y WhatsApp, reseñas, métricas diarias (`experto_metricas_dia`) e **impulsos**: campañas prepagadas por días con alcance ciudad o nacional, cupo por lugar y pago único en Stripe Checkout (`services/network/impulsosService.ts`; tarifas en `IMPULSO_TARIFA_CIUDAD_MXN` / `IMPULSO_TARIFA_NACIONAL_MXN`, por defecto $39 y $99 MXN/día). Los impulsados salen en `promocionados` (solo página 1) etiquetados como «Promocionado». Al registrarse se elige `usuarios.tipo_cuenta` (`negocio` / `experto`), que solo decide la redirección. **Las rutas `GET /expertos` y `GET /expertos/:id` son públicas sin token** y solo devuelven fichas con `estado = 'aprobado'`; el alta y la edición exigen autenticación, y la cola de revisión vive en `/api/admin/network` (montada **antes** de `/api/admin` en `app.ts`). `documento_url` (cédula) nunca se expone fuera de admin.
 
 > [!CAUTION]
@@ -173,6 +174,18 @@ Montadas en `backend/src/app.ts`:
 > **7. Seguridad de Autenticación y Criptografía**
 > Las contraseñas de usuario se hashean utilizando bcrypt con un factor de costo de 12 rounds (`BCRYPT_COST = 12` en `src/routes/auth.ts`). El middleware de autenticación valida la denylist de tokens en Redis con fallback fail-open e instrumentación Prometheus (`auth_denylist_check_failed_total`).
 
+> [!IMPORTANT]
+> **9. Convenciones de API que no se deben romper**
+> - Todo router con parámetros de entidad llama a `exigirUuid(router, 'id', …)` (`middleware/validate.ts`): un id no UUID responde 400, nunca llega a Postgres.
+> - Orígenes no permitidos → 403 en `middleware/cors.ts`; los rate limits usan `AlmacenLimiteRedis` (compartido entre réplicas, memoria de respaldo).
+> - Los seeds y scripts de demo importan primero `scripts/guardiaSeeds.ts`: abortan con `NODE_ENV=production` o base de datos remota.
+> - Los tests de integración solo escriben en bases cuyo nombre contenga `test` (`__tests__/helpers/dbGuard.ts`).
+> - Una herramienta nueva se declara en CUATRO sitios con exhaustividad en tipos: `PermisosTrabajador` (`models/AsignacionTrabajador.ts`), `CAPABILITIES` y `HERRAMIENTAS_POR_PLAN` (`services/billing/planService.ts`), `SERVICIOS_CATALOGO` (`services/billing/serviciosCatalogo.ts`) y la tarjeta `META` de `frontend/app/dashboard/herramientas/page.tsx`. Si falta alguno, no compila.
+
+> [!CAUTION]
+> **8. Contrato de variables de producción**
+> Con `NODE_ENV=production`, `initializeApp` llama a `verificarEntornoProduccion()` (`src/config/entorno.ts`) y **el backend no arranca** si faltan `JWT_*` (≥32 caracteres), `ADMIN_TOTP_KEY`, `ADMIN_JWT_SECRET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_BUCKET_NAME` (no `S3_BUCKET_NAME`), `AWS_BUCKET_URL_BASE`; con correo, `NEXT_PUBLIC_APP_URL`; con Stripe, `STRIPE_WEBHOOK_SECRET` y el `STRIPE_PRODUCT_<PLAN>` de cada plan con precio. Si añades una variable imprescindible, añádela ahí, a su test y a `.env.production.template` (que `docker-compose.prod.yml` carga entero con `env_file`).
+
 ---
 
 ## 8. Comandos de Verificación y Desarrollo
@@ -181,10 +194,14 @@ Montadas en `backend/src/app.ts`:
 ```bash
 npm run dev           # Servidor con recarga automática (ts-node-dev)
 npm run typecheck     # Chequeo estricto de tipos (tsc --noEmit)
-npm test              # Suite completa de tests Jest (~895 pruebas, en serie; límites por IP desactivados en tests)
+npm test              # Suite Jest en serie (límites por IP desactivados). Sin BD de test, los de integración se omiten
+# Integración completa: solo contra una base cuyo nombre contenga "test" (helpers/dbGuard.ts)
+#   DATABASE_URL=postgresql://bi0a100_user:bi0a100_password@localhost:5432/bi0a100_test \
+#   REDIS_URL=redis://localhost:6379/15 npm run migration:run && npm test
 npm run test:coverage # Cobertura de tests
 npm run build         # Compilación de producción hacia dist/
 npm run migration:run # Aplicar migraciones pendientes
+npm run migration:run:prod # Igual, sobre dist/ (lo usa Railway como preDeployCommand)
 npm run seed:demo     # Cargar datos de demostración completos
 ```
 

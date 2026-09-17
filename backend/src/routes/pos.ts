@@ -4,7 +4,7 @@ import { In } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
-import { validateBody } from '../middleware/validate';
+import { validateBody, exigirUuid } from '../middleware/validate';
 import { ItemPOS } from '../models/ItemPOS';
 import { Venta } from '../models/Venta';
 import { VentaItem } from '../models/VentaItem';
@@ -76,6 +76,7 @@ class VentaError extends Error {
 }
 
 const router = Router();
+exigirUuid(router, 'id');
 router.use(authenticate);
 router.use(requireToolCapability('pos'));
 // Desbloqueo por plan/selección para TODAS las rutas del POS (sin getCount: el

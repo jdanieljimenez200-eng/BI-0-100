@@ -30,6 +30,7 @@
  *   docker exec bi0a100-backend-1 npx ts-node src/seeds/seed-valeria-super-completo.ts
  */
 
+import '../scripts/guardiaSeeds';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcryptjs';

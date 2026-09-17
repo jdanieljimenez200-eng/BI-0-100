@@ -119,8 +119,6 @@ services:
       NODE_ENV: development
       # URL que usa el NAVEGADOR (debe ser accesible desde el host)
       NEXT_PUBLIC_API_URL: http://localhost:3001/api
-      # URL que usa el proxy server-side del frontend dentro de la red docker
-      BACKEND_URL: http://backend:3001
       NEXT_TELEMETRY_DISABLED: "1"
       # Los eventos de filesystem no se propagan por el bind mount de
       # Docker Desktop en Windows: hace falta polling para el hot reload.

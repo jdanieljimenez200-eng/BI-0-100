@@ -162,7 +162,7 @@ function IconLayers(props: React.SVGProps<SVGSVGElement>) {
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'tips', label: 'Protocolos de Cierre', icon: <IconLightbulb className="w-4 h-4" /> },
-  { id: 'historia', label: 'Benchmark & Caso', icon: <IconBook className="w-4 h-4" /> },
+  { id: 'historia', label: 'Historia ilustrativa', icon: <IconBook className="w-4 h-4" /> },
   { id: 'fallan', label: 'Matriz Post-Mortem', icon: <IconShieldRisk className="w-4 h-4" /> },
   { id: 'icp', label: 'Perfil ICP', icon: <IconCrosshair className="w-4 h-4" /> },
   { id: 'guiones', label: 'Evaluador de Pitch', icon: <IconGauge className="w-4 h-4" /> },
@@ -378,19 +378,22 @@ export default function ResultadoVentasPage() {
       error_comun: tip.error_comun || 'Bajar precios antes de defender el valor integral de la propuesta.',
     }));
 
+  // La historia es un personaje COMPUESTO por la IA (ver ventasService.generarHistoria):
+  // se presenta siempre como ilustrativa y nunca se rellenan cifras o fechas que
+  // no vinieron en los datos, para no hacerla pasar por un caso real.
   const rawHistoria = analisis.historia_data as any;
   const historia: HistoriaEmprendedor | null = rawHistoria && typeof rawHistoria === 'object'
     ? {
-        nombre: rawHistoria.nombre || rawHistoria.titulo || 'Caso de Éxito en la Industria',
+        nombre: rawHistoria.nombre || rawHistoria.titulo || 'Historia ilustrativa',
         industria: rawHistoria.industria || analisis.categoria || 'Servicios & Comercial',
         pais: rawHistoria.pais || analisis.pais || 'México',
         como_lo_logro: rawHistoria.como_lo_logro || rawHistoria.contenido || '',
         mentalidad_clave: rawHistoria.mentalidad_clave || rawHistoria.moraleja || 'El posicionamiento y la consistencia visual construyen autoridad.',
         obstaculo_principal: rawHistoria.obstaculo_principal || 'Competencia desleal por precio y resistencia inicial de prospectos.',
         estrategia_marketing: rawHistoria.estrategia_marketing || 'Estrategia de prueba social en redes y venta consultiva.',
-        metricas: rawHistoria.metricas || 'Incremento de ticket promedio y mayor tasa de conversión.',
+        metricas: rawHistoria.metricas || '',
         leccion_aplicable: rawHistoria.leccion_aplicable || rawHistoria.moraleja || 'Diferenciarse por calidad y procesos claros blinda los márgenes.',
-        fecha: rawHistoria.fecha || 'Q3 2026',
+        fecha: rawHistoria.fecha || '',
       }
     : null;
 
@@ -456,7 +459,7 @@ export default function ResultadoVentasPage() {
           {historia?.fecha && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-400/25 bg-purple-500/[0.08] px-3 py-1 text-[11px] font-semibold text-purple-200">
               <IconBook className="w-3 h-3 text-purple-400" />
-              <span>Benchmark Operativo · {historia.fecha}</span>
+              <span>Historia ilustrativa · {historia.fecha}</span>
             </span>
           )}
           {porqueFallan && porqueFallan.razones.length > 0 && (
@@ -570,7 +573,7 @@ export default function ResultadoVentasPage() {
           {/* ── HISTORIA DEL DÍA ── */}
           {(printMode || activeTab === 'historia' || activeTab === 'completo') && (
             <div className="print-section">
-              <h2 className="print-only mb-4 text-lg">Caso de Estudio & Benchmark</h2>
+              <h2 className="print-only mb-4 text-lg">Historia ilustrativa (generada con IA)</h2>
               {historia ? (
                 <motion.article
                   initial={printMode ? false : { opacity: 0, y: 12 }}
@@ -580,7 +583,7 @@ export default function ResultadoVentasPage() {
                   <div className="relative overflow-hidden bg-gradient-to-br from-purple-600 via-indigo-600 to-violet-700 px-6 py-6">
                     <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
                     <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-white/70">
-                      Benchmark Operativo{historia.fecha ? ` · ${historia.fecha}` : ''}
+                      Historia ilustrativa{historia.fecha ? ` · ${historia.fecha}` : ''}
                     </p>
                     <h3 className="mt-1.5 text-2xl font-black tracking-tight text-white sm:text-3xl">{historia.nombre}</h3>
                     <div className="mt-2 flex flex-wrap gap-1.5">
@@ -590,6 +593,9 @@ export default function ResultadoVentasPage() {
                         <span>{historia.pais}</span>
                       </span>
                     </div>
+                    <p className="mt-3 text-xs leading-relaxed text-white/75">
+                      Personaje y cifras compuestos por IA a partir de patrones de pequeños negocios. No es un caso real ni verificado: úsalo como ejemplo, no como referencia de resultados.
+                    </p>
                   </div>
 
                   <div className="space-y-5 p-6">
@@ -615,10 +621,12 @@ export default function ResultadoVentasPage() {
                     </section>
 
                     <div className="grid gap-3.5 md:grid-cols-2">
-                      <div className="rounded-xl border border-blue-400/15 bg-blue-400/[0.05] p-4">
-                        <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-blue-300">Métricas & Tracción</p>
-                        <p className="text-sm font-semibold text-white/85">{historia.metricas}</p>
-                      </div>
+                      {historia.metricas && (
+                        <div className="rounded-xl border border-blue-400/15 bg-blue-400/[0.05] p-4">
+                          <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-blue-300">Métricas & Tracción (ilustrativas)</p>
+                          <p className="text-sm font-semibold text-white/85">{historia.metricas}</p>
+                        </div>
+                      )}
                       <div className="rounded-xl border border-emerald-400/20 bg-gradient-to-br from-emerald-400/[0.09] to-cyan-400/[0.05] p-4">
                         <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-emerald-300">Principio Transferible a tu Operación</p>
                         <p className="text-sm font-medium leading-relaxed text-white/85">{historia.leccion_aplicable}</p>
@@ -628,7 +636,7 @@ export default function ResultadoVentasPage() {
                 </motion.article>
               ) : (
                 <div className="rounded-xl border border-yellow-400/20 bg-yellow-400/[0.05] p-5 text-sm text-yellow-200/80">
-                  El caso de estudio no está disponible actualmente.
+                  La historia ilustrativa no está disponible actualmente.
                 </div>
               )}
             </div>

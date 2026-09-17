@@ -9,12 +9,13 @@ import { requireCanRunAnalisis, getPlanFromDB } from '../middleware/requirePlan'
 import { requirePlanFeature } from '../middleware/requirePlan';
 import { respuestaAnalisis } from '../services/billing/redactAnalisis';
 import { requireAnalisisLock } from '../middleware/idempotency';
-import { validateBody } from '../middleware/validate';
+import { validateBody, exigirUuid } from '../middleware/validate';
 import { logger } from '../utils/logger';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
 
 const router = Router();
+exigirUuid(router, 'id');
 
 // El body real que manda el formulario (frontend/app/dashboard/finanzas/[productoId]/page.tsx):
 // 5 números no-negativos + producto_id. Antes no se validaba nada server-side —

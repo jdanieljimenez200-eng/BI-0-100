@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
+import { reportarError } from '../config/sentry';
 
 /**
  * Manejador global de errores para Express.
@@ -23,6 +24,9 @@ export function errorHandler(
     path: req.path,
     stack,
   });
+  if (statusCode >= 500) {
+    reportarError(err, { path: req.path, method: req.method });
+  }
 
   // Si los headers ya fueron enviados, delegar al manejador por defecto de Express
   if (res.headersSent) {

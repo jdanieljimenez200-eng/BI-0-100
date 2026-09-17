@@ -1,4 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
+import { exigirUuid } from '../middleware/validate';
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import { AppDataSource } from '../config/database';
@@ -47,6 +48,7 @@ import {
  */
 
 const router = Router();
+exigirUuid(router, 'id', 'imagenId', 'servicioId');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Validación
@@ -1113,6 +1115,7 @@ router.get(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const adminNetworkRouter = Router();
+exigirUuid(adminNetworkRouter, 'id');
 // Toda la revisión de la red —fichas, cédulas, reseñas— es cosa de moderación.
 adminNetworkRouter.use(authenticate, requirePermiso('moderarRed'));
 

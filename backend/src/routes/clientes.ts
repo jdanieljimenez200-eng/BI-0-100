@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { exigirUuid } from '../middleware/validate';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
@@ -9,6 +10,7 @@ import { camposExpedientePorVertical, filtrarAtributosPermitidos } from '../serv
 import { ah } from '../utils/asyncHandler';
 
 const router = Router();
+exigirUuid(router, 'id');
 router.use(authenticate);
 router.use(requireToolCapability('clientes'));
 // Desbloqueo por plan/selección para todas las rutas (sin getCount: el tope de

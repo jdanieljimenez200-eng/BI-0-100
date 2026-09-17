@@ -21,6 +21,7 @@
  *
  * NUNCA ejecutar contra una base de datos de producción.
  */
+import './guardiaSeeds';
 import 'reflect-metadata';
 import * as dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';

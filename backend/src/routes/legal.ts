@@ -8,12 +8,13 @@ import { authenticate } from '../middleware/auth';
 import { requireCanRunAnalisis, getPlanFromDB, requirePlanFeature } from '../middleware/requirePlan';
 import { respuestaAnalisis } from '../services/billing/redactAnalisis';
 import { requireAnalisisLock } from '../middleware/idempotency';
-import { validateBody } from '../middleware/validate';
+import { validateBody, exigirUuid } from '../middleware/validate';
 import { logger } from '../utils/logger';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
 
 const router = Router();
+exigirUuid(router, 'id');
 
 // El body real que manda el formulario (frontend/app/dashboard/legal/[productoId]/page.tsx).
 // `forma_juridica` depende del país del producto (lista curada en el frontend, no un

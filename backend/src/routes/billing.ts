@@ -30,7 +30,8 @@ import { AnalisisMarketing } from '../models/AnalisisMarketing';
 import { AnalisisVentas } from '../models/AnalisisVentas';
 import { AnalisisFinanzas } from '../models/AnalisisFinanzas';
 import { StripeEvent } from '../models/StripeEvent';
-import * as Sentry from '@sentry/node';
+import { reportarError } from '../config/sentry';
+import { esErrorDeBaseTransitorio } from '../utils/erroresTransitorios';
 import { invalidatePlanCache } from '../middleware/requirePlan';
 import { QueryFailedError, EntityManager, FindOptionsWhere } from 'typeorm';
 
@@ -39,23 +40,9 @@ import { QueryFailedError, EntityManager, FindOptionsWhere } from 'typeorm';
 // para no entrar en un bucle de reintentos infinito sobre un evento defectuoso.
 class TransientError extends Error {}
 
-// Códigos de error de Postgres que indican un problema transitorio de conexión
-// (no un dato inválido). Si aparecen, dejamos que Stripe reintente.
-const TRANSIENT_PG_CODES = new Set([
-  '08000', '08003', '08006', '08001', '08004', // connection_exception family
-  '57P01', '57P02', '57P03',                     // admin_shutdown / crash / cannot_connect_now
-  '53300', '53400',                              // too_many_connections / config limit
-]);
-
+// Error de Postgres de conexión o capacidad (no un dato inválido): Stripe reintenta.
 function isTransientDbError(err: unknown): boolean {
-  if (err instanceof TransientError) return true;
-  if (err instanceof QueryFailedError) {
-    const code = (err as QueryFailedError & { code?: string }).code;
-    return code !== undefined && TRANSIENT_PG_CODES.has(code);
-  }
-  // Errores de driver fuera de una query (p. ej. pool agotado) suelen traer code.
-  const code = (err as { code?: string } | null)?.code;
-  return typeof code === 'string' && TRANSIENT_PG_CODES.has(code);
+  return err instanceof TransientError || esErrorDeBaseTransitorio(err);
 }
 
 const router = Router();
@@ -245,7 +232,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
       return;
     }
     logger.error(`[stripe:webhook] error no recuperable en ${event.id} (${event.type}):`, err);
-    Sentry.captureException(err);
+    reportarError(err, { stripe_event_id: event.id, stripe_event_type: event.type });
     res.json({ received: true, handled: false });
   }
 });

@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, CookieOptions } from 'express';
 import { AppDataSource } from '../config/database';
 import { Usuario } from '../models/Usuario';
 import { InvitacionTrabajador } from '../models/InvitacionTrabajador';
@@ -11,7 +11,7 @@ import { logger } from '../utils/logger';
 import { redisClient } from '../config/redis';
 import { isEmailAvailable, sendPasswordResetEmail } from '../services/email/emailService';
 import { loginLimiter, signupLimiter, passwordResetLimiter } from '../middleware/cors';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, AuthRequest, claveBloqueo } from '../middleware/auth';
 
 const router = Router();
 
@@ -23,6 +23,68 @@ const MIN_PASSWORD_LENGTH = 8;
 const MAX_PASSWORD_LENGTH = 128;
 const LOGIN_FAIL_WINDOW_SECONDS = 15 * 60;
 const LOGIN_FAIL_MAX = 10;
+/**
+ * Tras rotar un refresh token, el jti viejo queda "recién rotado" este tiempo.
+ * Dos pestañas que renuevan a la vez mandan la misma cookie: la primera rota y
+ * la segunda llega con el jti ya consumido. Dentro de la gracia se le pide que
+ * reintente (la cookie nueva ya está en el navegador) en vez de tratarlo como
+ * robo y cerrar todas las sesiones.
+ */
+const GRACIA_ROTACION_SECONDS = 30;
+
+// ─── Cookie del refresh token ─────────────────────────────────────────────────
+//
+// El refresh token (7 días) viaja SOLO en una cookie HttpOnly: un XSS ya no
+// puede leerlo de localStorage. El access token (15 min) sigue en el cuerpo.
+// Requisito de despliegue: frontend y API bajo el mismo dominio registrable
+// (app.tudominio.com + api.tudominio.com). Con dominios de proveedores distintos
+// el navegador la trata como cookie de terceros y la bloquea.
+
+export const COOKIE_REFRESH = 'bi_refresh';
+
+function opcionesCookieRefresh(): CookieOptions {
+  const sameSite = (process.env.REFRESH_COOKIE_SAMESITE ?? 'lax').toLowerCase();
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production' || sameSite === 'none',
+    sameSite: sameSite === 'strict' || sameSite === 'none' ? sameSite : 'lax',
+    // Solo viaja a las rutas que la necesitan (refresh y logout).
+    path: '/api/auth',
+    ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
+  };
+}
+
+function ponerCookieRefresh(res: Response, refreshToken: string): void {
+  res.cookie(COOKIE_REFRESH, refreshToken, { ...opcionesCookieRefresh(), maxAge: REFRESH_TTL_SECONDS * 1000 });
+}
+
+function borrarCookieRefresh(res: Response): void {
+  res.clearCookie(COOKIE_REFRESH, opcionesCookieRefresh());
+}
+
+/**
+ * Refresh token de la petición: la cookie, o el cuerpo para clientes que no son
+ * navegador (integraciones, tests). Un navegador nunca lo recibe en el cuerpo.
+ */
+function refreshDePeticion(req: Request): string | undefined {
+  const deCookie = req.cookies?.[COOKIE_REFRESH];
+  if (typeof deCookie === 'string' && deCookie) return deCookie;
+  const deCuerpo = req.body?.refreshToken;
+  return typeof deCuerpo === 'string' && deCuerpo ? deCuerpo : undefined;
+}
+
+/**
+ * Hash de bcrypt de una contraseña que nadie tiene. Cuando el email no existe se
+ * compara contra él, para que la respuesta tarde lo mismo que con un email real
+ * (si no, el tiempo delata qué cuentas existen).
+ */
+let hashFicticio: Promise<string> | null = null;
+function obtenerHashFicticio(): Promise<string> {
+  if (!hashFicticio) hashFicticio = bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_COST);
+  return hashFicticio;
+}
+
+class InvitacionYaUsadaError extends Error {}
 
 /**
  * La política real, alineada con lo que el frontend ya promete en signup y
@@ -218,32 +280,51 @@ const handleSignup = async (req: Request, res: Response) => {
     const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
 
     // Crear usuario dentro de transacción si hay invitación para marcarla como usada atómicamente
-    const usuario = await AppDataSource.transaction(async (manager) => {
-      const u = manager.create(Usuario, {
-        email,
-        password_hash: hashedPassword,
-        nombre: name.trim(),
-        account_role: invitacionValida ? 'trabajador' : 'owner',
-        owner_id: invitacionValida ? invitacionValida.cuenta_id : undefined,
-        plan: 'freemium',
-        // Un colaborador invitado entra a la cuenta de un negocio, elija lo que elija.
-        tipo_cuenta: !invitacionValida && req.body.tipo_cuenta === 'experto' ? 'experto' : 'negocio',
-        analisis_disponibles: 0,
-        creditos_marketing: 0,
+    let usuario: Usuario;
+    try {
+      usuario = await AppDataSource.transaction(async (manager) => {
+        const u = manager.create(Usuario, {
+          email,
+          password_hash: hashedPassword,
+          nombre: name.trim(),
+          account_role: invitacionValida ? 'trabajador' : 'owner',
+          owner_id: invitacionValida ? invitacionValida.cuenta_id : undefined,
+          plan: 'freemium',
+          // Un colaborador invitado entra a la cuenta de un negocio, elija lo que elija.
+          tipo_cuenta: !invitacionValida && req.body.tipo_cuenta === 'experto' ? 'experto' : 'negocio',
+          analisis_disponibles: 0,
+          creditos_marketing: 0,
+        });
+        await manager.save(Usuario, u);
+
+        if (invitacionValida) {
+          // Consumo atómico: la comprobación `usado_por` de arriba se leyó sin
+          // bloqueo y dos altas simultáneas con el mismo código la pasaban las
+          // dos. Solo una de estas UPDATE afecta a la fila; la otra revierte su alta.
+          const consumo = await manager
+            .createQueryBuilder()
+            .update(InvitacionTrabajador)
+            .set({ usado_por: u.id, usado_en: new Date() })
+            .where('id = :id AND usado_por IS NULL', { id: invitacionValida.id })
+            .execute();
+          if (consumo.affected !== 1) throw new InvitacionYaUsadaError();
+        }
+        return u;
       });
-      await manager.save(Usuario, u);
-
-      if (invitacionValida) {
-        invitacionValida.usado_por = u.id;
-        invitacionValida.usado_en = new Date();
-        await manager.save(InvitacionTrabajador, invitacionValida);
+    } catch (err) {
+      if (err instanceof InvitacionYaUsadaError) {
+        return res.status(400).json({ error: 'Este código de invitación ya fue utilizado' });
       }
-      return u;
-    });
+      // Dos altas simultáneas con el mismo email: la segunda choca con el índice único.
+      if ((err as { code?: string })?.code === '23505') {
+        return res.status(409).json({ error: 'Ya existe una cuenta registrada con este correo electrónico' });
+      }
+      throw err;
+    }
 
-    // Generar tokens (access con jti revocable + refresh rotatorio)
+    // Generar tokens (access con jti revocable + refresh rotatorio en cookie HttpOnly)
     const accessToken = issueAccessToken(usuario);
-    const refreshToken = await issueRefreshToken(usuario.id);
+    ponerCookieRefresh(res, await issueRefreshToken(usuario.id));
 
     // Opcional: Enviar email de bienvenida
     if (isEmailAvailable()) {
@@ -269,7 +350,6 @@ const handleSignup = async (req: Request, res: Response) => {
     res.status(201).json({
       message: 'Usuario registrado exitosamente',
       accessToken,
-      refreshToken,
       user: userPayload,
     });
   } catch (err) {
@@ -301,7 +381,12 @@ const handleLogin = async (req: Request, res: Response) => {
     const usuarioRepo = AppDataSource.getRepository(Usuario);
     const usuario = await usuarioRepo.findOne({ where: { email } });
 
-    if (!usuario) {
+    // La contraseña se comprueba SIEMPRE, también si el email no existe (contra
+    // un hash ficticio), y antes de mirar si la cuenta está desactivada. Así ni
+    // el tiempo de respuesta ni el "Cuenta desactivada" delatan qué emails
+    // tienen cuenta a quien no conoce su contraseña.
+    const passwordMatch = await bcrypt.compare(password, usuario?.password_hash ?? (await obtenerHashFicticio()));
+    if (!usuario || !passwordMatch) {
       await registrarIntentoFallido(email);
       return res.status(401).json({ error: 'Email o contraseña inválida' });
     }
@@ -310,16 +395,10 @@ const handleLogin = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Cuenta desactivada. Contacta soporte.' });
     }
 
-    const passwordMatch = await bcrypt.compare(password, usuario.password_hash);
-    if (!passwordMatch) {
-      await registrarIntentoFallido(email);
-      return res.status(401).json({ error: 'Email o contraseña inválida' });
-    }
-
     await limpiarIntentosFallidos(email);
 
     const accessToken = issueAccessToken(usuario);
-    const refreshToken = await issueRefreshToken(usuario.id);
+    ponerCookieRefresh(res, await issueRefreshToken(usuario.id));
 
     const permisos = await getUserPermissions(usuario);
     const userPayload = {
@@ -335,7 +414,6 @@ const handleLogin = async (req: Request, res: Response) => {
     res.json({
       message: 'Login exitoso',
       accessToken,
-      refreshToken,
       user: userPayload,
     });
   } catch (err) {
@@ -405,10 +483,10 @@ router.patch('/tipo-cuenta', authenticate, async (req: AuthRequest, res: Respons
 // Refresh token endpoint — rotación one-time con detección de reuso
 router.post('/refresh', async (req: Request, res: Response) => {
   try {
-    const { refreshToken } = req.body;
+    const refreshToken = refreshDePeticion(req);
 
-    if (!refreshToken || typeof refreshToken !== 'string') {
-      return res.status(400).json({ error: 'Refresh token es requerido' });
+    if (!refreshToken) {
+      return res.status(401).json({ error: 'Sesión no encontrada. Inicia sesión nuevamente.' });
     }
 
     const { JWT_REFRESH_SECRET } = getJWTSecrets();
@@ -419,54 +497,67 @@ router.post('/refresh', async (req: Request, res: Response) => {
         jti?: string;
       };
     } catch {
+      borrarCookieRefresh(res);
       return res.status(401).json({ error: 'Token inválido o expirado' });
     }
 
     if (!decoded.userId || !decoded.jti) {
+      borrarCookieRefresh(res);
       return res.status(401).json({ error: 'Token inválido o expirado' });
     }
 
     const redis = safeRedis();
-    if (redis) {
-      const storedUserId = await redis.get(`rt:${decoded.jti}`);
-
-      if (!storedUserId || storedUserId !== decoded.userId) {
-        // Token reusado/revocado → invalidar toda la familia por seguridad
-        await revokeAllUserRefreshTokens(decoded.userId);
-        return res.status(401).json({ error: 'Sesión revocada. Inicia sesión nuevamente.' });
-      }
-
-      // Rotación: consumir el jti actual (one-time)
-      await redis.del(`rt:${decoded.jti}`);
-      await redis.sRem(`rt_user:${decoded.userId}`, decoded.jti);
-    } else {
+    if (!redis) {
       logger.error('[auth] Redis no disponible durante refresh — rechazando por seguridad');
       return res.status(503).json({ error: 'Servicio temporalmente no disponible' });
     }
+
+    // Una sola transacción de Redis (MULTI): mirar si ya se había rotado,
+    // consumir el jti (GETDEL) y marcarlo como rotado. Con GET y luego DEL, dos
+    // peticiones simultáneas con el mismo token pasaban las dos; y con la marca
+    // escrita en otro paso, la segunda podía consultarla antes de que existiera.
+    const [yaRotado, storedUserId] = (await redis
+      .multi()
+      .get(`rt_rotado:${decoded.jti}`)
+      .getDel(`rt:${decoded.jti}`)
+      .setEx(`rt_rotado:${decoded.jti}`, GRACIA_ROTACION_SECONDS, '1')
+      .exec()) as unknown as [string | null, string | null, unknown];
+
+    if (!storedUserId || storedUserId !== decoded.userId) {
+      if (yaRotado) {
+        // Otra pestaña acaba de rotarlo: no es un robo. El navegador ya tiene la
+        // cookie nueva, así que basta con reintentar.
+        return res.status(409).json({ error: 'La sesión se está renovando', codigo: 'REFRESH_EN_CURSO' });
+      }
+      // Token reusado fuera de la gracia o revocado → invalidar toda la familia
+      await revokeAllUserRefreshTokens(decoded.userId);
+      borrarCookieRefresh(res);
+      return res.status(401).json({ error: 'Sesión revocada. Inicia sesión nuevamente.' });
+    }
+
+    await redis.sRem(`rt_user:${decoded.userId}`, decoded.jti);
 
     const usuario = await AppDataSource.getRepository(Usuario).findOne({
       where: { id: decoded.userId },
     });
 
     if (!usuario || usuario.activo === false) {
+      borrarCookieRefresh(res);
       return res.status(401).json({ error: 'Cuenta no encontrada o desactivada' });
     }
 
     // Generar nuevos tokens
     const newAccessToken = issueAccessToken(usuario);
-    const newRefreshToken = await issueRefreshToken(usuario.id);
+    ponerCookieRefresh(res, await issueRefreshToken(usuario.id));
 
-    res.json({
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-    });
+    res.json({ accessToken: newAccessToken });
   } catch (err) {
     logger.error('POST /api/auth/refresh error:', err);
     res.status(401).json({ error: 'Token inválido o expirado' });
   }
 });
 
-// Logout endpoint — revoca access (denylist jti) y refresh (si se envía)
+// Logout endpoint — revoca access (denylist jti) y refresh (cookie o cuerpo)
 router.post('/logout', async (req: Request, res: Response) => {
   try {
     const { JWT_SECRET, JWT_REFRESH_SECRET } = getJWTSecrets();
@@ -486,8 +577,9 @@ router.post('/logout', async (req: Request, res: Response) => {
       }
     }
 
-    const { refreshToken } = req.body ?? {};
-    if (refreshToken && typeof refreshToken === 'string' && redis) {
+    const refreshToken = refreshDePeticion(req);
+    borrarCookieRefresh(res);
+    if (refreshToken && redis) {
       try {
         const payload = jwt.verify(refreshToken, JWT_REFRESH_SECRET, {
           algorithms: ['HS256'],
@@ -583,8 +675,17 @@ router.post('/reset-password', passwordResetLimiter, async (req: Request, res: R
     usuario.password_hash = await bcrypt.hash(password, BCRYPT_COST);
     await usuarioRepo.save(usuario);
 
-    // Revocar todas las sesiones activas del usuario
+    // Revocar todas las sesiones activas del usuario: los refresh tokens y,
+    // con la marca de bloqueo, también los access tokens ya emitidos. Si alguien
+    // cambia la contraseña porque le robaron la sesión, el ladrón no conserva
+    // 15 minutos de acceso. La marca solo afecta a tokens emitidos hasta ahora.
     await revokeAllUserRefreshTokens(usuario.id);
+    try {
+      await redis.set(claveBloqueo(usuario.id), String(Math.floor(Date.now() / 1000)), { EX: ACCESS_TTL_SECONDS });
+    } catch (err) {
+      logger.error('[auth] No se pudo invalidar los access tokens tras el reset:', err);
+    }
+    borrarCookieRefresh(res);
 
     res.json({ message: 'Contraseña actualizada. Inicia sesión con tu nueva contraseña.' });
   } catch (err) {

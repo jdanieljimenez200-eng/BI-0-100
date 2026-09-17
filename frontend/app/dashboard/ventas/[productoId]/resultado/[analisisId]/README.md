@@ -10,9 +10,9 @@ La página está diseñada con **3 tabs principales**:
 - Estructura: Título | Descripción | Ejemplo Práctico | Error Común
 - Animaciones GSAP al cambiar de tab
 
-### 2. 📖 Historias de Éxito  
+### 2. 📖 Historia ilustrativa
 - **Visible solo en Plan Pro+** (bloqueado en freemium)
-- 1-5 historias inspiradoras de emprendedores reales
+- Una historia de un emprendedor **compuesto por IA** (no es una persona real ni un caso verificado); la pantalla lo indica siempre
 - Estructura: Nombre | Industria | Cómo lo logró | Mentalidad Clave | Obstáculo | Estrategia | Resultados
 - LockedSection con candado cuando está bloqueado
 
