@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { Usuario } from './Usuario';
 import { Producto } from './Producto';
+import { CanalCobro } from './CanalCobro';
 
 @Entity('movimientos_contables')
 @Index(['usuario_id', 'producto_id'])
@@ -16,6 +17,8 @@ import { Producto } from './Producto';
 @Index(['batch_id'])
 @Index(['fuente'])
 @Index(['parent_movimiento_id'])
+@Index(['canal_cobro_id'])
+@Index(['usuario_id', 'estado_liquidacion'])
 export class MovimientoContable {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -68,10 +71,45 @@ export class MovimientoContable {
   tiene_cfdi!: boolean;
 
   @Column({ default: 'manual', length: 20 })
-  fuente!: 'manual' | 'csv_import' | 'pos' | 'inventario' | 'nomina' | 'cotizacion' | 'mantenimiento';
+  fuente!: 'manual' | 'csv_import' | 'pos' | 'inventario' | 'nomina' | 'cotizacion' | 'mantenimiento' | 'delivery' | 'terminal';
 
   @Column({ nullable: true, type: 'uuid' })
   batch_id!: string | null;
+
+  // Trazabilidad de canal / terminal / delivery
+  @ManyToOne(() => CanalCobro, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'canal_cobro_id' })
+  canal_cobro!: CanalCobro | null;
+
+  @Column({ nullable: true, type: 'uuid' })
+  canal_cobro_id!: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  canal_nombre_snapshot!: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  institucion_snapshot!: string | null;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  monto_bruto!: number | null;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  comision_monto!: number | null;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  comision_iva!: number | null;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  retencion_monto!: number | null;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  monto_neto!: number | null;
+
+  @Column({ length: 20, default: 'liquidado' })
+  estado_liquidacion!: 'inmediato' | 'pendiente' | 'liquidado';
+
+  @Column({ type: 'date', nullable: true })
+  fecha_liquidacion!: string | null;
 
   // Trazabilidad: qué tipo de entidad y qué ID originó este movimiento.
   // Permite reconstruir el libro mayor con referencia exacta a la fuente.

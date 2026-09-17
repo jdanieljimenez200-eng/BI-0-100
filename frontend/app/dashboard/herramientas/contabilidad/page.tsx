@@ -29,6 +29,11 @@ import {
   ArrowDownRight,
   Sparkles,
   Users,
+  CreditCard,
+  Bike,
+  Calculator,
+  Clock,
+  PieChart,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { getTaxConfig, comprobanteNombre } from '@/lib/taxConfig';
@@ -37,6 +42,10 @@ import HerramientaGate from '@/components/herramientas/HerramientaGate';
 import type { ProductoActivo } from '@/lib/productoActivo';
 import CsvImportModal from '../../finanzas/[productoId]/resultado/[analisisId]/CsvImportModal';
 import ReportesPanel from './reportes/ReportesPanel';
+import CanalesCobroModal, { CanalCobroData } from './CanalesCobroModal';
+import SimuladorPreciosComision from './SimuladorPreciosComision';
+import LiquidacionesPanel from './LiquidacionesPanel';
+import EstadoResultadosPnL from './EstadoResultadosPnL';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,11 +61,21 @@ interface Movimiento {
   parent_movimiento_id: string | null;
   es_auto_generado: boolean;
   tiene_cfdi: boolean;
-  fuente: 'manual' | 'csv_import' | 'pos' | 'inventario' | 'nomina' | 'cotizacion';
+  fuente: 'manual' | 'csv_import' | 'pos' | 'inventario' | 'nomina' | 'cotizacion' | 'mantenimiento' | 'delivery' | 'terminal';
   batch_id: string | null;
+  canal_cobro_id?: string | null;
+  canal_nombre_snapshot?: string | null;
+  institucion_snapshot?: string | null;
+  monto_bruto?: number | null;
+  comision_monto?: number | null;
+  comision_iva?: number | null;
+  retencion_monto?: number | null;
+  monto_neto?: number | null;
+  estado_liquidacion?: 'inmediato' | 'pendiente' | 'liquidado';
+  fecha_liquidacion?: string | null;
 }
 
-type TabKey = 'reportes' | 'movimientos' | 'calibracion' | 'fiscal';
+type TabKey = 'reportes' | 'pnl' | 'movimientos' | 'canales' | 'simulador' | 'liquidaciones' | 'calibracion' | 'fiscal';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -75,7 +94,7 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 
 // Categorías bloqueadas en freemium (espejo de GATED_CATS_FREEMIUM en el backend)
 const GATED_CATS_FREEMIUM = ['Gasolina', 'Insumos', 'Materiales'];
-const CATEGORIAS_SUGERIDAS = ['Ventas', 'Servicios', 'Renta', 'Sueldos', 'Gasolina', 'Insumos', 'Materiales', 'Marketing', 'Impuestos', 'Otros'];
+const CATEGORIAS_SUGERIDAS = ['Ventas', 'Servicios', 'Renta', 'Sueldos', 'Gasolina', 'Insumos', 'Materiales', 'Marketing', 'Comisiones Financieras / Plataformas', 'Impuestos', 'Otros'];
 
 const FUENTE_INFO: Record<Movimiento['fuente'], { label: string; color: string; badge: string }> = {
   manual:      { label: 'Manual',      color: 'text-white/60', badge: 'bg-white/5 border-white/10 text-white/60' },
@@ -84,6 +103,9 @@ const FUENTE_INFO: Record<Movimiento['fuente'], { label: string; color: string; 
   inventario:  { label: 'Inventario',  color: 'text-amber-300', badge: 'bg-amber-500/10 border-amber-500/30 text-amber-300' },
   nomina:      { label: 'Nómina',      color: 'text-rose-300', badge: 'bg-rose-500/10 border-rose-500/30 text-rose-300' },
   cotizacion:  { label: 'Cotización',  color: 'text-teal-300', badge: 'bg-teal-500/10 border-teal-500/30 text-teal-300' },
+  mantenimiento: { label: 'Mantenimiento', color: 'text-orange-300', badge: 'bg-orange-500/10 border-orange-500/30 text-orange-300' },
+  delivery:    { label: 'Delivery App', color: 'text-emerald-300', badge: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' },
+  terminal:    { label: 'Terminal TPV', color: 'text-amber-300', badge: 'bg-amber-500/10 border-amber-500/30 text-amber-300' },
 };
 
 // Calibración ligera en cliente — mismo criterio que calibracionService (ignora auto-generados)
@@ -160,13 +182,31 @@ function ContabilidadInner({
   const productoId = producto.id;
 
   const [movs, setMovs] = useState<Movimiento[]>([]);
+  const [canales, setCanales] = useState<CanalCobroData[]>([]);
+  const [showCanalesModal, setShowCanalesModal] = useState(false);
   const [cargando, setCargando] = useState(false);
   const [tab, setTab] = useState<TabKey>('reportes');
 
   // Modal de alta
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<{ tipo: 'ingreso' | 'egreso'; descripcion: string; categoria: string; monto: string; fecha: string; tiene_cfdi: boolean }>({
-    tipo: 'ingreso', descripcion: '', categoria: '', monto: '', fecha: todayISO(), tiene_cfdi: false,
+  const [form, setForm] = useState<{
+    tipo: 'ingreso' | 'egreso';
+    descripcion: string;
+    categoria: string;
+    monto: string;
+    fecha: string;
+    tiene_cfdi: boolean;
+    canal_cobro_id: string;
+    desglosar_comision: boolean;
+  }>({
+    tipo: 'ingreso',
+    descripcion: '',
+    categoria: '',
+    monto: '',
+    fecha: todayISO(),
+    tiene_cfdi: false,
+    canal_cobro_id: '',
+    desglosar_comision: true,
   });
   const [guardando, setGuardando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -185,7 +225,7 @@ function ContabilidadInner({
   // Filtros y búsqueda
   const [busqueda, setBusqueda] = useState('');
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'ingreso' | 'egreso'>('todos');
-  const [filtroFuente, setFiltroFuente] = useState<'todos' | 'manual' | 'csv_import' | 'pos' | 'inventario' | 'nomina' | 'cotizacion'>('todos');
+  const [filtroFuente, setFiltroFuente] = useState<'todos' | Movimiento['fuente']>('todos');
   const [filtroCategoria, setFiltroCategoria] = useState('todas');
 
   const taxCfg = useMemo(() => getTaxConfig(producto.pais ?? 'MX'), [producto.pais]);
@@ -210,7 +250,20 @@ function ContabilidadInner({
     }
   }, [productoId]);
 
-  useEffect(() => { cargarMovs(); }, [cargarMovs]);
+  const cargarCanales = useCallback(async () => {
+    if (!productoId) { setCanales([]); return; }
+    try {
+      const { data } = await api.get(`/contabilidad/${productoId}/canales`);
+      setCanales((data || []) as CanalCobroData[]);
+    } catch {
+      setCanales([]);
+    }
+  }, [productoId]);
+
+  useEffect(() => {
+    cargarMovs();
+    cargarCanales();
+  }, [cargarMovs, cargarCanales]);
 
   // KPIs
   const kpis = useMemo(() => {
@@ -223,7 +276,7 @@ function ContabilidadInner({
   }, [movs]);
 
   const conteoFuentes = useMemo(() => {
-    const counts: Record<string, number> = { todos: movs.length, manual: 0, csv_import: 0, pos: 0, inventario: 0, nomina: 0, cotizacion: 0 };
+    const counts: Record<string, number> = { todos: movs.length, manual: 0, csv_import: 0, pos: 0, inventario: 0, nomina: 0, cotizacion: 0, mantenimiento: 0, delivery: 0, terminal: 0 };
     for (const m of movs) {
       if (counts[m.fuente] !== undefined) counts[m.fuente]++;
     }
@@ -349,10 +402,21 @@ function ContabilidadInner({
         monto: montoNum,
         fecha: form.fecha,
         tiene_cfdi: form.tiene_cfdi,
+        canal_cobro_id: form.tipo === 'ingreso' && form.canal_cobro_id ? form.canal_cobro_id : undefined,
+        desglosar_comision: form.tipo === 'ingreso' ? form.desglosar_comision : undefined,
       });
       await cargarMovs();
       setShowForm(false);
-      setForm({ tipo: 'ingreso', descripcion: '', categoria: '', monto: '', fecha: todayISO(), tiene_cfdi: false });
+      setForm({
+        tipo: 'ingreso',
+        descripcion: '',
+        categoria: '',
+        monto: '',
+        fecha: todayISO(),
+        tiene_cfdi: false,
+        canal_cobro_id: '',
+        desglosar_comision: true,
+      });
     } catch (err: unknown) {
       const ax = err as { response?: { status?: number; data?: { error?: string; upgrade_required?: boolean } } };
       const data = ax.response?.data;
@@ -409,8 +473,8 @@ function ContabilidadInner({
       {/* Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Reportes</h1>
-          <p className="text-sm text-white/50 mt-1">Lo que pasa en cada herramienta, con detalle por área. El libro contable y la parte fiscal siguen aquí.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Reportes & Contabilidad</h1>
+          <p className="text-sm text-white/50 mt-1">Lo que pasa en cada herramienta, con detalle por área. El libro contable y la parte fiscal sincronizados en tiempo real.</p>
         </div>
 
         <div className="bg-white/5 border border-white/10 rounded-2xl p-3 min-w-[280px]">
@@ -497,10 +561,14 @@ function ContabilidadInner({
 
       {/* Tabs y Acciones */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 border-b border-white/8 pb-2 sm:pb-0">
-        <div className="flex gap-2">
+        <div className="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
           {([
             { key: 'reportes', label: 'Reportes', icon: BarChart3 },
+            { key: 'pnl', label: 'P&L (Resultados)', icon: PieChart },
             { key: 'movimientos', label: `Movimientos (${movs.length})`, icon: BookOpen },
+            { key: 'canales', label: `Terminales & Delivery (${canales.length})`, icon: CreditCard },
+            { key: 'simulador', label: 'Simulador Precios', icon: Calculator },
+            { key: 'liquidaciones', label: 'Liquidaciones', icon: Clock },
             { key: 'calibracion', label: 'Calibración', icon: TrendingUp },
             { key: 'fiscal', label: 'Fiscal', icon: Receipt },
           ] as const).map((t) => {
@@ -509,11 +577,11 @@ function ContabilidadInner({
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
-                className={`text-sm px-4 py-3 font-semibold transition-colors border-b-2 -mb-px flex items-center gap-2 ${
+                className={`text-xs sm:text-sm px-3.5 py-3 font-semibold transition-colors border-b-2 -mb-px flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                   tab === t.key ? 'text-emerald-300 border-emerald-400' : 'text-white/40 border-transparent hover:text-white/70'
                 }`}
               >
-                <Icon className="w-4 h-4 shrink-0" />
+                <Icon className="w-3.5 h-3.5 shrink-0" />
                 <span>{t.label}</span>
               </button>
             );
@@ -521,6 +589,14 @@ function ContabilidadInner({
         </div>
         {tab !== 'reportes' && (
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setShowCanalesModal(true)}
+            className="text-xs font-bold border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 px-3 py-2 rounded-lg hover:bg-emerald-500/20 transition-colors flex items-center gap-1.5"
+            title="Configurar comisiones de terminales y delivery"
+          >
+            <CreditCard className="w-3.5 h-3.5 shrink-0" />
+            <span>Configurar Canales</span>
+          </button>
           <button
             onClick={exportarCSV}
             disabled={movsFiltrados.length === 0}
@@ -540,7 +616,16 @@ function ContabilidadInner({
           <button
             onClick={() => {
               setAviso(null);
-              setForm({ tipo: 'ingreso', descripcion: '', categoria: '', monto: '', fecha: todayISO(), tiene_cfdi: false });
+              setForm({
+                tipo: 'ingreso',
+                descripcion: '',
+                categoria: '',
+                monto: '',
+                fecha: todayISO(),
+                tiene_cfdi: false,
+                canal_cobro_id: '',
+                desglosar_comision: true,
+              });
               setShowForm(true);
             }}
             className="text-xs font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 px-3.5 py-2 rounded-lg hover:bg-emerald-500/20 transition-colors flex items-center gap-1.5"
@@ -558,6 +643,122 @@ function ContabilidadInner({
           productoId={productoId}
           productoNombre={producto.nombre || 'Este producto'}
           taxCfg={taxCfg}
+        />
+      )}
+
+      {/* ══ TAB: P&L (ESTADO DE RESULTADOS) ══ */}
+      {tab === 'pnl' && (
+        <EstadoResultadosPnL
+          productoId={productoId}
+          simboloMoneda={taxCfg.simbolo}
+          locale={taxCfg.locale}
+        />
+      )}
+
+      {/* ══ TAB: CANALES & TERMINALES ══ */}
+      {tab === 'canales' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0F1C2A] border border-white/10 rounded-2xl p-4">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-emerald-400" />
+                <span>Terminales TPV & Plataformas de Delivery</span>
+              </h3>
+              <p className="text-xs text-white/50 mt-0.5">
+                Configura cuánto te cobra cada institución (Clip, BBVA, Mercado Pago, Uber Eats, Rappi) para descontarlo automáticamente en cada venta.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowCanalesModal(true)}
+              className="text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-black px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5 shrink-0 shadow-lg shadow-emerald-500/20"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Administrar / Agregar Canal</span>
+            </button>
+          </div>
+
+          {canales.length === 0 ? (
+            <div className="p-10 border border-dashed border-white/10 rounded-2xl text-center">
+              <CreditCard className="w-10 h-10 text-white/20 mx-auto mb-3" />
+              <p className="text-sm font-semibold text-white/70">No tienes terminales ni apps configuradas</p>
+              <p className="text-xs text-white/40 mt-1 max-w-md mx-auto mb-4">
+                Configura tus canales de cobro para deducir comisiones e impuestos en tiempo real.
+              </p>
+              <button
+                onClick={() => setShowCanalesModal(true)}
+                className="text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-4 py-2 rounded-xl hover:bg-emerald-500/30 transition-colors"
+              >
+                Abrir catálogo de canales
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {canales.map((c) => (
+                <div
+                  key={c.id}
+                  className="bg-[#0F1C2A] border border-white/8 hover:border-white/20 rounded-2xl p-4 space-y-2.5 transition-all"
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="text-sm font-bold text-white">{c.nombre}</h4>
+                      <p className="text-[10px] text-white/40 font-medium">
+                        {c.institucion} · {c.tipo_canal.toUpperCase()}
+                      </p>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
+                      {(Number(c.comision_porcentaje) * 100).toFixed(1)}% {c.aplica_iva_comision ? '+ IVA' : ''}
+                    </span>
+                  </div>
+
+                  <div className="text-xs text-white/60 space-y-1 pt-2 border-t border-white/5">
+                    {Number(c.comision_fija) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-white/40">Tarifa fija:</span>
+                        <span className="font-mono text-white/80">{taxCfg.simbolo}{Number(c.comision_fija).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {Number(c.retencion_isr_porcentaje) > 0 && (
+                      <div className="flex justify-between text-rose-300">
+                        <span className="text-white/40">Retención ISR:</span>
+                        <span className="font-mono">{(Number(c.retencion_isr_porcentaje) * 100).toFixed(1)}%</span>
+                      </div>
+                    )}
+                    {Number(c.retencion_iva_porcentaje) > 0 && (
+                      <div className="flex justify-between text-rose-300">
+                        <span className="text-white/40">Retención IVA:</span>
+                        <span className="font-mono">{(Number(c.retencion_iva_porcentaje) * 100).toFixed(1)}%</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-white/40">Depósito en banco:</span>
+                      <span className="text-emerald-400 font-semibold">
+                        {c.dias_liquidacion === 0 ? 'Mismo día' : `En ${c.dias_liquidacion} día(s)`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══ TAB: SIMULADOR DE PRECIOS ══ */}
+      {tab === 'simulador' && (
+        <SimuladorPreciosComision
+          canales={canales}
+          simboloMoneda={taxCfg.simbolo}
+          locale={taxCfg.locale}
+        />
+      )}
+
+      {/* ══ TAB: LIQUIDACIONES Y CONCILIACIÓN ══ */}
+      {tab === 'liquidaciones' && (
+        <LiquidacionesPanel
+          productoId={productoId}
+          simboloMoneda={taxCfg.simbolo}
+          locale={taxCfg.locale}
+          onMovimientosCambio={cargarMovs}
         />
       )}
 
@@ -651,7 +852,7 @@ function ContabilidadInner({
                   <span className="text-white/20 mx-1">|</span>
 
                   <span className="text-[10px] uppercase font-bold tracking-wider text-white/30 mr-1">Fuente:</span>
-                  {(['todos', 'manual', 'pos', 'inventario', 'nomina', 'cotizacion', 'csv_import'] as const).map((fKey) => {
+                  {(['todos', 'manual', 'pos', 'terminal', 'delivery', 'inventario', 'nomina', 'mantenimiento', 'cotizacion', 'csv_import'] as const).map((fKey) => {
                     const activo = filtroFuente === fKey;
                     const label = fKey === 'todos' ? 'Todas' : FUENTE_INFO[fKey]?.label ?? fKey;
                     const count = conteoFuentes[fKey] ?? 0;
@@ -760,6 +961,25 @@ function ContabilidadInner({
                                 {comprobante}
                               </span>
                             )}
+                            {m.institucion_snapshot && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">
+                                {m.institucion_snapshot}
+                              </span>
+                            )}
+                            {m.monto_neto !== undefined && m.monto_neto !== null && Number(m.monto_neto) !== Number(m.monto) && (
+                              <span className="text-[10px] text-emerald-400 font-mono font-medium">
+                                (Neto en banco: {fmtMoney(Number(m.monto_neto), taxCfg.simbolo, taxCfg.locale)})
+                              </span>
+                            )}
+                            {m.estado_liquidacion && m.tipo === 'ingreso' && (m.canal_cobro_id || m.monto_bruto) && (
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                m.estado_liquidacion === 'pendiente'
+                                  ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300'
+                                  : 'bg-white/5 border border-white/10 text-white/40'
+                              }`}>
+                                {m.estado_liquidacion === 'pendiente' ? 'Por cobrar en banco' : 'Depositado'}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -774,9 +994,16 @@ function ContabilidadInner({
                               className="w-28 bg-white/5 border border-emerald-500/40 rounded-lg px-2 py-1 text-sm text-white text-right outline-none"
                             />
                           ) : (
-                            <p className={`text-base font-bold tabular-nums ${esIngreso ? 'text-emerald-300' : 'text-rose-300'}`}>
-                              {esIngreso ? '+' : '−'}{fmtMoney(n(m.monto), taxCfg.simbolo, taxCfg.locale)}
-                            </p>
+                            <div>
+                              <p className={`text-base font-bold tabular-nums ${esIngreso ? 'text-emerald-300' : 'text-rose-300'}`}>
+                                {esIngreso ? '+' : '−'}{fmtMoney(n(m.monto), taxCfg.simbolo, taxCfg.locale)}
+                              </p>
+                              {m.comision_monto !== undefined && m.comision_monto !== null && Number(m.comision_monto) > 0 && (
+                                <p className="text-[10px] text-rose-300/80 font-mono">
+                                  −{fmtMoney(Number(m.comision_monto) + Number(m.comision_iva ?? 0) + Number(m.retencion_monto ?? 0), taxCfg.simbolo, taxCfg.locale)} com.
+                                </p>
+                              )}
+                            </div>
                           )}
                         </div>
 
@@ -1091,6 +1318,86 @@ function ContabilidadInner({
                   <p className="text-[10px] text-white/30 mt-1">Las categorías marcadas con PRO requieren un plan de pago.</p>
                 </div>
 
+                {/* Selector de Canal / Terminal / Delivery si es Ingreso */}
+                {form.tipo === 'ingreso' && (
+                  <div className="bg-white/4 border border-white/8 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] uppercase font-bold text-white/50 tracking-wider">
+                        Canal / Terminal de Cobro
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowCanalesModal(true)}
+                        className="text-[10px] text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Gestionar canales</span>
+                      </button>
+                    </div>
+
+                    <select
+                      value={form.canal_cobro_id}
+                      onChange={(e) => setForm({ ...form, canal_cobro_id: e.target.value })}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-emerald-500/50"
+                    >
+                      <option value="" className="bg-[#0F1C2A]">Directo / Efectivo (Sin comisión descontada)</option>
+                      {canales.map((c) => (
+                        <option key={c.id} value={c.id} className="bg-[#0F1C2A]">
+                          {c.nombre} ({c.institucion} · {(Number(c.comision_porcentaje) * 100).toFixed(1)}%{c.aplica_iva_comision ? ' + IVA' : ''})
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Previsualización en vivo de comisiones */}
+                    {form.canal_cobro_id && Number(form.monto) > 0 && (() => {
+                      const canalSel = canales.find((c) => c.id === form.canal_cobro_id);
+                      if (!canalSel) return null;
+                      const bruto = Number(form.monto);
+                      const pct = Number(canalSel.comision_porcentaje) || 0;
+                      const fija = Number(canalSel.comision_fija) || 0;
+                      const comBase = Math.round((bruto * pct + fija) * 100) / 100;
+                      const comIva = canalSel.aplica_iva_comision ? Math.round(comBase * 0.16 * 100) / 100 : 0;
+                      const retIsr = Math.round(bruto * (Number(canalSel.retencion_isr_porcentaje) || 0) * 100) / 100;
+                      const retIva = Math.round(bruto * (Number(canalSel.retencion_iva_porcentaje) || 0) * 100) / 100;
+                      const deducciones = Math.round((comBase + comIva + retIsr + retIva) * 100) / 100;
+                      const neto = Math.round((bruto - deducciones) * 100) / 100;
+
+                      return (
+                        <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3 text-[11px] space-y-1.5 mt-2">
+                          <div className="flex justify-between text-white/50">
+                            <span>Venta bruta:</span>
+                            <span className="font-mono">{taxCfg.simbolo}{bruto.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-rose-300">
+                            <span>Comisión {canalSel.institucion} ({canalSel.aplica_iva_comision ? 'con IVA' : ''}):</span>
+                            <span className="font-mono">−{taxCfg.simbolo}{(comBase + comIva).toFixed(2)}</span>
+                          </div>
+                          {(retIsr + retIva) > 0 && (
+                            <div className="flex justify-between text-amber-300">
+                              <span>Retenciones fiscales SAT:</span>
+                              <span className="font-mono">−{taxCfg.simbolo}{(retIsr + retIva).toFixed(2)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between text-emerald-300 font-bold pt-1 border-t border-emerald-500/20">
+                            <span>Neto real a recibir:</span>
+                            <span className="font-mono text-xs">{taxCfg.simbolo}{neto.toFixed(2)}</span>
+                          </div>
+
+                          <label className="flex items-center gap-2 pt-1 text-[10px] text-white/70 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={form.desglosar_comision}
+                              onChange={(e) => setForm({ ...form, desglosar_comision: e.target.checked })}
+                              className="accent-emerald-500 rounded"
+                            />
+                            <span>Crear egresos automáticos de comisión e IVA deducible</span>
+                          </label>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
                 <label className="flex items-start gap-2 text-xs text-white/70 cursor-pointer pt-1">
                   <input type="checkbox" checked={form.tiene_cfdi} onChange={(e) => setForm({ ...form, tiene_cfdi: e.target.checked })} className="accent-emerald-500 mt-0.5" />
                   <span>
@@ -1118,6 +1425,20 @@ function ContabilidadInner({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ══ MODAL: Canales de Cobro / Terminales / Delivery ══ */}
+      {showCanalesModal && productoId && (
+        <CanalesCobroModal
+          productoId={productoId}
+          canales={canales}
+          onActualizar={() => {
+            cargarCanales();
+            cargarMovs();
+          }}
+          onClose={() => setShowCanalesModal(false)}
+          simboloMoneda={taxCfg.simbolo}
+        />
+      )}
 
       {/* ══ MODAL: importar CSV / Excel ══ */}
       {showImport && productoId && (

@@ -14,12 +14,14 @@ import { Negocio } from './Negocio';
 import { MovimientoContable } from './MovimientoContable';
 import { VentaItem } from './VentaItem';
 import { Cliente } from './Cliente';
+import { CanalCobro } from './CanalCobro';
 
 @Entity('ventas')
 @Index(['usuario_id', 'producto_id'])
 @Index(['fecha'])
 @Index(['usuario_id', 'numero_ticket'], { unique: true })
 @Index(['movimiento_contable_id'])
+@Index(['canal_cobro_id'])
 @Index(['usuario_id', 'cliente_id'])
 @Index(['cotizacion_id'])
 @Index(['usuario_id', 'fecha'])
@@ -115,6 +117,22 @@ export class Venta {
 
   @Column({ nullable: true, type: 'uuid' })
   movimiento_contable_id!: string | null;
+
+  @ManyToOne(() => CanalCobro, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'canal_cobro_id' })
+  canal_cobro!: CanalCobro | null;
+
+  @Column({ nullable: true, type: 'uuid' })
+  canal_cobro_id!: string | null;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  comision_monto!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  comision_iva!: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  monto_neto!: number | null;
 
   @OneToMany(() => VentaItem, (item) => item.venta, { cascade: true })
   items!: VentaItem[];

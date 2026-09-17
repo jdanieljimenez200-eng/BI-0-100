@@ -14,11 +14,16 @@ import { MovimientoContable } from '../models/MovimientoContable';
 import { ItemPOSInsumo } from '../models/ItemPOSInsumo';
 import { InsumoInventario } from '../models/InsumoInventario';
 import { Cotizacion } from '../models/Cotizacion';
+import { CanalCobro } from '../models/CanalCobro';
 import {
   calcularTotalesVenta,
   buildWhatsAppLink,
   CarritoLinea,
 } from '../services/pos/posService';
+import {
+  calcularDesgloseComision,
+  registrarAsientosComisionTransaccional,
+} from '../services/contabilidad/comisionesService';
 import { getTaxConfig } from '../utils/taxConfig';
 import { siguienteFolioVenta } from '../utils/folios';
 import { resolverClienteParaVenta } from '../services/crm/resolverCliente';
@@ -48,6 +53,7 @@ const CrearVentaSchema = z.object({
   negocio_id: z.string().uuid().nullable().optional(),
   lineas: z.array(LineaCarritoSchema).min(1, 'El carrito debe tener al menos un producto'),
   metodo_pago: z.enum(['efectivo', 'tarjeta', 'transferencia', 'otro']).optional(),
+  canal_cobro_id: z.string().uuid().nullable().optional(),
   cliente_nombre: z.string().optional(),
   cliente_telefono: z.string().optional(),
   // Vinculo con el CRM. Mutuamente excluyentes: o eliges un cliente que ya
@@ -318,6 +324,7 @@ router.post('/ventas', requireHerramientaAccess('pos', contarVentasPOS), validat
     negocio_id,
     lineas,
     metodo_pago,
+    canal_cobro_id,
     cliente_nombre,
     cliente_telefono,
     cliente_id,
@@ -330,6 +337,7 @@ router.post('/ventas', requireHerramientaAccess('pos', contarVentasPOS), validat
     negocio_id?: string | null;
     lineas: CarritoLinea[];
     metodo_pago?: 'efectivo' | 'tarjeta' | 'transferencia' | 'otro';
+    canal_cobro_id?: string | null;
     cliente_nombre?: string;
     cliente_telefono?: string;
     cliente_id?: string | null;
@@ -395,7 +403,21 @@ router.post('/ventas', requireHerramientaAccess('pos', contarVentasPOS), validat
       });
       if (!resCliente.ok) throw new VentaError(resCliente.status, resCliente.error);
 
-      const descripcionMov = `${numeroTicket} — ${totales.lineas.length} item(s)${resCliente.cliente_nombre ? ` — ${resCliente.cliente_nombre}` : ''}`;
+      // Calcular comisiones de terminal o canal si se especificó
+      let canalCobro: CanalCobro | null = null;
+      let desgloseComision = null;
+      if (canal_cobro_id) {
+        canalCobro = await manager.findOne(CanalCobro, {
+          where: { id: canal_cobro_id, usuario_id: req.userId!, activo: true },
+        });
+        // Ignorarlo en silencio cobraba la venta sin descontar la comisión.
+        if (!canalCobro) throw new VentaError(404, 'Canal de cobro no encontrado');
+        // El IVA de la comisión lo cobra la terminal según su país, no según el
+        // impuesto de la venta (que puede ser 0 % si el producto está exento).
+        desgloseComision = calcularDesgloseComision(totales.total, canalCobro, getTaxConfig(pais).consumo.tasa);
+      }
+
+      const descripcionMov = `${numeroTicket} — ${totales.lineas.length} item(s)${resCliente.cliente_nombre ? ` — ${resCliente.cliente_nombre}` : ''}${canalCobro ? ` [${canalCobro.nombre}]` : ''}`;
 
       const v = manager.create(Venta, {
         usuario_id:         req.userId!,
@@ -410,7 +432,11 @@ router.post('/ventas', requireHerramientaAccess('pos', contarVentasPOS), validat
         impuesto_nombre:    totales.impuesto_nombre,
         moneda:             totales.moneda,
         total:              totales.total,
-        metodo_pago:        metodo_pago || 'efectivo',
+        metodo_pago:        metodo_pago || (canalCobro?.tipo_canal === 'delivery' ? 'otro' : canalCobro?.tipo_canal === 'terminal' ? 'tarjeta' : 'efectivo'),
+        canal_cobro_id:     canalCobro?.id ?? null,
+        comision_monto:     desgloseComision?.comisionBase ?? 0,
+        comision_iva:       desgloseComision?.comisionIva ?? 0,
+        monto_neto:         desgloseComision?.montoNeto ?? totales.total,
         cliente_id:         resCliente.cliente_id,
         cliente_nombre:     resCliente.cliente_nombre,
         cliente_telefono:   resCliente.cliente_telefono,
@@ -475,12 +501,41 @@ router.post('/ventas', requireHerramientaAccess('pos', contarVentasPOS), validat
         parent_movimiento_id: null,
         es_auto_generado:     false,
         tiene_cfdi:           true,
+        // Sigue siendo una venta del POS (filtros y etiquetas); el canal va en canal_cobro_id.
         fuente:               'pos',
         batch_id:             null,
         referencia_tipo:      'venta',
         referencia_id:        v.id,
+        canal_cobro_id:       canalCobro?.id ?? null,
+        canal_nombre_snapshot: canalCobro?.nombre ?? null,
+        institucion_snapshot: canalCobro?.institucion ?? null,
+        monto_bruto:          desgloseComision ? desgloseComision.montoBruto : null,
+        comision_monto:       desgloseComision ? desgloseComision.comisionBase : null,
+        comision_iva:         desgloseComision ? desgloseComision.comisionIva : null,
+        retencion_monto:      desgloseComision ? (desgloseComision.retencionIsr + desgloseComision.retencionIva) : null,
+        monto_neto:           desgloseComision ? desgloseComision.montoNeto : totales.total,
+        // Solo queda por cobrar lo que deposita un tercero días después; efectivo
+        // y canales de liquidación inmediata ya están en caja.
+        estado_liquidacion:   canalCobro && canalCobro.dias_liquidacion > 0 ? 'pendiente' : 'liquidado',
+        fecha_liquidacion:    canalCobro && canalCobro.dias_liquidacion > 0 ? null : fechaVenta,
       });
       await manager.save(MovimientoContable, movPadre);
+
+      // Si hay comisiones de terminal o delivery, registrar egresos automáticos hijos
+      if (desgloseComision && canalCobro) {
+        await registrarAsientosComisionTransaccional(manager, {
+          movPadre,
+          canal: canalCobro,
+          desglose: desgloseComision,
+          usuarioId: req.userId!,
+          productoId: producto_id,
+          fecha: fechaVenta,
+          creadoPorId: req.trabajadorRealId,
+          fuente: 'pos',
+          referenciaTipo: 'venta',
+          referenciaId: v.id,
+        });
+      }
 
       if (totales.impuesto_monto > 0) {
         const movImpuesto = manager.create(MovimientoContable, {

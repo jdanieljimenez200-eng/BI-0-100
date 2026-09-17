@@ -77,8 +77,22 @@ interface Venta {
   estado: string;
   items?: VentaItem[];
   movimiento_contable_id?: string | null;
+  canal_cobro_id?: string | null;
+  comision_monto?: number | string | null;
+  comision_iva?: number | string | null;
+  monto_neto?: number | string | null;
   producto_id: string;
   negocio_id: string | null;
+}
+
+interface CanalCobroMin {
+  id: string;
+  nombre: string;
+  tipo: string;
+  institucion?: string | null;
+  comision_porcentaje: number | string;
+  comision_fija: number | string;
+  activo: boolean;
 }
 
 interface NegocioMin {
@@ -322,6 +336,8 @@ function PosInner({
   const [cobroEnCurso, setCobroEnCurso] = useState(false);
   const [ventaResultado, setVentaResultado] = useState<Venta | null>(null);
   const [waUrl, setWaUrl] = useState<string | null>(null);
+  const [canalesCobro, setCanalesCobro] = useState<CanalCobroMin[]>([]);
+  const [canalCobroId, setCanalCobroId] = useState<string | null>(null);
 
   // Concepto libre / Venta rápida
   const [showCustomItemModal, setShowCustomItemModal] = useState(false);
@@ -370,6 +386,14 @@ function PosInner({
   useEffect(() => {
     void cargarClientesCRM();
   }, [cargarClientesCRM]);
+
+  // Canales de cobro para comisiones automáticas en el POS
+  useEffect(() => {
+    api
+      .get(`/contabilidad/${producto.id}/canales`)
+      .then(({ data }) => setCanalesCobro(Array.isArray(data) ? data.filter((c: CanalCobroMin) => c.activo) : []))
+      .catch(() => setCanalesCobro([]));
+  }, [producto.id]);
 
   // Items + ventas del producto activo
   useEffect(() => {
@@ -678,6 +702,7 @@ function PosInner({
               : undefined,
           notas: notasFinales || undefined,
           aplicar_impuesto: aplicarImpuesto,
+          canal_cobro_id: canalCobroId || undefined,
         });
 
         // Stock que no alcanzaba. La venta se completo igual: se avisa, no se
@@ -708,6 +733,7 @@ function PosInner({
         }
         setNotas('');
         setMetodoPago('efectivo');
+        setCanalCobroId(null);
         setMontoRecibido('');
         setDescuentoTipo('ninguno');
         setDescuentoCustomMonto('');
@@ -725,8 +751,12 @@ function PosInner({
       producto.id,
       negocioId,
       metodoPago,
+      canalCobroId,
       clienteNombre,
       clienteTelefono,
+      clienteId,
+      altaCliente,
+      cargarClientesCRM,
       notas,
       aplicarImpuesto,
       totales,
@@ -1045,7 +1075,7 @@ function PosInner({
                     active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/10 text-white/50'
                   }`}
                 >
-                  ${t.count}
+                  {t.count}
                 </span>
               )}
             </button>
@@ -1055,8 +1085,8 @@ function PosInner({
 
       {/* ══ TAB: VENDER ══ */}
       {tab === 'vender' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8 space-y-4">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <div className="xl:col-span-8 space-y-4">
             {/* Search & Action Bar */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <div className="relative flex-1">
@@ -1116,9 +1146,9 @@ function PosInner({
                         : 'bg-white/5 text-white/50 border-white/10 hover:border-white/20'
                     }`}
                   >
-                    <span>${cat}</span>
+                    <span>{cat}</span>
                     <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/10 text-white/70">
-                      ${count}
+                      {count}
                     </span>
                   </button>
                 );
@@ -1243,8 +1273,8 @@ function PosInner({
           </div>
 
           {/* Sticky Register Cart Panel */}
-          <div className="lg:col-span-4">
-            <div className="rounded-3xl border border-white/10 bg-[#0F1C2A] p-5 lg:sticky lg:top-20 max-h-[calc(100vh-6rem)] flex flex-col shadow-2xl backdrop-blur-xl">
+          <div className="xl:col-span-4">
+            <div className="rounded-3xl border border-white/10 bg-[#0F1C2A] p-5 xl:sticky xl:top-20 max-h-[calc(100vh-6rem)] flex flex-col shadow-2xl backdrop-blur-xl">
               <div className="flex items-center justify-between mb-3 pb-3 border-b border-white/10 shrink-0">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
@@ -1370,15 +1400,19 @@ function PosInner({
                         </div>
                         <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-0.5">
                           <button
+                            type="button"
                             onClick={() => cambiarCantidad(i, -1)}
-                            className="w-5 h-5 rounded text-white/70 hover:bg-white/10 flex items-center justify-center"
+                            aria-label="Disminuir cantidad"
+                            className="w-5 h-5 rounded text-white/70 hover:bg-white/10 flex items-center justify-center transition-colors"
                           >
                             <Minus className="w-2.5 h-2.5" />
                           </button>
                           <span className="w-5 text-center text-white text-xs font-bold">{l.cantidad}</span>
                           <button
+                            type="button"
                             onClick={() => cambiarCantidad(i, 1)}
-                            className="w-5 h-5 rounded text-white/70 hover:bg-white/10 flex items-center justify-center"
+                            aria-label="Aumentar cantidad"
+                            className="w-5 h-5 rounded text-white/70 hover:bg-white/10 flex items-center justify-center transition-colors"
                           >
                             <Plus className="w-2.5 h-2.5" />
                           </button>
@@ -1389,8 +1423,10 @@ function PosInner({
                           </p>
                         </div>
                         <button
+                          type="button"
                           onClick={() => quitarDelCarrito(i)}
-                          className="text-white/30 hover:text-red-400 p-1"
+                          aria-label="Eliminar del ticket"
+                          className="text-white/30 hover:text-red-400 p-1 transition-colors"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -1411,7 +1447,7 @@ function PosInner({
                         </span>
                       )}
                     </div>
-                    <div className="grid grid-cols-5 gap-1 text-[11px]">
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 text-[11px]">
                       {[
                         { key: 'ninguno', label: '0%' },
                         { key: '5', label: '5%' },
@@ -1428,7 +1464,7 @@ function PosInner({
                             className={`py-1 rounded-lg font-semibold border transition-all text-center ${
                               active
                                 ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
-                                : 'bg-white/5 text-white/50 border-white/10 hover:border-white/20'
+                                : 'bg-white/5 text-white/60 border-white/10 hover:border-white/20'
                             }`}
                           >
                             {d.label}
@@ -1814,7 +1850,12 @@ function PosInner({
                   </div>
                   <h3 className="text-lg font-bold text-white">Confirmar Cobro</h3>
                 </div>
-                <button onClick={() => setShowCheckout(false)} className="text-white/40 hover:text-white">
+                <button
+                  type="button"
+                  onClick={() => setShowCheckout(false)}
+                  aria-label="Cerrar modal"
+                  className="text-white/40 hover:text-white transition-colors"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -1854,6 +1895,44 @@ function PosInner({
                     })}
                   </div>
                 </div>
+
+                {canalesCobro.length > 0 && (
+                  <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/10 space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-wider text-white/40 block font-bold">
+                      Canal de Cobro / Terminal / Delivery (Opcional)
+                    </label>
+                    <select
+                      value={canalCobroId ?? ''}
+                      onChange={(e) => setCanalCobroId(e.target.value || null)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:border-emerald-500/50 outline-none"
+                    >
+                      <option value="" className="bg-[#0b132b] text-white/60">
+                        Directo / Sin comisión de canal
+                      </option>
+                      {canalesCobro.map((c) => (
+                        <option key={c.id} value={c.id} className="bg-[#0b132b] text-white">
+                          {c.nombre} {c.institucion ? `(${c.institucion})` : ''} · {Number(c.comision_porcentaje)}%{Number(c.comision_fija) > 0 ? ` + $${Number(c.comision_fija)}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {canalCobroId && (() => {
+                      const sel = canalesCobro.find((c) => c.id === canalCobroId);
+                      if (!sel) return null;
+                      const pct = Number(sel.comision_porcentaje) || 0;
+                      const fija = Number(sel.comision_fija) || 0;
+                      const comBase = (totales.total * pct) / 100 + fija;
+                      const comIva = comBase * 0.16;
+                      const totalCom = comBase + comIva;
+                      const neto = Math.max(0, totales.total - totalCom);
+                      return (
+                        <div className="flex items-center justify-between text-[11px] pt-1 text-emerald-400">
+                          <span className="text-white/50">Comisión estimada (c/IVA): -{fmtMoney(totalCom, taxCfg.simbolo, taxCfg.locale)}</span>
+                          <span className="font-semibold font-mono">Neto: {fmtMoney(neto, taxCfg.simbolo, taxCfg.locale)}</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
 
                 {metodoPago === 'efectivo' && (
                   <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2.5">
@@ -2125,17 +2204,23 @@ function PosInner({
                   <h3 className="text-lg font-bold text-white">Concepto Libre / Venta Rápida</h3>
                   <p className="text-xs text-white/40">Agrega un servicio o producto manual al ticket actual.</p>
                 </div>
-                <button onClick={() => setShowCustomItemModal(false)} className="text-white/40 hover:text-white">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomItemModal(false)}
+                  aria-label="Cerrar modal"
+                  className="text-white/40 hover:text-white transition-colors"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               <div className="space-y-3">
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-white/40 block mb-1 font-bold">
+                  <label htmlFor="pos-custom-nombre" className="text-[10px] uppercase tracking-wider text-white/40 block mb-1 font-bold">
                     Descripción del concepto *
                   </label>
                   <input
+                    id="pos-custom-nombre"
                     type="text"
                     value={customItem.nombre}
                     onChange={(e) => setCustomItem({ ...customItem, nombre: e.target.value })}
@@ -2145,10 +2230,11 @@ function PosInner({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-white/40 block mb-1 font-bold">
+                  <label htmlFor="pos-custom-precio" className="text-[10px] uppercase tracking-wider text-white/40 block mb-1 font-bold">
                     Precio Unitario ({taxCfg.simbolo}) *
                   </label>
                   <input
+                    id="pos-custom-precio"
                     type="number"
                     min="0"
                     step="0.01"
@@ -2199,17 +2285,23 @@ function PosInner({
             >
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold text-white">{itemForm.id ? 'Editar Producto' : 'Nuevo Producto'}</h3>
-                <button onClick={() => setShowItemForm(false)} className="text-white/40 hover:text-white">
+                <button
+                  type="button"
+                  onClick={() => setShowItemForm(false)}
+                  aria-label="Cerrar modal"
+                  className="text-white/40 hover:text-white transition-colors"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               <div className="space-y-3">
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-white/40 block mb-1 font-bold">
+                  <label htmlFor="pos-item-nombre" className="text-[10px] uppercase tracking-wider text-white/40 block mb-1 font-bold">
                     Nombre del Producto *
                   </label>
                   <input
+                    id="pos-item-nombre"
                     type="text"
                     value={itemForm.nombre}
                     onChange={(e) => setItemForm({ ...itemForm, nombre: e.target.value })}
@@ -2219,10 +2311,11 @@ function PosInner({
                 </div>
 
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-white/40 block mb-1 font-bold">
+                  <label htmlFor="pos-item-descripcion" className="text-[10px] uppercase tracking-wider text-white/40 block mb-1 font-bold">
                     Descripción (Opcional)
                   </label>
                   <textarea
+                    id="pos-item-descripcion"
                     value={itemForm.descripcion}
                     onChange={(e) => setItemForm({ ...itemForm, descripcion: e.target.value })}
                     rows={2}
@@ -2232,10 +2325,11 @@ function PosInner({
                 </div>
 
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-white/40 block mb-1 font-bold">
+                  <label htmlFor="pos-item-precio" className="text-[10px] uppercase tracking-wider text-white/40 block mb-1 font-bold">
                     Precio de Venta ({taxCfg.simbolo}) *
                   </label>
                   <input
+                    id="pos-item-precio"
                     type="number"
                     min="0"
                     step="0.01"
@@ -2387,11 +2481,28 @@ function PosInner({
                     {fmtMoney(n(ventaDetalle.total), taxCfg.simbolo, taxCfg.locale)}
                   </span>
                 </div>
+
+                {ventaDetalle.comision_monto !== null && ventaDetalle.comision_monto !== undefined && Number(ventaDetalle.comision_monto) > 0 && (
+                  <div className="pt-2 border-t border-white/10 space-y-1 text-xs">
+                    <div className="flex justify-between text-amber-300/80">
+                      <span>Comisión de canal (c/IVA)</span>
+                      <span className="font-mono">
+                        -{fmtMoney((Number(ventaDetalle.comision_monto) || 0) + (Number(ventaDetalle.comision_iva) || 0), taxCfg.simbolo, taxCfg.locale)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between font-semibold text-emerald-400">
+                      <span>Ingreso Neto Cobrado</span>
+                      <span className="font-mono">
+                        {fmtMoney(Number(ventaDetalle.monto_neto) || 0, taxCfg.simbolo, taxCfg.locale)}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {ventaDetalle.notas && (
                 <p className="text-xs text-white/50 italic mt-3 bg-white/[0.02] p-2.5 rounded-xl border border-white/5">
-                  "{ventaDetalle.notas}"
+                  &ldquo;{ventaDetalle.notas}&rdquo;
                 </p>
               )}
 
