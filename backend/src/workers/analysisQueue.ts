@@ -36,7 +36,7 @@ function opcionesRedisBase(): RedisOptions {
  * credenciales; `extra` lleva las opciones propias de cada rol (productor con
  * reintentos y timeout, worker con maxRetriesPerRequest: null).
  */
-function crearConexionRedis(extra: RedisOptions, rol: 'productor' | 'worker'): Redis {
+export function crearConexionRedis(extra: RedisOptions, rol: 'productor' | 'worker'): Redis {
   const url = process.env.REDIS_URL;
   const conexion = url ? new Redis(url, { family: 4, ...extra }) : new Redis({ ...opcionesRedisBase(), ...extra });
   // Sin listener, cada corte de Redis sale como "Unhandled error event" y ensucia

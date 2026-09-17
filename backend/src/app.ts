@@ -13,6 +13,7 @@ import { initRedis, redisClient } from './config/redis';
 import { corsMiddleware, apiLimiter, analysisStatusLimiter } from './middleware/cors';
 import { errorHandler } from './middleware/errorHandler';
 import { stopAnalysisWorker, startAnalysisWorker, estadoWorker } from './workers/analysisQueue';
+import { startCalendarWorker, stopCalendarWorker } from './workers/calendarQueue';
 import { initSentry, reportarError, vaciarSentry } from './config/sentry';
 import { iniciarPuenteSSE, detenerPuenteSSE } from './events/sse';
 import { recordRequest, exportMetrics } from './utils/metrics';
@@ -48,6 +49,7 @@ import negociosRoutes from './routes/negocios';
 import verticalRoutes from './routes/vertical';
 import ventasRoutes from './routes/ventas';
 import mantenimientosRoutes from './routes/mantenimientos';
+import googleCalendarRoutes from './routes/googleCalendar';
 
 const app = express();
 app.set('trust proxy', 1); // Railway/Vercel/Nginx: IP real para rate-limit
@@ -213,6 +215,7 @@ app.use('/api/negocios', negociosRoutes);
 app.use('/api/vertical', verticalRoutes);
 app.use('/api/ventas', ventasRoutes);
 app.use('/api/mantenimientos', mantenimientosRoutes);
+app.use('/api/integraciones/google-calendar', googleCalendarRoutes);
 
 // 404 Handler
 app.use((req: Request, res: Response): void => {
@@ -266,6 +269,7 @@ export async function initializeApp(): Promise<void> {
     // ejecutarlo en un proceso/servicio aparte)
     if (process.env.RUN_WORKER !== 'false') {
       startAnalysisWorker();
+      startCalendarWorker();
     }
 
     // Purga diaria de la papelera (cuentas con más de 30 días) y de cédulas
@@ -295,6 +299,7 @@ async function shutdown(signal: string): Promise<void> {
       await new Promise<void>((resolve) => server!.close(() => resolve()));
     }
     await stopAnalysisWorker();
+    await stopCalendarWorker();
     await detenerPuenteSSE();
     if (redisClient && redisClient.isReady) {
       await redisClient.quit();

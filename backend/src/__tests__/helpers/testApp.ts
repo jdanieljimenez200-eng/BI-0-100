@@ -2,6 +2,7 @@ import app from '../../app';
 import { AppDataSource } from '../../config/database';
 import { initRedis, redisClient } from '../../config/redis';
 import { logger } from '../../utils/logger';
+import { stopCalendarWorker } from '../../workers/calendarQueue';
 
 export { app };
 
@@ -22,6 +23,8 @@ export async function initTestDb(): Promise<void> {
 }
 
 export async function closeTestDb(): Promise<void> {
+  // La cola de Google Calendar abre su conexión al primer encolado.
+  await stopCalendarWorker();
   if (redisClient?.isReady) {
     await redisClient.quit();
   }

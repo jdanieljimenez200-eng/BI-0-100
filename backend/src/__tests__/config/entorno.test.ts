@@ -21,6 +21,10 @@ const entornoCompleto = (): Record<string, string | undefined> => ({
   RESEND_API_KEY: 're_123',
   METRICS_TOKEN: SECRETO,
   NEXT_PUBLIC_APP_URL: 'https://bi0a100.com',
+  GOOGLE_CLIENT_ID: 'cliente.apps.googleusercontent.com',
+  GOOGLE_CLIENT_SECRET: 'secreto',
+  GOOGLE_REDIRECT_URI: 'https://api.bi0a100.com/api/integraciones/google-calendar/callback',
+  GOOGLE_TOKENS_KEY: 'a'.repeat(64),
 });
 
 describe('config/entorno — contrato de variables de producción', () => {

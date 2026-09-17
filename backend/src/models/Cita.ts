@@ -85,6 +85,16 @@ export class Cita {
   @Column({ type: 'varchar', length: 20, default: '#3B82F6' })
   color!: string;
 
+  // Copia en Google Calendar (solo app → Google; ver services/google/calendarSync.ts)
+  @Column({ type: 'varchar', length: 1024, nullable: true })
+  google_event_id!: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  google_sync_estado!: 'pendiente' | 'sincronizada' | 'error' | null;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  google_sync_error!: string | null;
+
   @CreateDateColumn()
   fecha_creacion!: Date;
 

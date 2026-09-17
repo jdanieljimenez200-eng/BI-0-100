@@ -18,6 +18,10 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // Zona horaria del navegador: con ella las citas se copian a Google Calendar
+  // a la hora local de quien las agenda (backend: services/google/zonaHoraria.ts).
+  const zona = zonaHorariaNavegador();
+  if (zona) config.headers['X-Zona-Horaria'] = zona;
   // Token del panel de admin (verificación en dos pasos). Solo viaja a /admin/:
   // no hay razón para enviarlo al resto de la API. Vive en sessionStorage para
   // que muera al cerrar la pestaña.
@@ -27,6 +31,19 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+let zonaEnCache: string | null | undefined;
+function zonaHorariaNavegador(): string | null {
+  if (typeof window === 'undefined') return null;
+  if (zonaEnCache === undefined) {
+    try {
+      zonaEnCache = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+    } catch {
+      zonaEnCache = null;
+    }
+  }
+  return zonaEnCache;
+}
 
 /** Donde se guarda el token del panel de admin (ver `lib/admin.ts`). */
 export const CLAVE_TOKEN_ADMIN = 'adminToken';

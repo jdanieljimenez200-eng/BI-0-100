@@ -115,7 +115,28 @@ export function revisarEntornoProduccion(env: Entorno = process.env): RevisionEn
     }
   }
 
+  // ── Google Calendar (services/google/) ────────────────────────────────────
+  // Opcional: sin GOOGLE_CLIENT_ID el botón de conectar no aparece. Con él, una
+  // configuración a medias rompería el enlace en el callback de Google.
+  if (!definida(env, 'GOOGLE_CLIENT_ID')) {
+    avisos.push('GOOGLE_CLIENT_ID no definida: la sincronización con Google Calendar queda desactivada');
+  } else {
+    exigir('GOOGLE_CLIENT_SECRET', 'intercambio del código de Google Calendar');
+    exigir('GOOGLE_REDIRECT_URI', 'URL de retorno registrada en Google Cloud');
+    if (!definida(env, 'GOOGLE_TOKENS_KEY')) {
+      faltantes.push('GOOGLE_TOKENS_KEY (cifra los tokens de Google Calendar)');
+    } else if (!claveDe32Bytes(env.GOOGLE_TOKENS_KEY ?? '')) {
+      faltantes.push('GOOGLE_TOKENS_KEY (debe tener 32 bytes: 64 hex o base64)');
+    }
+  }
+
   return { faltantes, avisos };
+}
+
+/** 64 caracteres hex o base64 que decodifique a 32 bytes o más. */
+export function claveDe32Bytes(valor: string): boolean {
+  const buf = /^[0-9a-f]{64}$/i.test(valor) ? Buffer.from(valor, 'hex') : Buffer.from(valor, 'base64');
+  return buf.length >= 32;
 }
 
 /**

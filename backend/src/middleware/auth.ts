@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { redisClient } from '../config/redis';
 import { logger } from '../utils/logger';
 import { recordAuthDenylistFailure } from '../utils/metrics';
+import { registrarZonaHoraria } from '../services/google/zonaHoraria';
 
 export interface AuthRequest extends Request {
   userId?: string;
@@ -67,6 +68,10 @@ export async function authenticate(req: AuthRequest, res: Response, next: NextFu
     }
 
     req.userId = payload.userId;
+    // Zona horaria del navegador (la del acceso más reciente); no bloquea.
+    if (req.headers['x-zona-horaria']) {
+      void registrarZonaHoraria(payload.userId, req.headers['x-zona-horaria']);
+    }
     next();
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {

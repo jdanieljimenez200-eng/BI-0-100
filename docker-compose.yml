@@ -78,6 +78,11 @@ services:
       # ruta /api/ventas/transcribir se declara no disponible (503).
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_TRANSCRIPTION_MODEL: ${OPENAI_TRANSCRIPTION_MODEL:-whisper-1}
+      # Google Calendar (opcional): credenciales OAuth del .env del host.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:3001/api/integraciones/google-calendar/callback}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       # Blindaje: nunca type-check en runtime dentro del contenedor
       TS_NODE_TRANSPILE_ONLY: "true"
     depends_on:

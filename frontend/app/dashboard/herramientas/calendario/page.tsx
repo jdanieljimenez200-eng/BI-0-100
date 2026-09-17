@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { AnimatePresence } from 'framer-motion';
 import {
   Calendar as CalendarIcon,
@@ -11,7 +10,6 @@ import {
   Clock,
   User,
   Phone,
-  Mail,
   MessageSquare,
   CheckCircle2,
   AlertCircle,
@@ -25,7 +23,6 @@ import {
   Edit3,
   Trash2,
   X,
-  Sparkles,
 } from 'lucide-react';
 import api from '../../../../lib/api';
 import CustomSelect from '../../../../components/ui/CustomSelect';
@@ -33,6 +30,7 @@ import MotionModal from '@/components/motion/MotionModal';
 import ProductoGate from '@/components/herramientas/ProductoGate';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
 import { ProductoActivo } from '@/lib/productoActivo';
+import GoogleCalendarCard from '@/components/herramientas/GoogleCalendarCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,6 +50,9 @@ interface Cita {
   color: string;
   negocio_id: string | null;
   producto_id: string | null;
+  /** Copia en Google Calendar; null si la cuenta no lo tiene conectado. */
+  google_sync_estado?: 'pendiente' | 'sincronizada' | 'error' | null;
+  google_sync_error?: string | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -75,12 +76,29 @@ const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto'
 
 function fmtHora(h: string) { return h.slice(0, 5); }
 
-function estadoChip(estado: Cita['estado'], small = false) {
+function estadoChip(estado: Cita['estado'], small = false, cita?: Pick<Cita, 'google_sync_estado' | 'google_sync_error'>) {
   const e = ESTADOS_CITA.find(s => s.value === estado)!;
   return (
-    <span className={`inline-flex items-center rounded-full border ${e.cls} ${small ? 'px-1.5 py-0 text-[10px]' : 'px-2 py-0.5 text-xs'}`}>
-      {e.label}
+    <span className="inline-flex items-center gap-1">
+      <span className={`inline-flex items-center rounded-full border ${e.cls} ${small ? 'px-1.5 py-0 text-[10px]' : 'px-2 py-0.5 text-xs'}`}>
+        {e.label}
+      </span>
+      {cita?.google_sync_estado && <GoogleSyncDot estado={cita.google_sync_estado} error={cita.google_sync_error ?? null} />}
     </span>
+  );
+}
+
+const SYNC_GOOGLE = {
+  sincronizada: { cls: 'bg-emerald-400', texto: 'En Google Calendar' },
+  pendiente:    { cls: 'bg-cyan-400 animate-pulse', texto: 'Enviando a Google Calendar…' },
+  error:        { cls: 'bg-amber-400', texto: 'No se pudo copiar a Google Calendar' },
+} as const;
+
+function GoogleSyncDot({ estado, error }: { estado: keyof typeof SYNC_GOOGLE; error: string | null }) {
+  const s = SYNC_GOOGLE[estado];
+  const titulo = error && estado === 'error' ? `${s.texto}: ${error}` : s.texto;
+  return (
+    <span title={titulo} aria-label={titulo} role="img" className={`inline-block w-1.5 h-1.5 rounded-full ${s.cls}`} />
   );
 }
 
@@ -176,7 +194,10 @@ function CitaModal({ cita, defaultFecha, negocioId, productoId, onClose, onSaved
         ? await api.patch(`/calendario/${cita.id}`, payload)
         : await api.post('/calendario', payload);
       onSaved(r.data);
-    } catch { setError('Error al guardar'); }
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
+      setError(msg || 'Error al guardar');
+    }
     finally   { setSaving(false); }
   }
 
@@ -421,7 +442,7 @@ function DayPanel({ fecha, citas, onAdd, onEdit, onDelete, onWhatsApp, onUpdateE
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-semibold text-white truncate">{c.titulo}</span>
-                    {estadoChip(c.estado, true)}
+                    {estadoChip(c.estado, true, c)}
                   </div>
                   <p className="text-xs text-white/50 mt-1 flex items-center gap-1.5">
                     <Clock className="w-3 h-3 text-cyan-400/80 shrink-0" />
@@ -596,7 +617,8 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
 
   const citas = allCitas.filter(c => c.producto_id === producto.id);
   const grid = buildGrid(year, month);
-  const today = now.toISOString().slice(0, 10);
+  // Fecha local: con toISOString() (UTC) por la noche en México «hoy» ya era mañana.
+  const today = toIsoDate(now.getFullYear(), now.getMonth() + 1, now.getDate());
   const selectedCitas = selectedDay ? citas.filter(c => c.fecha === selectedDay) : [];
 
   // Stats
@@ -695,6 +717,8 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
             </button>
           </div>
         </div>
+
+        <GoogleCalendarCard onAviso={setToast} onSincronizado={loadCitas} />
 
         {/* KPIs (Clickable to switch to agenda filtered) */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -846,7 +870,7 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
                             {c.notas ? ` · ${c.notas}` : ''}
                           </p>
                         </div>
-                        {estadoChip(c.estado)}
+                        {estadoChip(c.estado, false, c)}
                         <div className="flex items-center gap-1.5">
                           {c.cliente_telefono && (
                             <button onClick={() => handleWhatsApp(c)}
@@ -887,7 +911,7 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
                           {c.cliente_nombre ? ` · ${c.cliente_nombre}` : ''}
                         </p>
                       </div>
-                      {estadoChip(c.estado)}
+                      {estadoChip(c.estado, false, c)}
                       <div className="flex gap-1.5 opacity-90 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                         {c.cliente_telefono && (
                           <button onClick={() => handleWhatsApp(c)} aria-label="Enviar WhatsApp"
@@ -1000,7 +1024,7 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-semibold text-white truncate">{c.titulo}</span>
-                          {estadoChip(c.estado, true)}
+                          {estadoChip(c.estado, true, c)}
                         </div>
                         <div className="flex items-center gap-3 text-xs text-white/45 mt-1 flex-wrap">
                           <span className="flex items-center gap-1">

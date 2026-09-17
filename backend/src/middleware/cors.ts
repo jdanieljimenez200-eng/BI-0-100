@@ -55,7 +55,9 @@ export const corsMiddleware = [
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     // X-Admin-Token y X-Admin-Totp: verificación en dos pasos del panel de admin.
     // Sin ellas, el preflight del navegador bloquea toda petición del panel.
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-bypass-rate-limit', 'X-Admin-Token', 'X-Admin-Totp'],
+    // X-Zona-Horaria: zona IANA del navegador (services/google/zonaHoraria.ts); sin
+    // ella en la lista, el preflight bloquearía todas las peticiones de la app.
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-bypass-rate-limit', 'X-Admin-Token', 'X-Admin-Totp', 'X-Zona-Horaria'],
   }),
 ];
 

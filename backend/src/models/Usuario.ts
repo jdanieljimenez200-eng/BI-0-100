@@ -160,6 +160,10 @@ export class Usuario {
   @Column({ type: 'jsonb', nullable: true })
   datos_negocio?: Record<string, any>;
 
+  /** Zona IANA del último navegador con el que entró (cabecera X-Zona-Horaria). */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  zona_horaria?: string | null;
+
   /** Vertical activo del usuario (p. ej. 'oftalmologo'). null = genérico. */
   @Column({ type: 'varchar', nullable: true })
   vertical_activo?: string | null;
