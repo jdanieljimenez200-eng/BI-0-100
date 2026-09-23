@@ -13,7 +13,8 @@ import { Negocio } from './Negocio';
 import { Cliente } from './Cliente';
 
 @Entity('citas')
-@Index(['usuario_id'])
+// Sin índice suelto de `usuario_id`: lo cubre el prefijo de los compuestos
+// de abajo (migración 1775630000000).
 @Index(['usuario_id', 'fecha'])
 @Index(['usuario_id', 'producto_id'])
 @Index(['usuario_id', 'cliente_id'])

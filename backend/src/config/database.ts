@@ -1,5 +1,4 @@
 import { DataSource } from 'typeorm';
-import { logger } from '../utils/logger';
 import { Usuario } from '../models/Usuario';
 import { Marca } from '../models/Marca';
 import { Producto } from '../models/Producto';
@@ -40,6 +39,7 @@ import { EquipoMantenimiento } from '../models/EquipoMantenimiento';
 import { MantenimientoRealizado } from '../models/MantenimientoRealizado';
 import { CanalCobro } from '../models/CanalCobro';
 import { ConexionGoogleCalendar } from '../models/ConexionGoogleCalendar';
+import { AuditoriaDinero } from '../models/AuditoriaDinero';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -88,6 +88,7 @@ function buildDataSourceOptions() {
       MantenimientoRealizado,
       CanalCobro,
       ConexionGoogleCalendar,
+      AuditoriaDinero,
     ],
     migrations: [__dirname + '/../migrations/*.{js,ts}'],
     // synchronize SOLO en dev, y desactivable con TYPEORM_SYNCHRONIZE=false
@@ -107,6 +108,11 @@ function buildDataSourceOptions() {
       min: parseInt(process.env.DB_POOL_MIN || '2', 10),
       idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT_MS || '30000', 10),
       connectionTimeoutMillis: parseInt(process.env.DB_POOL_CONN_TIMEOUT_MS || '5000', 10),
+      // Una consulta desbocada o una transacción olvidada retenían su conexión
+      // sin límite y con 20 por instancia el pool se agota rápido. Las tareas
+      // largas legítimas (purga de cuentas) lo desactivan con SET LOCAL.
+      statement_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT_MS || '30000', 10),
+      idle_in_transaction_session_timeout: parseInt(process.env.DB_IDLE_IN_TX_TIMEOUT_MS || '60000', 10),
     },
   };
 
@@ -126,13 +132,3 @@ function buildDataSourceOptions() {
 }
 
 export const AppDataSource = new DataSource(buildDataSourceOptions());
-
-export async function initDatabase(): Promise<void> {
-  await AppDataSource.initialize();
-  logger.info('[db] Database connected');
-}
-
-// Health check endpoint
-export function isDatabaseReady(): boolean {
-  return AppDataSource.isInitialized;
-}

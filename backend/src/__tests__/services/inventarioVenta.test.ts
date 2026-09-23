@@ -1,4 +1,4 @@
-import { descontarInventarioPorVenta, revertirInventarioPorVenta } from '../../services/pos/inventarioVenta';
+import { descontarInventarioPorVenta, devolverInventarioPorCancelacion } from '../../services/pos/inventarioVenta';
 import { ItemPOSInsumo } from '../../models/ItemPOSInsumo';
 import { InsumoInventario } from '../../models/InsumoInventario';
 import { MovimientoInventario } from '../../models/MovimientoInventario';
@@ -212,26 +212,42 @@ describe('descontarInventarioPorVenta', () => {
   });
 });
 
-describe('revertirInventarioPorVenta', () => {
-  it('devuelve el stock y borra los movimientos de la venta', async () => {
+describe('devolverInventarioPorCancelacion', () => {
+  const datos = (ventaId: string) => ({
+    usuarioId: 'u1',
+    trabajadorId: null,
+    ventaId,
+    numeroTicket: 'POS-1',
+    fecha: '2026-09-22',
+  });
+
+  it('devuelve el stock con una ENTRADA y conserva la salida original', async () => {
     const insumo = { id: 'ins-a', nombre: 'Pan', unidad: 'pieza', stock_actual: 4, costo_promedio: 10 };
     const { manager, guardados, eliminados } = crearManager({
-      movimientos: [{ id: 'm1', insumo_id: 'ins-a', tipo: 'salida', cantidad: 6 }],
+      movimientos: [{ id: 'm1', insumo_id: 'ins-a', tipo: 'salida', cantidad: 6, costo_unitario: 9 }],
       insumos: [insumo],
     });
 
-    await revertirInventarioPorVenta(manager as never, 'u1', 'venta-1');
+    await devolverInventarioPorCancelacion(manager as never, datos('venta-1'));
 
     // Se suma lo devuelto al stock ACTUAL, no se restaura `stock_resultante`:
     // entre la venta y su cancelación pudo haber otros movimientos.
     expect(insumo.stock_actual).toBe(10);
-    expect(guardados.some((g) => g.entidad === InsumoInventario)).toBe(true);
-    expect(eliminados).toHaveLength(1);
+    // El consumo original sigue ahí: el almacén tiene que poder explicarse.
+    expect(eliminados).toHaveLength(0);
+    const entradas = movimientosGuardados(guardados);
+    expect(entradas).toHaveLength(1);
+    const mov = entradas[0] as unknown as Record<string, unknown>;
+    expect(mov.tipo).toBe('entrada');
+    expect(mov.cantidad).toBe(6);
+    expect(mov.motivo).toBe('Cancelación de venta POS-1');
+    // Vuelve al costo al que salió, no al costo promedio de hoy.
+    expect(mov.costo_unitario).toBe(9);
   });
 
   it('no hace nada si la venta no generó movimientos', async () => {
     const { manager, guardados, eliminados } = crearManager({ movimientos: [] });
-    await revertirInventarioPorVenta(manager as never, 'u1', 'venta-sin-receta');
+    await devolverInventarioPorCancelacion(manager as never, datos('venta-sin-receta'));
     expect(guardados).toHaveLength(0);
     expect(eliminados).toHaveLength(0);
   });
@@ -246,7 +262,22 @@ describe('revertirInventarioPorVenta', () => {
       insumos: [insumo],
     });
 
-    await revertirInventarioPorVenta(manager as never, 'u1', 'venta-1');
+    await devolverInventarioPorCancelacion(manager as never, datos('venta-1'));
     expect(insumo.stock_actual).toBe(8); // 5 + 3, la entrada no se revierte
+  });
+
+  it('cancelar dos veces no duplica el stock', async () => {
+    const insumo = { id: 'ins-a', nombre: 'Pan', unidad: 'pieza', stock_actual: 4, costo_promedio: 10 };
+    const { manager } = crearManager({
+      movimientos: [
+        { id: 'm1', insumo_id: 'ins-a', tipo: 'salida', cantidad: 6 },
+        // La devolución ya está registrada (reintento o doble clic).
+        { id: 'm2', insumo_id: 'ins-a', tipo: 'entrada', cantidad: 6, motivo: 'Cancelación de venta POS-1' },
+      ],
+      insumos: [insumo],
+    });
+
+    await devolverInventarioPorCancelacion(manager as never, datos('venta-1'));
+    expect(insumo.stock_actual).toBe(4);
   });
 });

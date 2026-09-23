@@ -36,6 +36,17 @@ export function getCola(): Queue<TrabajoCalendario> {
   return cola;
 }
 
+/**
+ * Prioridad en la cola (menor = antes).
+ *
+ * El limitador es global para todas las cuentas: conectar un calendario con 500
+ * citas ocupaba la cola ~100 s y, mientras tanto, mover una cita de cualquier
+ * otro negocio esperaba su turno detrás de esas 500. Lo que el usuario acaba de
+ * tocar va primero; el volcado masivo rellena los huecos.
+ */
+const PRIORIDAD_INTERACTIVA = 1;
+const PRIORIDAD_MASIVA = 10;
+
 /** ¿La cuenta tiene un Google Calendar conectado y activo? */
 export async function cuentaConGoogle(cuentaId: string): Promise<boolean> {
   const n = await AppDataSource.getRepository(ConexionGoogleCalendar).count({
@@ -52,7 +63,7 @@ export async function encolarGuardarCita(cuentaId: string, citaId: string): Prom
   try {
     if (!(await cuentaConGoogle(cuentaId))) return;
     await AppDataSource.getRepository(Cita).update(citaId, { google_sync_estado: 'pendiente', google_sync_error: null });
-    await getCola().add('guardar', { tipo: 'guardar', citaId });
+    await getCola().add('guardar', { tipo: 'guardar', citaId }, { priority: PRIORIDAD_INTERACTIVA });
   } catch (err) {
     logger.warn('[CalendarQueue] No se pudo encolar la cita', { citaId, error: err instanceof Error ? err.message : String(err) });
     await marcarErrorCita(citaId, 'No se pudo programar la sincronización').catch(() => undefined);
@@ -68,7 +79,13 @@ export async function encolarCitas(citaIds: string[]): Promise<number> {
     .set({ google_sync_estado: 'pendiente', google_sync_error: null })
     .whereInIds(citaIds)
     .execute();
-  await getCola().addBulk(citaIds.map((citaId) => ({ name: 'guardar', data: { tipo: 'guardar' as const, citaId } })));
+  await getCola().addBulk(
+    citaIds.map((citaId) => ({
+      name: 'guardar',
+      data: { tipo: 'guardar' as const, citaId },
+      opts: { priority: PRIORIDAD_MASIVA },
+    })),
+  );
   return citaIds.length;
 }
 
@@ -76,7 +93,7 @@ export async function encolarBorrarEvento(cuentaId: string, eventId: string | nu
   if (!eventId) return;
   try {
     if (!(await cuentaConGoogle(cuentaId))) return;
-    await getCola().add('borrar', { tipo: 'borrar', cuentaId, eventId });
+    await getCola().add('borrar', { tipo: 'borrar', cuentaId, eventId }, { priority: PRIORIDAD_INTERACTIVA });
   } catch (err) {
     logger.warn('[CalendarQueue] No se pudo encolar el borrado', { error: err instanceof Error ? err.message : String(err) });
   }

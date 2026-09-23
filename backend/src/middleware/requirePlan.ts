@@ -7,6 +7,7 @@ import { HerramientaSeleccionada } from '../models/HerramientaSeleccionada';
 import { AsignacionTrabajador } from '../models/AsignacionTrabajador';
 import {
   canAddMovimiento,
+  getMaxMovimientosHerramienta,
   canAddProducto as planCanAddProducto,
   planHasFeature,
   planIncluyeHerramienta,
@@ -14,9 +15,11 @@ import {
   getMaxHerramientas,
   PlanFeature,
   CapabilityKey,
+  AccionSensible,
   computePermisosEfectivos,
 } from '../services/billing/planService';
 import { AuthRequest } from './auth';
+import { redisClient } from '../config/redis';
 import { logger } from '../utils/logger';
 
 /**
@@ -138,6 +141,61 @@ export function requireProPlus() {
   };
 }
 
+// ─── Memo por petición ───────────────────────────────────────────────────────
+//
+// Una petición de herramienta pasa por dos o tres middlewares de gating y cada
+// uno volvía a cargar el usuario, el dueño y la selección de herramientas: de 4
+// a 11 consultas antes de llegar a la lógica. Ahora cada dato se carga una vez
+// por petición. El plan y los permisos del trabajador se leen SIEMPRE frescos
+// (un cambio de plan o una revocación de acceso deben notarse ya); solo la
+// selección de herramientas se cachea en Redis, y se invalida al cambiarla o
+// al cambiar el plan (`invalidatePlanCache`).
+
+type ReqConMemo = AuthRequest & { _memoGating?: Map<string, Promise<unknown>> };
+
+function memo<T>(req: AuthRequest, clave: string, fn: () => Promise<T>): Promise<T> {
+  const r = req as ReqConMemo;
+  if (!r._memoGating) r._memoGating = new Map();
+  if (!r._memoGating.has(clave)) r._memoGating.set(clave, fn());
+  return r._memoGating.get(clave) as Promise<T>;
+}
+
+const cargarUsuario = (req: AuthRequest, id: string) =>
+  memo(req, `u:${id}`, () => AppDataSource.getRepository(Usuario).findOne({ where: { id } }));
+
+const cargarPermisosTrabajador = (req: AuthRequest, trabajadorId: string, cuentaId: string) =>
+  memo(req, `p:${trabajadorId}:${cuentaId}`, async () => {
+    const asignaciones = await AppDataSource.getRepository(AsignacionTrabajador).find({
+      select: ['permisos'],
+      where: { trabajador_id: trabajadorId, cuenta_id: cuentaId, activo: true },
+    });
+    return computePermisosEfectivos('trabajador', asignaciones.map((a) => a.permisos));
+  });
+
+/**
+ * ¿Puede quien hace la petición ejecutar una acción sensible (cancelar una
+ * venta, cobrar fuera del catálogo)?
+ *
+ * El dueño siempre puede. Un trabajador necesita el permiso explícito en alguna
+ * de sus asignaciones activas de esta cuenta; se lee fresco (una revocación
+ * debe notarse ya) y memorizado por petición. Llámala DESPUÉS del gating de la
+ * herramienta: para entonces `req.userId` ya es la cuenta y `trabajadorRealId`
+ * la persona real.
+ */
+export async function permiteAccion(req: AuthRequest, accion: AccionSensible): Promise<boolean> {
+  const trabajadorId = req.trabajadorRealId;
+  if (!trabajadorId) return true; // dueño
+  const cuentaId = req.cuentaEfectivaId ?? req.userId!;
+  const permisos = await memo(req, `acc:${trabajadorId}:${cuentaId}`, async () => {
+    const asignaciones = await AppDataSource.getRepository(AsignacionTrabajador).find({
+      select: ['permisos'],
+      where: { trabajador_id: trabajadorId, cuenta_id: cuentaId, activo: true },
+    });
+    return asignaciones.map((a) => a.permisos ?? {});
+  });
+  return permisos.some((p) => p[accion] === true);
+}
+
 async function getUsuarioOr401(
   req: AuthRequest,
   res: Response
@@ -146,9 +204,7 @@ async function getUsuarioOr401(
     res.status(401).json({ error: 'Unauthorized' });
     return null;
   }
-  const usuario = await AppDataSource.getRepository(Usuario).findOne({
-    where: { id: req.userId },
-  });
+  const usuario = await cargarUsuario(req, req.userId);
   if (!usuario) {
     res.status(404).json({ error: 'User not found' });
     return null;
@@ -156,8 +212,42 @@ async function getUsuarioOr401(
   return usuario;
 }
 
+const TTL_SELECCION_S = 60;
+const claveSeleccion = (cuentaId: string) => `herr_sel:${cuentaId}`;
+
+/**
+ * Herramientas elegidas que cuentan (las primeras N, N = tope del plan). Si la
+ * cuenta bajó de plan, las que sobran quedan guardadas pero sin acceso.
+ * Cacheado 60 s por cuenta y plan; `invalidatePlanCache` lo borra.
+ */
+async function herramientasVigentes(cuentaId: string, plan: Plan): Promise<string[]> {
+  const cache = redisClient?.isReady ? redisClient : null;
+  if (cache) {
+    try {
+      const guardado = await cache.get(claveSeleccion(cuentaId));
+      if (guardado) {
+        const { plan: planGuardado, lista } = JSON.parse(guardado) as { plan: string; lista: string[] };
+        if (planGuardado === plan) return lista;
+      }
+    } catch {
+      /* sin caché: se lee de la base */
+    }
+  }
+  const filas = await AppDataSource.getRepository(HerramientaSeleccionada).find({
+    select: ['herramienta_key'],
+    where: { usuario_id: cuentaId },
+    order: { created_at: 'ASC' },
+    take: getMaxHerramientas(plan),
+  });
+  const lista = filas.map((h) => h.herramienta_key);
+  if (cache) {
+    await cache.set(claveSeleccion(cuentaId), JSON.stringify({ plan, lista }), { EX: TTL_SELECCION_S }).catch(() => undefined);
+  }
+  return lista;
+}
+
 /** Verifica si el usuario tiene acceso a la herramienta (por plan de fábrica o por selección) */
-export async function usuarioTieneHerramienta(usuario: Usuario, herramientaName: string): Promise<boolean> {
+export async function usuarioTieneHerramienta(usuario: Usuario, herramientaName: string, req?: AuthRequest): Promise<boolean> {
   if (planIncluyeHerramienta(usuario.plan, herramientaName)) {
     return true;
   }
@@ -165,80 +255,115 @@ export async function usuarioTieneHerramienta(usuario: Usuario, herramientaName:
     const cuentaId = usuario.account_role === 'trabajador' && usuario.owner_id
       ? usuario.owner_id
       : usuario.id;
-    // Solo cuentan las primeras N elegidas (N = tope del plan). Si la cuenta bajó
-    // de plan (p. ej. de Negocio con 4 a Emprendedor con 1), las que sobran quedan
-    // guardadas pero sin acceso hasta que deseleccione o vuelva a subir.
-    const vigentes = await AppDataSource.getRepository(HerramientaSeleccionada).find({
-      select: ['herramienta_key'],
-      where: { usuario_id: cuentaId },
-      order: { created_at: 'ASC' },
-      take: getMaxHerramientas(usuario.plan),
-    });
-    return vigentes.some((h) => h.herramienta_key === herramientaName);
+    const vigentes = req
+      ? await memo(req, `s:${cuentaId}:${usuario.plan}`, () => herramientasVigentes(cuentaId, usuario.plan))
+      : await herramientasVigentes(cuentaId, usuario.plan);
+    return vigentes.includes(herramientaName);
   }
   return false;
+}
+
+/**
+ * Resuelve quién opera y sobre qué cuenta, y comprueba acceso y permiso.
+ * Devuelve la cuenta (dueño) con su plan, o `null` si ya respondió con error.
+ */
+async function resolverAcceso(
+  req: AuthRequest,
+  res: Response,
+  herramientaName: string
+): Promise<Usuario | null> {
+  const usuario = await getUsuarioOr401(req, res);
+  if (!usuario) return null;
+
+  if (usuario.account_role === 'trabajador' && usuario.owner_id) {
+    req.trabajadorRealId = usuario.id;
+    req.cuentaEfectivaId = usuario.owner_id;
+    req.userId = usuario.owner_id;
+
+    const owner = await cargarUsuario(req, usuario.owner_id);
+    if (!owner) {
+      res.status(404).json({ error: 'Cuenta principal de la organización no encontrada' });
+      return null;
+    }
+    if (!(await usuarioTieneHerramienta(owner, herramientaName, req))) {
+      res.status(403).json({
+        error: `La herramienta '${herramientaName}' no está incluida en el plan de la organización`,
+        plan: owner.plan,
+      });
+      return null;
+    }
+    const permisos = await cargarPermisosTrabajador(req, usuario.id, usuario.owner_id);
+    if (permisos[herramientaName as CapabilityKey] !== true) {
+      res.status(403).json({
+        error: `No tienes permisos para acceder a la herramienta '${herramientaName}'`,
+        capability: herramientaName,
+      });
+      return null;
+    }
+    return owner;
+  }
+
+  // Si un middleware anterior de la cadena ya resolvió a un trabajador,
+  // `req.userId` apunta ahora al dueño: no se borra quién es la persona real.
+  if (req.cuentaEfectivaId !== usuario.id) req.trabajadorRealId = undefined;
+  req.cuentaEfectivaId = usuario.id;
+
+  if (!(await usuarioTieneHerramienta(usuario, herramientaName, req))) {
+    res.status(403).json({
+      error: `La herramienta '${herramientaName}' no está incluida en tu plan`,
+      plan: usuario.plan,
+    });
+    return null;
+  }
+  return usuario;
 }
 
 /** La herramienta está incluida en el plan del usuario o fue seleccionada */
 export function requireToolCapability(herramientaName: string) {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      const usuario = await getUsuarioOr401(req, res);
-      if (!usuario) return;
-
-      if (usuario.account_role === 'trabajador' && usuario.owner_id) {
-        req.trabajadorRealId = usuario.id;
-        req.cuentaEfectivaId = usuario.owner_id;
-        req.userId = usuario.owner_id;
-
-        const owner = await AppDataSource.getRepository(Usuario).findOne({
-          where: { id: usuario.owner_id },
-        });
-
-        if (!owner) {
-          return res.status(404).json({ error: 'Cuenta principal de la organización no encontrada' });
-        }
-
-        const tieneAccesoOwner = await usuarioTieneHerramienta(owner, herramientaName);
-        if (!tieneAccesoOwner) {
-          return res.status(403).json({
-            error: `La herramienta '${herramientaName}' no está incluida en el plan de la organización`,
-            plan: owner.plan,
-          });
-        }
-
-        const asignaciones = await AppDataSource.getRepository(AsignacionTrabajador).find({
-          select: ['permisos'],
-          where: { trabajador_id: usuario.id, cuenta_id: usuario.owner_id, activo: true },
-        });
-        const permisos = computePermisosEfectivos('trabajador', asignaciones.map((a) => a.permisos));
-        const tienePermiso = permisos[herramientaName as CapabilityKey] === true;
-        if (!tienePermiso) {
-          return res.status(403).json({
-            error: `No tienes permisos para acceder a la herramienta '${herramientaName}'`,
-            capability: herramientaName,
-          });
-        }
-      } else {
-        // Si un middleware anterior de la cadena ya resolvió a un trabajador,
-        // `req.userId` apunta ahora al dueño: no se borra quién es la persona real.
-        if (req.cuentaEfectivaId !== usuario.id) req.trabajadorRealId = undefined;
-        req.cuentaEfectivaId = usuario.id;
-
-        const tieneAcceso = await usuarioTieneHerramienta(usuario, herramientaName);
-        if (!tieneAcceso) {
-          return res.status(403).json({
-            error: `La herramienta '${herramientaName}' no está incluida en tu plan`,
-            plan: usuario.plan,
-          });
-        }
-      }
-      next();
+      if (await resolverAcceso(req, res, herramientaName)) next();
     } catch (err) {
       logger.error('requireToolCapability error:', err);
       res.status(500).json({ error: 'Error validating tool access' });
     }
   };
+}
+
+const movimientosIlimitados = (plan: Plan) => getMaxMovimientosHerramienta(plan) === -1;
+
+/**
+ * Serializa las altas de una cuenta gratuita en una herramienta mientras dura la
+ * petición: el tope se comprueba contando y el alta ocurre después, así que dos
+ * altas simultáneas podían pasar las dos (medido: 3 creados con tope 2). Sin
+ * Redis no hay candado (falla abierto: el tope es comercial, no de seguridad).
+ */
+async function tomarCandadoTope(req: AuthRequest, res: Response, cuentaId: string, herramienta: string): Promise<void> {
+  const cache = redisClient?.isReady ? redisClient : null;
+  if (!cache) return;
+  const clave = `tope:${cuentaId}:${herramienta}`;
+  const valor = `${process.pid}:${Math.random()}`;
+  const limite = Date.now() + 5000;
+  while (Date.now() < limite) {
+    const ok = await cache.set(clave, valor, { NX: true, PX: 15000 }).catch(() => 'OK');
+    if (ok === 'OK') {
+      let liberado = false;
+      const liberar = () => {
+        if (liberado) return;
+        liberado = true;
+        void cache
+          .eval(`if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0`, {
+            keys: [clave],
+            arguments: [valor],
+          })
+          .catch(() => undefined);
+      };
+      res.once('finish', liberar);
+      res.once('close', liberar);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
 }
 
 /**
@@ -251,78 +376,21 @@ export function requireHerramientaAccess(
 ) {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      const usuario = await getUsuarioOr401(req, res);
-      if (!usuario) return;
+      const cuenta = await resolverAcceso(req, res, herramientaName);
+      if (!cuenta) return;
 
-      if (usuario.account_role === 'trabajador' && usuario.owner_id) {
-        req.trabajadorRealId = usuario.id;
-        req.cuentaEfectivaId = usuario.owner_id;
-        req.userId = usuario.owner_id;
-
-        const owner = await AppDataSource.getRepository(Usuario).findOne({
-          where: { id: usuario.owner_id },
-        });
-
-        if (!owner) {
-          return res.status(404).json({ error: 'Cuenta principal de la organización no encontrada' });
-        }
-
-        const tieneAccesoOwner = await usuarioTieneHerramienta(owner, herramientaName);
-        if (!tieneAccesoOwner) {
-          return res.status(403).json({
-            error: `La herramienta '${herramientaName}' no está incluida en el plan de la organización`,
-            plan: owner.plan,
+      // Planes ilimitados: sin contar. El COUNT recorre todo el historial de la
+      // herramienta y corría en cada alta de cualquier plan.
+      if (getCount && !movimientosIlimitados(cuenta.plan)) {
+        await tomarCandadoTope(req, res, cuenta.id, herramientaName);
+        const current = await getCount(cuenta.id);
+        if (!canAddMovimiento(cuenta.plan, current)) {
+          return res.status(429).json({
+            error: req.trabajadorRealId ? 'Límite de movimientos del plan alcanzado' : 'Límite de movimientos de tu plan alcanzado',
+            upgrade_required: true,
+            plan: cuenta.plan,
+            mensaje: 'Actualiza a un plan de pago para movimientos ilimitados.',
           });
-        }
-
-        const asignaciones = await AppDataSource.getRepository(AsignacionTrabajador).find({
-          select: ['permisos'],
-          where: { trabajador_id: usuario.id, cuenta_id: usuario.owner_id, activo: true },
-        });
-        const permisos = computePermisosEfectivos('trabajador', asignaciones.map((a) => a.permisos));
-        const tienePermiso = permisos[herramientaName as CapabilityKey] === true;
-        if (!tienePermiso) {
-          return res.status(403).json({
-            error: `No tienes permisos para acceder a la herramienta '${herramientaName}'`,
-            capability: herramientaName,
-          });
-        }
-
-        if (getCount) {
-          const current = await getCount(usuario.owner_id);
-          if (!canAddMovimiento(owner.plan, current)) {
-            return res.status(429).json({
-              error: 'Límite de movimientos del plan alcanzado',
-              upgrade_required: true,
-              plan: owner.plan,
-              mensaje: 'Actualiza a un plan de pago para movimientos ilimitados.',
-            });
-          }
-        }
-      } else {
-        // Si un middleware anterior de la cadena ya resolvió a un trabajador,
-        // `req.userId` apunta ahora al dueño: no se borra quién es la persona real.
-        if (req.cuentaEfectivaId !== usuario.id) req.trabajadorRealId = undefined;
-        req.cuentaEfectivaId = usuario.id;
-
-        const tieneAcceso = await usuarioTieneHerramienta(usuario, herramientaName);
-        if (!tieneAcceso) {
-          return res.status(403).json({
-            error: `La herramienta '${herramientaName}' no está incluida en tu plan`,
-            plan: usuario.plan,
-          });
-        }
-
-        if (getCount) {
-          const current = await getCount(usuario.id);
-          if (!canAddMovimiento(usuario.plan, current)) {
-            return res.status(429).json({
-              error: 'Límite de movimientos de tu plan alcanzado',
-              upgrade_required: true,
-              plan: usuario.plan,
-              mensaje: 'Actualiza a un plan de pago para movimientos ilimitados.',
-            });
-          }
         }
       }
       next();
@@ -366,11 +434,12 @@ export function requirePlanFeature(featureName: PlanFeature, featureDesc: string
 }
 
 /**
- * Cache de plan por usuario. Hoy la lectura de plan va directo a BD en cada
- * middleware; si se introduce caché Redis, invalidar aquí tras cambios de plan.
+ * Invalida lo cacheado del gating de una cuenta (la selección de herramientas
+ * vigente). Llamar tras cambios de plan (billing, admin) o de selección.
  */
-export async function invalidatePlanCache(_userId: string): Promise<void> {
-  /* no-op intencional hasta introducir caché */
+export async function invalidatePlanCache(userId: string): Promise<void> {
+  if (!redisClient?.isReady) return;
+  await redisClient.del(claveSeleccion(userId)).catch(() => undefined);
 }
 
 /** Tope de productos activos según plan */

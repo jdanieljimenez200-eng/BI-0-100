@@ -2,6 +2,7 @@ import { EntityManager, In } from 'typeorm';
 import { ItemPOSInsumo } from '../../models/ItemPOSInsumo';
 import { InsumoInventario } from '../../models/InsumoInventario';
 import { MovimientoInventario } from '../../models/MovimientoInventario';
+import { r2, r3, r4 } from '../../utils/dinero';
 
 export interface LineaParaInventario {
   item_pos_id?: string | null;
@@ -28,9 +29,9 @@ interface ArgsDescuento {
 
 const n = (v: unknown) => Number(v ?? 0);
 /** Redondeo a 3 decimales — la escala de `cantidad` en inventario. */
-const r3 = (v: number) => Math.round(v * 1000) / 1000;
+
 /** Redondeo a 4 decimales — la escala de los costos unitarios. */
-const r4 = (v: number) => Math.round(v * 10000) / 10000;
+
 
 /**
  * Descuenta de almacén los insumos que consume una venta y calcula el costo de
@@ -150,7 +151,7 @@ export async function descontarInventarioPorVenta(
         tipo:             'salida',
         cantidad,
         costo_unitario:   costoUnitario,
-        costo_total:      Math.round(cantidad * costoUnitario * 100) / 100,
+        costo_total:      r2(cantidad * costoUnitario),
         stock_resultante: stockResultante,
         fecha,
         motivo:           `Venta ${numeroTicket}`,
@@ -171,45 +172,87 @@ export async function descontarInventarioPorVenta(
 }
 
 /**
- * Devuelve al almacén lo que consumió una venta y borra sus movimientos.
+ * Devuelve al almacén lo que consumió una venta, con movimientos de ENTRADA.
  *
- * Se llama al eliminar la venta. Sin esto, cada cancelación deja el stock
- * descontado para siempre y el movimiento huérfano (la FK es ON DELETE SET
- * NULL, así que sobreviviría sin referencia a nada).
+ * Se llama al cancelar la venta. Los movimientos originales de salida no se
+ * borran: el almacén tiene que poder explicar por qué el stock subió, y borrar
+ * el consumo dejaba un hueco sin rastro en el historial (además del fraude
+ * evidente: vender, cancelar y quedarse la mercancía sin que se note).
  *
- * Se recalcula el stock sumando la cantidad devuelta en vez de restaurar
- * `stock_resultante`: entre la venta y su cancelación puede haber habido otros
- * movimientos, y restaurar el valor histórico los borraría.
+ * El stock se recalcula sumando la cantidad devuelta, no restaurando el
+ * `stock_resultante` histórico: entre la venta y su cancelación puede haber
+ * habido otros movimientos, y restaurar el valor viejo los borraría.
+ *
+ * Es idempotente: si la venta ya tiene sus entradas de devolución, no hace
+ * nada (así un reintento no duplica el stock).
  */
-export async function revertirInventarioPorVenta(
+export async function devolverInventarioPorCancelacion(
   manager: EntityManager,
-  usuarioId: string,
-  ventaId: string,
+  datos: {
+    usuarioId: string;
+    trabajadorId?: string | null;
+    ventaId: string;
+    numeroTicket: string;
+    fecha: string;
+  },
 ): Promise<void> {
+  const { usuarioId, ventaId, numeroTicket, fecha } = datos;
   const movimientos = await manager.find(MovimientoInventario, {
     where: { usuario_id: usuarioId, venta_id: ventaId },
   });
   if (movimientos.length === 0) return;
 
+  const motivoDevolucion = `Cancelación de venta ${numeroTicket}`;
+  // Ya devuelta: la entrada de devolución existe (reintento o doble clic).
+  if (movimientos.some((m) => m.tipo === 'entrada' && m.motivo === motivoDevolucion)) return;
+
   const devolucionPorInsumo = new Map<string, number>();
+  const costoPorInsumo = new Map<string, number>();
   for (const mov of movimientos) {
     // Solo se devuelven las salidas que generó la venta.
     if (mov.tipo !== 'salida') continue;
     devolucionPorInsumo.set(mov.insumo_id, (devolucionPorInsumo.get(mov.insumo_id) ?? 0) + n(mov.cantidad));
+    costoPorInsumo.set(mov.insumo_id, n(mov.costo_unitario));
+  }
+  if (devolucionPorInsumo.size === 0) return;
+
+  const insumoIds = [...devolucionPorInsumo.keys()].sort();
+  const insumos = await manager.find(InsumoInventario, {
+    where: { id: In(insumoIds), usuario_id: usuarioId },
+    order: { id: 'ASC' },
+    lock: { mode: 'pessimistic_write' },
+  });
+
+  const entradas: MovimientoInventario[] = [];
+  for (const insumo of insumos) {
+    const cantidad = r3(devolucionPorInsumo.get(insumo.id) ?? 0);
+    if (cantidad <= 0) continue;
+    const stockResultante = r3(n(insumo.stock_actual) + cantidad);
+    // Se devuelve al costo al que salió: recalcular el promedio con el costo de
+    // hoy movería el costo histórico de un insumo que nunca se compró.
+    const costoUnitario = costoPorInsumo.get(insumo.id) ?? n(insumo.costo_promedio);
+    entradas.push(
+      manager.create(MovimientoInventario, {
+        usuario_id:       usuarioId,
+        creado_por_id:    datos.trabajadorId ?? null,
+        insumo_id:        insumo.id,
+        producto_id:      movimientos.find((m) => m.insumo_id === insumo.id)?.producto_id ?? null,
+        tipo:             'entrada',
+        cantidad,
+        costo_unitario:   costoUnitario,
+        costo_total:      r2(cantidad * costoUnitario),
+        stock_resultante: stockResultante,
+        fecha,
+        motivo:           motivoDevolucion,
+        proveedor:        null,
+        venta_id:         ventaId,
+      }),
+    );
+    insumo.stock_actual = stockResultante;
   }
 
-  if (devolucionPorInsumo.size > 0) {
-    const insumoIds = [...devolucionPorInsumo.keys()].sort();
-    const insumos = await manager.find(InsumoInventario, {
-      where: { id: In(insumoIds), usuario_id: usuarioId },
-      order: { id: 'ASC' },
-      lock: { mode: 'pessimistic_write' },
-    });
-    for (const insumo of insumos) {
-      insumo.stock_actual = r3(n(insumo.stock_actual) + (devolucionPorInsumo.get(insumo.id) ?? 0));
-    }
-    if (insumos.length > 0) await manager.save(InsumoInventario, insumos);
+  if (entradas.length > 0) {
+    await manager.save(InsumoInventario, insumos);
+    await manager.save(MovimientoInventario, entradas);
   }
-
-  await manager.remove(MovimientoInventario, movimientos);
 }

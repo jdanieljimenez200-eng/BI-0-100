@@ -34,6 +34,11 @@ export interface PermisosTrabajador {
   nomina?: boolean; // SENSIBLE — off por defecto
   contabilidad?: boolean; // SENSIBLE — off por defecto
   mantenimientos?: boolean;
+  // Acciones sensibles dentro de una herramienta (ver ACCIONES_SENSIBLES en
+  // planService). Tener `pos` no basta para cancelar una venta ni para cobrar
+  // un precio distinto al del catálogo: son permisos aparte, off por defecto.
+  cancelar_ventas?: boolean; // SENSIBLE — off por defecto
+  precio_libre?: boolean;    // SENSIBLE — off por defecto
 }
 
 /**

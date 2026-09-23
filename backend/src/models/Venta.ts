@@ -42,7 +42,7 @@ export class Venta {
   creado_por_id!: string | null;
 
   // Producto SSOT — define el país y por tanto el impuesto aplicado.
-  @ManyToOne(() => Producto, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Producto, { onDelete: 'NO ACTION' }) // el historial de ventas no se borra con el producto
   @JoinColumn({ name: 'producto_id' })
   producto!: Producto;
 
@@ -109,6 +109,18 @@ export class Venta {
 
   @Column({ type: 'varchar', length: 20, default: 'completada' })
   estado!: 'completada' | 'cancelada';
+
+  // Rastro de la cancelación. Una venta cancelada NO se borra: se le generan
+  // asientos inversos y movimientos de devolución, y aquí queda quién la
+  // canceló, cuándo y por qué (`POST /api/pos/ventas/:id/cancelar`).
+  @Column({ type: 'uuid', nullable: true })
+  cancelada_por_id!: string | null;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  motivo_cancelacion!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  fecha_cancelacion!: Date | null;
 
   // Link al movimiento contable padre creado automáticamente
   @ManyToOne(() => MovimientoContable, { onDelete: 'SET NULL', nullable: true })

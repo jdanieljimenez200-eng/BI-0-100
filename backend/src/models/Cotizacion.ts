@@ -19,7 +19,8 @@ export interface CotizacionItem {
 }
 
 @Entity('cotizaciones')
-@Index(['usuario_id'])
+// Sin índice suelto de `usuario_id`: lo cubre el prefijo de los compuestos
+// de abajo (migración 1775630000000).
 @Index(['usuario_id', 'producto_id'])
 @Index(['usuario_id', 'numero'], { unique: true })
 export class Cotizacion {

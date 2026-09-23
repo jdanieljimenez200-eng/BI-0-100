@@ -35,10 +35,22 @@ export class VentaItem {
   @Column({ type: 'varchar', length: 255 })
   nombre_snapshot!: string;
 
+  /** Lo que se cobró de verdad por unidad. */
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   precio_unitario!: number;
 
-  @Column({ type: 'decimal', precision: 8, scale: 2, default: 1 })
+  /**
+   * Precio del catálogo en el momento de la venta, cuando la línea venía de un
+   * item del catálogo (`item_pos_id`).
+   *
+   * NULL = línea libre (sin item de catálogo). Si es distinto de
+   * `precio_unitario`, alguien con permiso `precio_libre` cobró otra cosa: sin
+   * este dato, un descuento ilimitado del cajero era invisible.
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  precio_catalogo!: number | null;
+
+  @Column({ type: 'decimal', precision: 12, scale: 3, default: 1 }) // 0.125 kg: con 2 decimales se guardaba 0.13 y el subtotal no cuadraba
   cantidad!: number;
 
   @Column({ type: 'decimal', precision: 12, scale: 2 })

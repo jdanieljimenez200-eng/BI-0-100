@@ -38,12 +38,6 @@ export interface PlanLimites {
   descripcion: string;
 }
 
-/** Precio en USD de un plan según el ciclo. Anual = total del año. */
-export function getPrecioUsd(plan: Plan, ciclo: 'mensual' | 'anual' = 'mensual'): number {
-  const l = getLimites(plan);
-  return ciclo === 'anual' ? l.precio_usd_anual : l.precio_usd_mensual;
-}
-
 export const PLAN_LIMITES: Record<Plan, PlanLimites> = {
   freemium: {
     nombre: 'Gratis',
@@ -224,10 +218,18 @@ export function calcularComisionPlataforma(totalMonto: number, plan: Plan): numb
 }
 
 // --- Catálogo de capacidades ---
-// Una "capacidad" = una clave de PermisosTrabajador. El tipo CapabilityKey se
-// deriva de PermisosTrabajador, así que si se añade/quita un permiso en el modelo
-// y no se actualiza este catálogo, el compilador falla (ver _exhaustividad abajo).
-export type CapabilityKey = keyof PermisosTrabajador;
+// Una "capacidad" = una clave de PermisosTrabajador que da acceso a un módulo o
+// herramienta. Las acciones sensibles (cancelar_ventas, precio_libre) viven en
+// el mismo objeto de permisos pero NO son capacidades: no abren nada, afinan lo
+// que se puede hacer dentro de una herramienta que ya se tiene, así que se
+// excluyen aquí (si no, aparecerían como herramientas en el menú y en el plan).
+// El tipo se deriva de PermisosTrabajador: si se añade o quita un permiso en el
+// modelo y no se actualiza este catálogo, el compilador falla (ver
+// _exhaustividad abajo).
+export type CapabilityKey = Exclude<keyof PermisosTrabajador, AccionSensibleKey>;
+
+/** Claves de ACCIONES_SENSIBLES (declarado abajo; aquí solo el tipo). */
+type AccionSensibleKey = 'cancelar_ventas' | 'precio_libre';
 
 export type CapabilityGrupo = 'analisis' | 'herramientas';
 
@@ -344,6 +346,27 @@ export function isCapabilityKey(value: string): value is CapabilityKey {
 }
 
 /**
+ * Acciones sensibles DENTRO de una herramienta: tener la herramienta no basta.
+ *
+ * Con permisos solo por herramienta, cualquier cajero podía cancelar una venta
+ * o cobrar un precio distinto al del catálogo, que es el fraude clásico de caja
+ * (cobrar, cancelar y quedarse el efectivo). Son permisos aparte, apagados por
+ * defecto, que el dueño concede uno a uno; el dueño siempre las tiene.
+ */
+export const ACCIONES_SENSIBLES = [
+  { key: 'cancelar_ventas', label: 'Cancelar ventas del POS', requiere: 'pos' },
+  { key: 'precio_libre', label: 'Cobrar un precio distinto al del catálogo', requiere: 'pos' },
+] as const;
+
+export type AccionSensible = (typeof ACCIONES_SENSIBLES)[number]['key'];
+
+const ACCION_KEYS = new Set<string>(ACCIONES_SENSIBLES.map((a) => a.key));
+
+export function isAccionSensible(value: string): value is AccionSensible {
+  return ACCION_KEYS.has(value);
+}
+
+/**
  * Normaliza un objeto de permisos arbitrario (p. ej. del body de una request):
  * descarta claves desconocidas y fuerza valores booleanos. Solo conserva las
  * capacidades que estén explícitamente en true.
@@ -352,7 +375,7 @@ export function sanitizePermisos(input: unknown): PermisosTrabajador {
   const out: PermisosTrabajador = {};
   if (!input || typeof input !== 'object') return out;
   for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
-    if (isCapabilityKey(k) && v === true) {
+    if ((isCapabilityKey(k) || isAccionSensible(k)) && v === true) {
       out[k] = true;
     }
   }
