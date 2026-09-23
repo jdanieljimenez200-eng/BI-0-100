@@ -45,6 +45,22 @@ function zonaHorariaNavegador(): string | null {
   return zonaEnCache;
 }
 
+/**
+ * Clave para una alta idempotente (cabecera `Idempotency-Key`, ver
+ * backend/src/middleware/idempotency.ts). Úsala por intento: consérvala si la
+ * petición falla sin respuesta (corte de red, así el reintento no duplica) y
+ * genera otra en cuanto el servidor responda.
+ */
+export function nuevaClaveIdempotencia(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** ¿El servidor llegó a responder? (si no, conviene reintentar con la misma clave) */
+export function hayRespuestaDelServidor(err: unknown): boolean {
+  return Boolean((err as { response?: unknown })?.response);
+}
+
 /** Donde se guarda el token del panel de admin (ver `lib/admin.ts`). */
 export const CLAVE_TOKEN_ADMIN = 'adminToken';
 /** Evento que avisa al panel de que hay que volver a pedir el código. */
