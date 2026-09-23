@@ -52,7 +52,18 @@ import mantenimientosRoutes from './routes/mantenimientos';
 import googleCalendarRoutes from './routes/googleCalendar';
 
 const app = express();
-app.set('trust proxy', 1); // Railway/Vercel/Nginx: IP real para rate-limit
+// Saltos de proxy delante del backend (Railway/Nginx = 1; Cloudflare + proxy del
+// hosting = 2). Mal puesto, `req.ip` sería la IP del proxy y todos los usuarios
+// anónimos compartirían un solo cupo de rate limit. TRUST_PROXY admite un número
+// de saltos, 'true'/'false' o una lista de IPs/subredes.
+function leerTrustProxy(valor: string | undefined): boolean | number | string {
+  if (!valor) return 1;
+  if (valor === 'true') return true;
+  if (valor === 'false') return false;
+  const n = Number(valor);
+  return Number.isInteger(n) && n >= 0 ? n : valor;
+}
+app.set('trust proxy', leerTrustProxy(process.env.TRUST_PROXY));
 
 // Security Middleware
 app.use(helmet());

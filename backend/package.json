@@ -11,6 +11,8 @@
         "dev": "ts-node-dev --respawn src/app.ts",
         "build": "node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc -p tsconfig.build.json --outDir dist",
         "start": "node dist/app.js",
+        "worker": "ts-node src/workers/runWorker.ts",
+        "worker:prod": "node dist/workers/runWorker.js",
         "typecheck": "node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc --noEmit",
         "typeorm": "ts-node --transpile-only ./node_modules/typeorm/cli.js -d src/config/cli-datasource.ts",
         "migration:show": "npm run typeorm -- migration:show",

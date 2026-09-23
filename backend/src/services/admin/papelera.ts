@@ -260,6 +260,53 @@ export interface ResultadoPurga {
  * Los ficheros se borran DESPUÉS de confirmar el borrado de la fila. Al revés,
  * un fallo a medias dejaría una cuenta viva con sus ficheros ya destruidos.
  */
+/**
+ * Tablas pesadas de una cuenta, en orden seguro de borrado.
+ *
+ * Borrar la fila de `usuarios` arrastra todo en cascada, pero en una cuenta
+ * grande eso es un único DELETE de decenas de segundos que mantiene ocupada una
+ * conexión y bloquea miles de filas de golpe (46 s medidos). Vaciar antes las
+ * tablas gordas en lotes pequeños, cada uno en su propia transacción, reparte
+ * ese trabajo y deja respirar a la base entre lote y lote.
+ *
+ * El orden importa y por eso está escrito a mano:
+ *   - `venta_items` antes que `ventas` (cuelgan de ellas);
+ *   - `movimientos_inventario` antes que `ventas` (su FK a la venta es SET NULL:
+ *     borrarlos antes evita miles de UPDATE inútiles);
+ *   - `ventas` antes que `movimientos_contables` (misma razón).
+ * Lo que no esté en esta lista NO se pierde: la cascada final lo borra igual;
+ * solo tardará un poco más.
+ */
+const TABLAS_PESADAS_PURGA = [
+  { tabla: 'venta_items', filtro: 'venta_id IN (SELECT id FROM ventas WHERE usuario_id = $1)' },
+  { tabla: 'movimientos_inventario', filtro: 'usuario_id = $1' },
+  { tabla: 'ventas', filtro: 'usuario_id = $1' },
+  { tabla: 'movimientos_contables', filtro: 'usuario_id = $1' },
+] as const;
+
+/** Filas por lote. Suficientes para avanzar rápido sin bloquear de más. */
+const LOTE_PURGA = 5000;
+
+/**
+ * Vacía por lotes las tablas pesadas de una cuenta ya marcada para purga.
+ *
+ * Cada lote es su propia transacción: si el proceso muere a medias, lo borrado
+ * queda borrado y la siguiente pasada continúa (la cuenta sigue en la papelera).
+ */
+async function vaciarTablasPesadas(cuentaId: string): Promise<void> {
+  for (const { tabla, filtro } of TABLAS_PESADAS_PURGA) {
+    for (;;) {
+      const borrado = await AppDataSource.query(
+        `DELETE FROM ${tabla}
+          WHERE ctid IN (SELECT ctid FROM ${tabla} WHERE ${filtro} LIMIT ${LOTE_PURGA})`,
+        [cuentaId],
+      );
+      const filas = Array.isArray(borrado) ? borrado[1] : 0;
+      if (!filas || filas < LOTE_PURGA) break;
+    }
+  }
+}
+
 export async function purgarPapelera(opciones: { ahora?: Date } = {}): Promise<ResultadoPurga> {
   const ahora = opciones.ahora ?? new Date();
   const limite = new Date(ahora.getTime() - DIAS_PAPELERA * 24 * 60 * 60 * 1000);
@@ -283,7 +330,13 @@ export async function purgarPapelera(opciones: { ahora?: Date } = {}): Promise<R
 
       for (const cuenta of candidatas) {
         try {
+          // Fuera de la transacción final, para no alargarla con el grueso.
+          await vaciarTablasPesadas(cuenta.id);
+
           const aBorrar = await AppDataSource.transaction(async (manager) => {
+            // Una cuenta grande tarda decenas de segundos en borrarse en cascada:
+            // el statement_timeout general del pool (config/database.ts) no aplica.
+            await manager.query(`SET LOCAL statement_timeout = 0`);
             const urls: string[] = [];
             for (const [tabla, columna] of COLUMNAS_DE_FICHEROS) {
               const filas: { url: string }[] = await manager.query(

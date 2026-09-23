@@ -24,6 +24,13 @@ export const CliDataSource = new DataSource({
   migrationsRun: false,
   // La CLI sí debe ser verbosa: queremos ver el SQL exacto que se ejecuta.
   logging: ['query', 'error', 'schema'],
+  // Una migración de datos sobre tablas grandes puede tardar más que el
+  // statement_timeout de la aplicación (30 s): aquí no hay límite.
+  extra: {
+    ...((AppDataSource.options as { extra?: Record<string, unknown> }).extra ?? {}),
+    statement_timeout: 0,
+    idle_in_transaction_session_timeout: 0,
+  },
 });
 
 // NO añadir `export default CliDataSource`: la CLI de TypeORM

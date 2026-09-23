@@ -1,5 +1,6 @@
 import rateLimit, { MemoryStore, type Options, type Store, type IncrementResponse } from 'express-rate-limit';
 import cors from 'cors';
+import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction } from 'express';
 import { redisClient } from '../config/redis';
 import { logger } from '../utils/logger';
@@ -57,7 +58,11 @@ export const corsMiddleware = [
     // Sin ellas, el preflight del navegador bloquea toda petición del panel.
     // X-Zona-Horaria: zona IANA del navegador (services/google/zonaHoraria.ts); sin
     // ella en la lista, el preflight bloquearía todas las peticiones de la app.
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-bypass-rate-limit', 'X-Admin-Token', 'X-Admin-Totp', 'X-Zona-Horaria'],
+    // Idempotency-Key: altas idempotentes (middleware/idempotency.ts).
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-bypass-rate-limit', 'X-Admin-Token', 'X-Admin-Totp', 'X-Zona-Horaria', 'Idempotency-Key'],
+    // Cabeceras de respuesta que el navegador puede leer: el cursor de la página
+    // siguiente de los listados (utils/paginacion.ts) y la marca de respuesta repetida.
+    exposedHeaders: ['X-Siguiente', 'Idempotent-Replayed'],
   }),
 ];
 
@@ -158,9 +163,43 @@ export class AlmacenLimiteRedis implements Store {
   }
 }
 
+/**
+ * Usuario del access token, si es válido (firma HS256 comprobada). Con él el
+ * límite general cuenta por persona y no por IP: todas las cajas de un negocio
+ * salen por la misma IP pública, y con el CGNAT de las operadoras móviles
+ * desconocidos compartían cupo. Un token falso o caducado cuenta por IP (así
+ * nadie puede agotar el cupo de otro inventando tokens).
+ */
+export function usuarioParaLimite(req: Request): string | null {
+  const r = req as Request & { _uidLimite?: string | null };
+  if (r._uidLimite !== undefined) return r._uidLimite;
+  let uid: string | null = null;
+  const token = req.cookies?.access_token ?? req.headers.authorization?.split(' ')[1];
+  const secreto = process.env.JWT_SECRET;
+  if (token && secreto) {
+    try {
+      const payload = jwt.verify(token, secreto, { algorithms: ['HS256'] }) as { userId?: unknown };
+      if (typeof payload.userId === 'string') uid = payload.userId;
+    } catch {
+      uid = null;
+    }
+  }
+  r._uidLimite = uid;
+  return uid;
+}
+
+const LIMITE_POR_IP = process.env.RATE_LIMIT_MAX ? parseInt(process.env.RATE_LIMIT_MAX, 10) : 300;
+const LIMITE_POR_USUARIO = process.env.RATE_LIMIT_MAX_USUARIO ? parseInt(process.env.RATE_LIMIT_MAX_USUARIO, 10) : 1200;
+
 const baseLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.RATE_LIMIT_MAX ? parseInt(process.env.RATE_LIMIT_MAX, 10) : 300,
+  // 1 200 cada 15 min por usuario (80/min: una caja con mucho movimiento) y
+  // 300 por IP para peticiones sin sesión.
+  max: (req) => (usuarioParaLimite(req) ? LIMITE_POR_USUARIO : LIMITE_POR_IP),
+  keyGenerator: (req) => {
+    const uid = usuarioParaLimite(req);
+    return uid ? `u:${uid}` : `ip:${req.ip ?? 'desconocida'}`;
+  },
   standardHeaders: true,
   legacyHeaders: false,
   store: new AlmacenLimiteRedis('api'),

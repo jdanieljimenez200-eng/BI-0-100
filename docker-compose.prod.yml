@@ -22,12 +22,39 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
+      # Los trabajos en segundo plano (análisis, Google Calendar) corren en el
+      # servicio `worker`: así no comparten CPU con las peticiones de los usuarios
+      # y desplegar la API no corta trabajos en vuelo.
+      RUN_WORKER: "false"
     healthcheck:
       test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:${PORT:-3001}/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - bi0a100-network
+
+  worker:
+    image: bi0a100-backend:prod
+    container_name: bi0a100-worker-prod
+    restart: always
+    command: ["node", "dist/workers/runWorker.js"]
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - backend
+    # Sin HTTP: no hay /health. El orquestador lo reinicia si el proceso sale.
+    healthcheck:
+      disable: true
+    stop_grace_period: 60s # close() espera a que terminen los trabajos en curso
     logging:
       driver: "json-file"
       options:

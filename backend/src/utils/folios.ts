@@ -1,32 +1,97 @@
 import { EntityManager } from 'typeorm';
 
 /**
- * Reserva el siguiente número de ticket del POS para un usuario.
+ * Folios correlativos por cuenta (tickets del POS y cotizaciones).
  *
- * Debe llamarse DENTRO de una transacción: el advisory lock es de transacción
- * (`pg_advisory_xact_lock`) y se libera al hacer commit o rollback.
+ * Antes cada folio salía de `MAX(regexp_replace(numero))` bajo un advisory
+ * lock: un Seq Scan de TODAS las ventas de la cuenta en cada venta (116 ms con
+ * 200 000 ventas) mientras el lock frenaba al resto de cajas. Ahora hay un
+ * contador por cuenta y tipo en `secuencias_folio`: el UPDATE es O(1) y el
+ * bloqueo de fila serializa igual que antes, sin recorrer nada.
  *
- * El siguiente número sale de `MAX(...) + 1`, nunca de `COUNT(...)`: contar
- * produce folios repetidos en cuanto se borra un ticket previo.
- *
- * Extraído de `routes/pos.ts` para que la conversión de cotizaciones use
- * exactamente la misma secuencia y el mismo lock, en vez de una copia que
- * pudiera desincronizarse.
+ * Debe llamarse DENTRO de la transacción que crea el registro: el bloqueo de la
+ * fila del contador dura hasta el commit, así que dos cajas nunca reciben el
+ * mismo número y un rollback no "quema" folios de otras.
  */
-export async function siguienteFolioVenta(
+
+interface ConfigFolio {
+  tabla: 'ventas' | 'cotizaciones';
+  columna: 'numero_ticket' | 'numero';
+  prefijo: string;
+}
+
+const CONFIG: Record<'venta' | 'cotizacion', ConfigFolio> = {
+  venta: { tabla: 'ventas', columna: 'numero_ticket', prefijo: 'POS-' },
+  cotizacion: { tabla: 'cotizaciones', columna: 'numero', prefijo: 'COT-' },
+};
+
+const formatear = (cfg: ConfigFolio, n: number) => `${cfg.prefijo}${String(n).padStart(6, '0')}`;
+
+/** Máximo numérico existente (solo al crear el contador o si se desincronizó). */
+async function maximoExistente(manager: EntityManager, cfg: ConfigFolio, usuarioId: string): Promise<number> {
+  // Solo cuentan los folios con el formato propio (PREFIJO + hasta 9 dígitos):
+  // un número importado o de prueba con otro formato no debe desbordar el entero.
+  const [fila] = await manager.query(
+    `SELECT COALESCE(MAX(substring(${cfg.columna} FROM $2::int)::integer), 0) AS max_num
+       FROM ${cfg.tabla}
+      WHERE usuario_id = $1 AND ${cfg.columna} ~ $3`,
+    [usuarioId, cfg.prefijo.length + 1, `^${cfg.prefijo}[0-9]{1,9}$`]
+  );
+  return Number(fila?.max_num ?? 0);
+}
+
+export async function siguienteFolio(
   manager: EntityManager,
   usuarioId: string,
+  tipo: 'venta' | 'cotizacion'
 ): Promise<string> {
-  await manager.query(
-    `SELECT pg_advisory_xact_lock(('x' || substr(md5($1), 1, 16))::bit(64)::bigint)`,
-    [`pos_seq:${usuarioId}`],
+  const cfg = CONFIG[tipo];
+
+  // Camino normal: incrementar el contador (bloquea su fila hasta el commit).
+  let filas: Array<{ ultimo: number }> = await manager.query(
+    `UPDATE secuencias_folio SET ultimo = ultimo + 1 WHERE usuario_id = $1 AND tipo = $2 RETURNING ultimo`,
+    [usuarioId, tipo]
   );
-  const result = await manager.query(
-    `SELECT MAX(NULLIF(regexp_replace(numero_ticket, '[^0-9]', '', 'g'), '')::integer) AS max_num
-     FROM ventas
-     WHERE usuario_id = $1`,
-    [usuarioId],
+  // TypeORM devuelve [filas, afectadas] en UPDATE ... RETURNING.
+  if (Array.isArray(filas[0])) filas = filas[0] as unknown as Array<{ ultimo: number }>;
+
+  let numero: number;
+  if (filas.length > 0) {
+    numero = Number(filas[0].ultimo);
+  } else {
+    // Primera vez para esta cuenta: se siembra con lo que ya existe. El
+    // advisory lock evita que dos primeras ventas simultáneas siembren a la vez.
+    await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`folio:${tipo}:${usuarioId}`]);
+    const base = await maximoExistente(manager, cfg, usuarioId);
+    const [insertada] = await manager.query(
+      `INSERT INTO secuencias_folio (usuario_id, tipo, ultimo) VALUES ($1, $2, $3)
+       ON CONFLICT (usuario_id, tipo) DO UPDATE SET ultimo = secuencias_folio.ultimo + 1
+       RETURNING ultimo`,
+      [usuarioId, tipo, base + 1]
+    );
+    numero = Number(insertada.ultimo);
+  }
+
+  // Autocorrección: si alguien insertó registros sin pasar por aquí (seeds,
+  // importaciones), el número podría existir ya. Comprobarlo usa el índice
+  // único (usuario_id, numero); resincronizar solo ocurre en ese caso raro.
+  const [ocupado] = await manager.query(
+    `SELECT 1 FROM ${cfg.tabla} WHERE usuario_id = $1 AND ${cfg.columna} = $2 LIMIT 1`,
+    [usuarioId, formatear(cfg, numero)]
   );
-  const maxNum = Number(result[0]?.max_num ?? 0);
-  return `POS-${String(maxNum + 1).padStart(6, '0')}`;
+  if (ocupado) {
+    numero = (await maximoExistente(manager, cfg, usuarioId)) + 1;
+    await manager.query(`UPDATE secuencias_folio SET ultimo = $3 WHERE usuario_id = $1 AND tipo = $2`, [
+      usuarioId,
+      tipo,
+      numero,
+    ]);
+  }
+
+  return formatear(cfg, numero);
+}
+
+/** Ticket del POS (también lo usa la conversión de cotizaciones: una sola secuencia). */
+export function siguienteFolioVenta(manager: EntityManager, usuarioId: string): Promise<string> {
+  return siguienteFolio(manager, usuarioId, 'venta');
 }
