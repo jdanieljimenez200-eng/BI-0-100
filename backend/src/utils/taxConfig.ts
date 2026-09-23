@@ -1,3 +1,4 @@
+import { r2 } from './dinero';
 // Mirror del taxConfig del frontend. Las herramientas del backend (POS, Inventario,
 // Personal) calculan impuestos sobre la venta/egreso usando el país del Producto SSOT.
 // Si cambias tasas, sincroniza con frontend/lib/taxConfig.ts.
@@ -52,13 +53,13 @@ export function calcularImpuesto(subtotal: number, pais: string): {
   total: number;
 } {
   const cfg = getTaxConfig(pais);
-  const subtotalRedondeado = Math.round(subtotal * 100) / 100;
-  const impuesto = Math.round(subtotalRedondeado * cfg.consumo.tasa * 100) / 100;
+  const subtotalRedondeado = r2(subtotal);
+  const impuesto = r2(subtotalRedondeado * cfg.consumo.tasa);
   return {
     subtotal: subtotalRedondeado,
     impuesto_monto: impuesto,
     impuesto_tasa: cfg.consumo.tasa,
     impuesto_nombre: cfg.consumo.nombre,
-    total: Math.round((subtotalRedondeado + impuesto) * 100) / 100,
+    total: r2(subtotalRedondeado + impuesto),
   };
 }

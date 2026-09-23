@@ -1,6 +1,7 @@
 import { EntityManager } from 'typeorm';
 import { CanalCobro, TipoCanalCobro } from '../../models/CanalCobro';
 import { MovimientoContable } from '../../models/MovimientoContable';
+import { r2 } from '../../utils/dinero';
 
 export interface DesgloseComisionResult {
   montoBruto: number;
@@ -138,7 +139,7 @@ export const PRESETS_CANALES_DEFAULT: Array<{
   },
 ];
 
-const r2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+
 
 /**
  * Calcula el desglose exacto de comisiones, impuestos sobre comisiones y retenciones.

@@ -1,3 +1,4 @@
+import { r2 } from '../../utils/dinero';
 import { FinanzasInput, BreakevenData, EscenarioBreakeven, MesProyeccion } from './types';
 
 export function calcularBreakeven(
@@ -86,5 +87,5 @@ export function calcularBreakeven(
 }
 
 function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+  return r2(n);
 }

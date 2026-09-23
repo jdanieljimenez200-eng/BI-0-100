@@ -1,6 +1,16 @@
 // Servicio puro de Inventario — sin DB ni HTTP.
 // Lógica de Costo Promedio Ponderado (CPP) y aplicación de movimientos al stock.
 
+import { r2 as round2 } from '../../utils/dinero';
+
+/** Error de la operación pedida (400), no de la infraestructura (500). */
+export class ErrorMovimiento extends Error {
+  constructor(mensaje: string) {
+    super(mensaje);
+    this.name = 'ErrorMovimiento';
+  }
+}
+
 export type TipoMovInventario = 'entrada' | 'salida' | 'ajuste' | 'merma';
 
 export interface AplicarMovInput {
@@ -36,7 +46,7 @@ export function aplicarMovimiento(input: AplicarMovInput): AplicarMovResult {
   const costoMov = Math.max(0, Number(input.costoUnitarioMov ?? 0));
 
   if (cantidad <= 0 && tipo !== 'ajuste') {
-    throw new Error('La cantidad debe ser mayor a 0');
+    throw new ErrorMovimiento('La cantidad debe ser mayor a 0');
   }
 
   if (tipo === 'entrada') {
@@ -54,7 +64,7 @@ export function aplicarMovimiento(input: AplicarMovInput): AplicarMovResult {
 
   if (tipo === 'salida' || tipo === 'merma') {
     if (cantidad > stockActual + 1e-6) {
-      throw new Error(`No hay stock suficiente. Disponible: ${stockActual}, intentas sacar: ${cantidad}.`);
+      throw new ErrorMovimiento(`No hay stock suficiente. Disponible: ${stockActual}, intentas sacar: ${cantidad}.`);
     }
     const stockNuevo = round3(stockActual - cantidad);
     return {
@@ -68,7 +78,7 @@ export function aplicarMovimiento(input: AplicarMovInput): AplicarMovResult {
 
   // ajuste — fijar stock al objetivo absoluto
   if (input.stockObjetivo === undefined || isNaN(Number(input.stockObjetivo))) {
-    throw new Error('Para un ajuste, debes indicar el stock_objetivo');
+    throw new ErrorMovimiento('Para un ajuste, debes indicar el stock_objetivo');
   }
   const stockObjetivo = Math.max(0, Number(input.stockObjetivo));
   const diferencia = stockObjetivo - stockActual;
@@ -116,6 +126,6 @@ export function calcularResumenInventario(
 }
 
 // ─── Helpers internos ────────────────────────────────────────────────────────
-const round2 = (n: number) => Math.round(n * 100) / 100;
+
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 const round4 = (n: number) => Math.round(n * 10000) / 10000;

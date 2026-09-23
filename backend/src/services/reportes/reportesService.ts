@@ -1,5 +1,6 @@
 import { AppDataSource } from '../../config/database';
 import { timezoneSegura } from '../../utils/timezones';
+import { r2 } from '../../utils/dinero';
 
 /**
  * Motor de agregación del área de Reportes.
@@ -52,7 +53,8 @@ const INTERVALO_SQL: Record<Granularidad, string> = {
 };
 
 export const n = (v: unknown) => Number(v ?? 0);
-export const r2 = (v: number) => Math.round(v * 100) / 100;
+// Se reexporta porque medio Reportes lo importa desde aquí.
+export { r2 };
 
 /**
  * Construye el filtro común de ventas.

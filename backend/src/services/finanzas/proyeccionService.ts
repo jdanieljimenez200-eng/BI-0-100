@@ -1,3 +1,4 @@
+import { r2 } from '../../utils/dinero';
 import { FinanzasInput, MesProyeccion, ProyeccionAnual } from './types';
 
 const NOMBRES_MESES = [
@@ -58,5 +59,5 @@ export function generarProyeccion(input: FinanzasInput): ProyeccionAnual {
 }
 
 function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+  return r2(n);
 }

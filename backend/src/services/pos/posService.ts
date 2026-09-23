@@ -2,6 +2,7 @@
 // generación de folio. Las funciones del orchestrator (rutas) consumen esto.
 
 import { calcularImpuesto, getTaxConfig } from '../../utils/taxConfig';
+import { r2 } from '../../utils/dinero';
 
 export interface CarritoLinea {
   item_pos_id?: string | null;
@@ -41,7 +42,7 @@ export function calcularTotalesVenta(lineas: CarritoLinea[], paisProducto: strin
       ...l,
       precio_unitario: precio,
       cantidad,
-      subtotal_linea: Math.round(precio * cantidad * 100) / 100,
+      subtotal_linea: r2(precio * cantidad),
     };
   });
 
@@ -58,14 +59,6 @@ export function calcularTotalesVenta(lineas: CarritoLinea[], paisProducto: strin
     total: calc.total,
     lineas: lineasConSubtotal,
   };
-}
-
-/**
- * Genera folio incremental tipo "POS-000123" basado en cantidad existente del usuario.
- */
-export function generarNumeroTicket(cantidadVentasPrevias: number): string {
-  const siguiente = cantidadVentasPrevias + 1;
-  return `POS-${String(siguiente).padStart(6, '0')}`;
 }
 
 /**
