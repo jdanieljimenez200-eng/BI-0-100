@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -31,7 +31,7 @@ import {
   ExternalLink,
   Download,
 } from 'lucide-react';
-import api from '../../../../lib/api';
+import api, { hayRespuestaDelServidor, nuevaClaveIdempotencia } from '../../../../lib/api';
 import CustomSelect from '../../../../components/ui/CustomSelect';
 import MotionModal from '@/components/motion/MotionModal';
 import ProductoGate from '@/components/herramientas/ProductoGate';
@@ -273,6 +273,7 @@ function PagoModal({ empleado, onClose, onPagado }: {
   const [notas,         setNotas]        = useState('');
   const [saving,        setSaving]       = useState(false);
   const [error,         setError]        = useState('');
+  const clavePago = useRef(nuevaClaveIdempotencia());
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -284,9 +285,14 @@ function PagoModal({ empleado, onClose, onPagado }: {
         empleado_id: empleado.id, monto: m,
         periodo_inicio: periodoInicio, periodo_fin: periodoFin,
         fecha_pago: fechaPago, notas: notas.trim() || null,
-      });
+      }, { headers: { 'Idempotency-Key': clavePago.current } });
+      clavePago.current = nuevaClaveIdempotencia();
       onPagado(r.data.pago);
-    } catch { setError('Error al registrar pago'); }
+    } catch (err) {
+      // Sin respuesta (corte de red) se reintenta con la misma clave: no duplica el pago.
+      if (hayRespuestaDelServidor(err)) clavePago.current = nuevaClaveIdempotencia();
+      setError('Error al registrar pago');
+    }
     finally   { setSaving(false); }
   }
 
@@ -421,11 +427,17 @@ function PersonalInner({ producto, cambiarProducto }: { producto: ProductoActivo
   }
 
   async function handleDeleteEmpleado(id: string) {
-    if (!confirm('¿Eliminar este empleado?')) return;
+    if (!confirm('¿Eliminar este empleado? Si ya tiene pagos, se desactivará para conservar su historial de nómina.')) return;
     try {
-      await api.delete(`/nomina/empleados/${id}`);
-      setAllEmpleados(prev => prev.filter(e => e.id !== id));
-      setToast('Empleado eliminado');
+      const { data } = await api.delete(`/nomina/empleados/${id}`);
+      if (data?.archivado) {
+        // Con pagos no se borra: queda inactivo y su historial se conserva.
+        setAllEmpleados(prev => prev.map(e => (e.id === id ? { ...e, activo: false } : e)));
+        setToast('El empleado tiene pagos: se desactivó y su historial se conserva');
+      } else {
+        setAllEmpleados(prev => prev.filter(e => e.id !== id));
+        setToast('Empleado eliminado');
+      }
     } catch { setToast('Error al eliminar'); }
   }
 
