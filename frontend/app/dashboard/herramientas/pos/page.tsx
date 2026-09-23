@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -30,7 +30,7 @@ import {
   Receipt,
   RotateCcw,
 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { hayRespuestaDelServidor, nuevaClaveIdempotencia } from '@/lib/api';
 import RecetaEditor from './RecetaEditor';
 import { getTaxConfig, TaxConfig } from '@/lib/taxConfig';
 import { abrirMenuPdf } from './MenuPdf';
@@ -303,6 +303,9 @@ function PosInner({
   const [negocios, setNegocios] = useState<NegocioMin[]>([]);
   const [items, setItems] = useState<ItemPOS[]>([]);
   const [ventas, setVentas] = useState<Venta[]>([]);
+  // Cursor de la siguiente página del historial (cabecera X-Siguiente del API).
+  const [siguienteVentas, setSiguienteVentas] = useState<string | null>(null);
+  const [cargandoMasVentas, setCargandoMasVentas] = useState(false);
   const [crmClientes, setCrmClientes] = useState<ClienteMin[]>([]);
   const [tab, setTab] = useState<'vender' | 'catalogo' | 'historial'>('vender');
   const [loading, setLoading] = useState(false);
@@ -317,6 +320,9 @@ function PosInner({
 
   // Carrito & Descuento
   const [carrito, setCarrito] = useState<CarritoLinea[]>([]);
+  // Clave del cobro en curso: un doble clic o un reintento tras un corte de red
+  // mandan la misma y el servidor no duplica la venta. Se renueva al responder.
+  const claveCobro = useRef(nuevaClaveIdempotencia());
   const [descuentoTipo, setDescuentoTipo] = useState<'ninguno' | '5' | '10' | '15' | 'custom'>('ninguno');
   const [descuentoCustomMonto, setDescuentoCustomMonto] = useState('');
 
@@ -405,12 +411,13 @@ function PosInner({
     setLoading(true);
     Promise.all([
       api.get(`/pos/catalogo${negParam}`).catch(() => ({ data: [] })),
-      api.get(`/pos/ventas?producto_id=${producto.id}`).catch(() => ({ data: [] })),
+      api.get(`/pos/ventas?producto_id=${producto.id}`).catch(() => ({ data: [], headers: {} })),
     ])
       .then(([itemsRes, ventasRes]) => {
         if (!vigente) return;
         setItems((itemsRes.data || []) as ItemPOS[]);
         setVentas((ventasRes.data || []) as Venta[]);
+        setSiguienteVentas(((ventasRes.headers as Record<string, string | undefined>)?.['x-siguiente']) ?? null);
       })
       .finally(() => { if (vigente) setLoading(false); });
     return () => { vigente = false; };
@@ -703,7 +710,8 @@ function PosInner({
           notas: notasFinales || undefined,
           aplicar_impuesto: aplicarImpuesto,
           canal_cobro_id: canalCobroId || undefined,
-        });
+        }, { headers: { 'Idempotency-Key': claveCobro.current } });
+        claveCobro.current = nuevaClaveIdempotencia();
 
         // Stock que no alcanzaba. La venta se completo igual: se avisa, no se
         // bloquea, porque el cobro es real aunque el inventario este mal.
@@ -719,7 +727,10 @@ function PosInner({
           setWaUrl(null);
         }
 
-        api.get(`/pos/ventas?producto_id=${producto.id}`).then(({ data: d }) => setVentas(d as Venta[]));
+        api.get(`/pos/ventas?producto_id=${producto.id}`).then(({ data: d, headers }) => {
+          setVentas(d as Venta[]);
+          setSiguienteVentas((headers as Record<string, string | undefined>)['x-siguiente'] ?? null);
+        });
 
         setCarrito([]);
         setClienteNombre('');
@@ -739,6 +750,8 @@ function PosInner({
         setDescuentoCustomMonto('');
         setShowCheckout(false);
       } catch (err: unknown) {
+        // Si el servidor respondió (p. ej. validación), el próximo intento es otro cobro.
+        if (hayRespuestaDelServidor(err)) claveCobro.current = nuevaClaveIdempotencia();
         const resp = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
         const msg = resp?.error ?? resp?.message ?? (err instanceof Error ? err.message : null) ?? 'No se pudo cobrar';
         alert(`Error al cobrar: ${msg}`);
@@ -1821,6 +1834,27 @@ function PosInner({
                   </div>
                 </div>
               ))}
+              {siguienteVentas && (
+                <div className="pt-2 text-center">
+                  <button
+                    onClick={async () => {
+                      setCargandoMasVentas(true);
+                      try {
+                        const { data, headers } = await api.get('/pos/ventas', {
+                          params: { producto_id: producto.id, antes: siguienteVentas },
+                        });
+                        setVentas((prev) => [...prev, ...((data || []) as Venta[])]);
+                        setSiguienteVentas((headers as Record<string, string | undefined>)['x-siguiente'] ?? null);
+                      } catch { /* se puede reintentar */ }
+                      finally { setCargandoMasVentas(false); }
+                    }}
+                    disabled={cargandoMasVentas}
+                    className="text-xs font-semibold text-violet-300 border border-violet-500/30 px-4 py-2 rounded-lg hover:bg-violet-500/10 disabled:opacity-50"
+                  >
+                    {cargandoMasVentas ? 'Cargando…' : 'Cargar ventas anteriores'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
