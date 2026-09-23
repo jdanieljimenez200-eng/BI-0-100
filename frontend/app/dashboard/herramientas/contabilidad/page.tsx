@@ -108,38 +108,29 @@ const FUENTE_INFO: Record<Movimiento['fuente'], { label: string; color: string; 
   terminal:    { label: 'Terminal TPV', color: 'text-amber-300', badge: 'bg-amber-500/10 border-amber-500/30 text-amber-300' },
 };
 
-// Calibración ligera en cliente — mismo criterio que calibracionService (ignora auto-generados)
+// Calibración (la calcula el servidor: GET /contabilidad/:id/resumen)
+interface ResumenContable {
+  kpis: { ingresos: number; egresos: number; balance: number; total: number };
+  conteo_fuentes: Record<string, number>;
+  conteo_tipos: { todos: number; ingreso: number; egreso: number };
+  manuales: number;
+  categorias: string[];
+  fiscal_base: { ingresos: number; egresos_no_auto: number; egresos_con_comprobante: number };
+  calibracion: {
+    ingreso_promedio_mensual: number;
+    egreso_promedio_mensual: number;
+    meses_analizados: number;
+    confianza: 'alta' | 'media' | 'baja';
+    rango_fechas: { desde: string; hasta: string };
+  };
+}
+
 interface CalibracionLite {
   ingresoPromedio: number;
   egresoPromedio: number;
   mesesAnalizados: number;
   confianza: 'alta' | 'media' | 'baja';
   rango: { desde: string; hasta: string } | null;
-}
-
-function calibrar(movs: Movimiento[]): CalibracionLite {
-  const byMonth: Record<string, { ingresos: number; egresos: number }> = {};
-  for (const m of movs) {
-    if (m.es_auto_generado) continue;
-    const month = String(m.fecha).substring(0, 7);
-    if (!byMonth[month]) byMonth[month] = { ingresos: 0, egresos: 0 };
-    if (m.tipo === 'ingreso') byMonth[month].ingresos += n(m.monto);
-    else byMonth[month].egresos += n(m.monto);
-  }
-  const months = Object.keys(byMonth).sort();
-  const cnt = months.length;
-  if (cnt === 0) {
-    return { ingresoPromedio: 0, egresoPromedio: 0, mesesAnalizados: 0, confianza: 'baja', rango: null };
-  }
-  const ingresoPromedio = months.reduce((a, mth) => a + byMonth[mth].ingresos, 0) / cnt;
-  const egresoPromedio = months.reduce((a, mth) => a + byMonth[mth].egresos, 0) / cnt;
-  return {
-    ingresoPromedio: Math.round(ingresoPromedio),
-    egresoPromedio: Math.round(egresoPromedio),
-    mesesAnalizados: cnt,
-    confianza: cnt >= 6 ? 'alta' : cnt >= 3 ? 'media' : 'baja',
-    rango: { desde: months[0] + '-01', hasta: months[cnt - 1] + '-01' },
-  };
 }
 
 // ─── Page (wrapper con gate) ───────────────────────────────────────────────────
@@ -181,7 +172,12 @@ function ContabilidadInner({
 }) {
   const productoId = producto.id;
 
+  // Solo la página cargada: el historial completo ya no viaja al navegador.
   const [movs, setMovs] = useState<Movimiento[]>([]);
+  const [siguiente, setSiguiente] = useState<string | null>(null);
+  const [cargandoMas, setCargandoMas] = useState(false);
+  const [resumen, setResumen] = useState<ResumenContable | null>(null);
+  const [exportando, setExportando] = useState(false);
   const [canales, setCanales] = useState<CanalCobroData[]>([]);
   const [showCanalesModal, setShowCanalesModal] = useState(false);
   const [cargando, setCargando] = useState(false);
@@ -236,19 +232,65 @@ function ContabilidadInner({
     [taxCfg.locale],
   );
 
-  // Movimientos del producto activo
+  // Filtros que se mandan al servidor. La búsqueda espera a que se deje de teclear.
+  const [busquedaAplicada, setBusquedaAplicada] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setBusquedaAplicada(busqueda.trim()), 300);
+    return () => clearTimeout(t);
+  }, [busqueda]);
+
+  const parametrosFiltro = useMemo(() => {
+    const p: Record<string, string> = {};
+    if (filtroTipo !== 'todos') p.tipo = filtroTipo;
+    if (filtroFuente !== 'todos') p.fuente = filtroFuente;
+    if (filtroCategoria !== 'todas') p.categoria = filtroCategoria;
+    if (busquedaAplicada) p.q = busquedaAplicada;
+    return p;
+  }, [filtroTipo, filtroFuente, filtroCategoria, busquedaAplicada]);
+
+  // Primera página de movimientos con los filtros actuales
   const cargarMovs = useCallback(async () => {
-    if (!productoId) { setMovs([]); return; }
+    if (!productoId) { setMovs([]); setSiguiente(null); return; }
     setCargando(true);
     try {
-      const { data } = await api.get(`/contabilidad/${productoId}`);
-      setMovs((data || []) as Movimiento[]);
+      const { data } = await api.get(`/contabilidad/${productoId}`, { params: { ...parametrosFiltro, limite: 100 } });
+      setMovs((data?.movimientos || []) as Movimiento[]);
+      setSiguiente(data?.siguiente ?? null);
     } catch {
       setMovs([]);
+      setSiguiente(null);
     } finally {
       setCargando(false);
     }
+  }, [productoId, parametrosFiltro]);
+
+  const cargarMas = useCallback(async () => {
+    if (!productoId || !siguiente) return;
+    setCargandoMas(true);
+    try {
+      const { data } = await api.get(`/contabilidad/${productoId}`, {
+        params: { ...parametrosFiltro, limite: 100, antes: siguiente },
+      });
+      setMovs((prev) => [...prev, ...((data?.movimientos || []) as Movimiento[])]);
+      setSiguiente(data?.siguiente ?? null);
+    } catch { /* se puede reintentar con el botón */ }
+    finally { setCargandoMas(false); }
+  }, [productoId, siguiente, parametrosFiltro]);
+
+  // KPIs, conteos, categorías, calibración y base fiscal de TODO el historial
+  const cargarResumen = useCallback(async () => {
+    if (!productoId) { setResumen(null); return; }
+    try {
+      const { data } = await api.get(`/contabilidad/${productoId}/resumen`);
+      setResumen(data as ResumenContable);
+    } catch {
+      setResumen(null);
+    }
   }, [productoId]);
+
+  const refrescar = useCallback(async () => {
+    await Promise.all([cargarMovs(), cargarResumen()]);
+  }, [cargarMovs, cargarResumen]);
 
   const cargarCanales = useCallback(async () => {
     if (!productoId) { setCanales([]); return; }
@@ -260,93 +302,73 @@ function ContabilidadInner({
     }
   }, [productoId]);
 
+  useEffect(() => { cargarMovs(); }, [cargarMovs]);
   useEffect(() => {
-    cargarMovs();
+    cargarResumen();
     cargarCanales();
-  }, [cargarMovs, cargarCanales]);
+  }, [cargarResumen, cargarCanales]);
+
+  const totalMovimientos = resumen?.kpis.total ?? movs.length;
 
   // KPIs
-  const kpis = useMemo(() => {
-    let ingresos = 0, egresos = 0;
-    for (const m of movs) {
-      if (m.tipo === 'ingreso') ingresos += n(m.monto);
-      else egresos += n(m.monto);
+  const kpis = useMemo(
+    () => resumen?.kpis ?? { ingresos: 0, egresos: 0, balance: 0, total: 0 },
+    [resumen],
+  );
+
+  const conteoFuentes = useMemo(() => resumen?.conteo_fuentes ?? { todos: 0 }, [resumen]);
+
+  const conteoTipos = useMemo(
+    () => resumen?.conteo_tipos ?? { todos: 0, ingreso: 0, egreso: 0 },
+    [resumen],
+  );
+
+  // El servidor ya filtra: la lista es la página cargada.
+  const movsFiltrados = movs;
+
+  const exportarCSV = useCallback(async () => {
+    if (!productoId || totalMovimientos === 0) return;
+    setExportando(true);
+    try {
+      const { data } = await api.get(`/contabilidad/${productoId}/exportar`, {
+        params: parametrosFiltro,
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(data as Blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `movimientos_contables_${(producto.nombre || 'general').toLowerCase().replace(/[^a-z0-9]/g, '_')}_${todayISO()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      setAviso('No se pudo exportar. Inténtalo de nuevo.');
+    } finally {
+      setExportando(false);
     }
-    return { ingresos, egresos, balance: ingresos - egresos, total: movs.length };
-  }, [movs]);
+  }, [productoId, totalMovimientos, parametrosFiltro, producto.nombre]);
 
-  const conteoFuentes = useMemo(() => {
-    const counts: Record<string, number> = { todos: movs.length, manual: 0, csv_import: 0, pos: 0, inventario: 0, nomina: 0, cotizacion: 0, mantenimiento: 0, delivery: 0, terminal: 0 };
-    for (const m of movs) {
-      if (counts[m.fuente] !== undefined) counts[m.fuente]++;
+  const manualCount = resumen?.manuales ?? 0;
+  const calibracion = useMemo<CalibracionLite>(() => {
+    const c = resumen?.calibracion;
+    if (!c || c.meses_analizados === 0) {
+      return { ingresoPromedio: 0, egresoPromedio: 0, mesesAnalizados: 0, confianza: 'baja', rango: null };
     }
-    return counts;
-  }, [movs]);
-
-  const conteoTipos = useMemo(() => {
-    let ingresos = 0;
-    let egresos = 0;
-    for (const m of movs) {
-      if (m.tipo === 'ingreso') ingresos++;
-      else egresos++;
-    }
-    return { todos: movs.length, ingreso: ingresos, egreso: egresos };
-  }, [movs]);
-
-  const movsFiltrados = useMemo(() => {
-    return movs.filter((m) => {
-      if (filtroTipo !== 'todos' && m.tipo !== filtroTipo) return false;
-      if (filtroFuente !== 'todos' && m.fuente !== filtroFuente) return false;
-      if (filtroCategoria !== 'todas' && m.categoria?.toLowerCase() !== filtroCategoria.toLowerCase()) return false;
-      if (busqueda.trim()) {
-        const q = busqueda.toLowerCase().trim();
-        const matchDesc = m.descripcion?.toLowerCase().includes(q);
-        const matchCat = m.categoria?.toLowerCase().includes(q);
-        const matchMonto = String(m.monto).includes(q);
-        const matchFuente = m.fuente?.toLowerCase().includes(q);
-        if (!matchDesc && !matchCat && !matchMonto && !matchFuente) return false;
-      }
-      return true;
-    });
-  }, [movs, filtroTipo, filtroFuente, filtroCategoria, busqueda]);
-
-  const exportarCSV = useCallback(() => {
-    if (movsFiltrados.length === 0) return;
-    const headers = ['ID', 'Fecha', 'Tipo', 'Descripcion', 'Categoria', 'Monto', 'Fuente', 'Comprobante_Fiscal', 'Auto_Generado'];
-    const rows = movsFiltrados.map((m) => [
-      `"${m.id}"`,
-      `"${m.fecha}"`,
-      `"${m.tipo}"`,
-      `"${(m.descripcion || '').replace(/"/g, '""')}"`,
-      `"${(m.categoria || '').replace(/"/g, '""')}"`,
-      n(m.monto).toFixed(2),
-      `"${m.fuente}"`,
-      `"${m.tiene_cfdi ? 'Si' : 'No'}"`,
-      `"${m.es_auto_generado ? 'Si' : 'No'}"`,
-    ]);
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    const fechaActual = new Date().toISOString().slice(0, 10);
-    link.href = url;
-    link.setAttribute('download', `movimientos_contables_${(producto.nombre || 'general').toLowerCase().replace(/[^a-z0-9]/g, '_')}_${fechaActual}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [movsFiltrados, producto.nombre]);
-
-  const manualCount = useMemo(() => movs.filter((m) => !m.es_auto_generado).length, [movs]);
-  const calibracion = useMemo(() => calibrar(movs), [movs]);
+    return {
+      ingresoPromedio: c.ingreso_promedio_mensual,
+      egresoPromedio: c.egreso_promedio_mensual,
+      mesesAnalizados: c.meses_analizados,
+      confianza: c.confianza,
+      rango: c.rango_fechas,
+    };
+  }, [resumen]);
 
   // Estimado fiscal país-agnóstico derivado de taxConfig (no asume SAT/IVA/RESICO)
   const fiscal = useMemo(() => {
-    const ingresos = movs.filter((m) => m.tipo === 'ingreso').reduce((a, m) => a + n(m.monto), 0);
-    const egresos = movs.filter((m) => m.tipo === 'egreso' && !m.es_auto_generado).reduce((a, m) => a + n(m.monto), 0);
-    const egresosConComprobante = movs
-      .filter((m) => m.tipo === 'egreso' && !m.es_auto_generado && m.tiene_cfdi)
-      .reduce((a, m) => a + n(m.monto), 0);
+    const ingresos = resumen?.fiscal_base.ingresos ?? 0;
+    const egresos = resumen?.fiscal_base.egresos_no_auto ?? 0;
+    const egresosConComprobante = resumen?.fiscal_base.egresos_con_comprobante ?? 0;
 
     const utilidad = ingresos - egresos;
     const tasa = taxCfg.consumo.tasa;
@@ -372,13 +394,9 @@ function ContabilidadInner({
       salarioNum,
       cargaPatronal: r2(cargaPatronal),
     };
-  }, [movs, taxCfg, empleados, salarioPromedio]);
+  }, [resumen, taxCfg, empleados, salarioPromedio]);
 
-  const categoriasExistentes = useMemo(() => {
-    const set = new Set<string>();
-    for (const m of movs) if (m.categoria?.trim()) set.add(m.categoria.trim());
-    return Array.from(set).sort();
-  }, [movs]);
+  const categoriasExistentes = useMemo(() => resumen?.categorias ?? [], [resumen]);
 
   const categoriasPicker = useMemo(() => {
     const exist = new Set(categoriasExistentes.map((c) => c.toLowerCase()));
@@ -405,7 +423,7 @@ function ContabilidadInner({
         canal_cobro_id: form.tipo === 'ingreso' && form.canal_cobro_id ? form.canal_cobro_id : undefined,
         desglosar_comision: form.tipo === 'ingreso' ? form.desglosar_comision : undefined,
       });
-      await cargarMovs();
+      await refrescar();
       setShowForm(false);
       setForm({
         tipo: 'ingreso',
@@ -428,7 +446,7 @@ function ContabilidadInner({
     } finally {
       setGuardando(false);
     }
-  }, [form, productoId, cargarMovs]);
+  }, [form, productoId, refrescar]);
 
   // ── Editar inline ─────────────────────────────────────────────────────────
   const iniciarEdicion = useCallback((m: Movimiento) => {
@@ -445,15 +463,16 @@ function ContabilidadInner({
         monto: montoNum,
       });
       setMovs((prev) => prev.map((m) => (m.id === id ? (data as Movimiento) : m)));
+      cargarResumen();
     } catch { /* noop */ }
     setEditId(null);
-  }, [editForm]);
+  }, [editForm, cargarResumen]);
 
   const eliminarMovimiento = useCallback(async (id: string) => {
     if (!confirm('¿Eliminar este movimiento? También se borran sus movimientos auto-generados (p. ej. impuestos derivados).')) return;
     await api.delete(`/contabilidad/movimiento/${id}`).catch(() => {});
-    await cargarMovs();
-  }, [cargarMovs]);
+    await refrescar();
+  }, [refrescar]);
 
   return (
     <div className="relative px-4 sm:px-6 py-10 max-w-6xl mx-auto pb-24">
@@ -565,7 +584,7 @@ function ContabilidadInner({
           {([
             { key: 'reportes', label: 'Reportes', icon: BarChart3 },
             { key: 'pnl', label: 'P&L (Resultados)', icon: PieChart },
-            { key: 'movimientos', label: `Movimientos (${movs.length})`, icon: BookOpen },
+            { key: 'movimientos', label: `Movimientos (${totalMovimientos})`, icon: BookOpen },
             { key: 'canales', label: `Terminales & Delivery (${canales.length})`, icon: CreditCard },
             { key: 'simulador', label: 'Simulador Precios', icon: Calculator },
             { key: 'liquidaciones', label: 'Liquidaciones', icon: Clock },
@@ -599,8 +618,8 @@ function ContabilidadInner({
           </button>
           <button
             onClick={exportarCSV}
-            disabled={movsFiltrados.length === 0}
-            title={movsFiltrados.length === 0 ? 'No hay movimientos para exportar' : 'Descargar archivo CSV'}
+            disabled={totalMovimientos === 0 || exportando}
+            title={totalMovimientos === 0 ? 'No hay movimientos para exportar' : 'Descargar archivo CSV'}
             className="text-xs font-bold border border-white/15 bg-white/5 text-white/75 hover:text-white px-3 py-2 rounded-lg hover:bg-white/10 transition-colors flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Download className="w-3.5 h-3.5 shrink-0" />
@@ -766,7 +785,7 @@ function ContabilidadInner({
         <div>
           {cargando ? (
             <div className="rounded-2xl border border-dashed border-white/10 p-10 text-center text-white/40 text-sm">Cargando movimientos…</div>
-          ) : movs.length === 0 ? (
+          ) : totalMovimientos === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/10 p-10 text-center">
               <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
                 <BookOpen className="w-6 h-6" />
@@ -1047,6 +1066,17 @@ function ContabilidadInner({
                     );
                   })
                 )}
+                {siguiente && (
+                  <div className="pt-2 text-center">
+                    <button
+                      onClick={cargarMas}
+                      disabled={cargandoMas}
+                      className="text-xs font-semibold text-emerald-300 border border-emerald-500/30 px-4 py-2 rounded-lg hover:bg-emerald-500/10 disabled:opacity-50"
+                    >
+                      {cargandoMas ? 'Cargando…' : `Cargar más (${movs.length} de ${totalMovimientos})`}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1111,7 +1141,7 @@ function ContabilidadInner({
             </span>
           </div>
 
-          {movs.length === 0 ? (
+          {totalMovimientos === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/10 p-10 text-center">
               <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
                 <Receipt className="w-6 h-6" />
