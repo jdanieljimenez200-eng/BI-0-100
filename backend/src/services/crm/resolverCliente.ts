@@ -19,6 +19,8 @@ export interface ArgsResolverCliente {
   /** Nombre escrito a mano cuando no se vincula a ningún cliente del CRM. */
   nombreLibre?: string | null;
   telefonoLibre?: string | null;
+  /** Fecha local de quien opera (utils/fechaLocal.ts); por defecto, hoy en UTC. */
+  hoy?: string;
 }
 
 export type ResultadoCliente =
@@ -46,6 +48,7 @@ export async function resolverClienteParaVenta(
   args: ArgsResolverCliente,
 ): Promise<ResultadoCliente> {
   const { usuarioId, trabajadorId, negocioId, productoId, clienteId, crearCliente } = args;
+  const hoy = args.hoy ?? new Date().toISOString().slice(0, 10);
 
   if (clienteId && crearCliente) {
     return { ok: false, status: 400, error: 'Envía cliente_id o crear_cliente, no ambos' };
@@ -62,7 +65,7 @@ export async function resolverClienteParaVenta(
 
     // El CRM se mantiene solo: comprar es la señal de contacto más fuerte que
     // existe, y un lead que ya pagó dejó de ser un lead.
-    cliente.fecha_ultimo_contacto = new Date().toISOString().slice(0, 10);
+    cliente.fecha_ultimo_contacto = hoy;
     if (cliente.estado === 'lead' || cliente.estado === 'inactivo') {
       cliente.estado = 'cliente';
     }
@@ -93,7 +96,7 @@ export async function resolverClienteParaVenta(
       email:                 crearCliente.email?.trim() || null,
       tipo_contacto:         'cliente',
       estado:                'cliente',
-      fecha_ultimo_contacto: new Date().toISOString().slice(0, 10),
+      fecha_ultimo_contacto: hoy,
     });
     await manager.save(Cliente, nuevo);
 

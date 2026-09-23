@@ -12,8 +12,6 @@ export interface CalibrationResult {
 }
 
 export function calcularCalibracion(movimientos: MovimientoContable[]): CalibrationResult {
-  const advertencias: string[] = [];
-
   // Agrupar por mes YYYY-MM (excluir auto-generados como IVA/ISR calculados)
   const byMonth: Record<string, { ingresos: number; egresos: number }> = {};
 
@@ -26,6 +24,23 @@ export function calcularCalibracion(movimientos: MovimientoContable[]): Calibrat
     else byMonth[month].egresos += monto;
   }
 
+  return calibrarPorMes(byMonth);
+}
+
+/**
+ * La misma calibración a partir de totales mensuales ya agregados en SQL
+ * (`agregadoMensual` en consultasContables.ts), sin cargar movimientos.
+ */
+export function calcularCalibracionMensual(
+  meses: ReadonlyArray<{ mes: string; ingresos: number; egresos: number }>
+): CalibrationResult {
+  const byMonth: Record<string, { ingresos: number; egresos: number }> = {};
+  for (const m of meses) byMonth[m.mes] = { ingresos: m.ingresos, egresos: m.egresos };
+  return calibrarPorMes(byMonth);
+}
+
+function calibrarPorMes(byMonth: Record<string, { ingresos: number; egresos: number }>): CalibrationResult {
+  const advertencias: string[] = [];
   const months = Object.keys(byMonth).sort();
   const n = months.length;
 

@@ -24,7 +24,7 @@ export class InsumoInventario {
   @Column()
   usuario_id!: string;
 
-  @ManyToOne(() => Negocio, { onDelete: 'CASCADE', nullable: true })
+  @ManyToOne(() => Negocio, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'negocio_id' })
   negocio!: Negocio | null;
 

@@ -321,6 +321,23 @@ router.delete('/:id', authenticate, async (req: any, res: Response) => {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
 
+    // Con ventas, cotizaciones o movimientos contables no se borra: la FK de
+    // ventas era ON DELETE CASCADE y el borrado se llevaba todo el historial de
+    // ventas, dejando en Contabilidad ingresos sin venta. (Los análisis del
+    // producto sí se borran con él: son parte del producto, no de la operación.)
+    const [historial] = await AppDataSource.query(
+      `SELECT EXISTS (SELECT 1 FROM ventas WHERE producto_id = $1 AND usuario_id = $2)
+           OR EXISTS (SELECT 1 FROM cotizaciones WHERE producto_id = $1 AND usuario_id = $2)
+           OR EXISTS (SELECT 1 FROM movimientos_contables WHERE producto_id = $1 AND usuario_id = $2) AS tiene`,
+      [id, usuarioId]
+    );
+    if (historial?.tiene) {
+      return res.status(409).json({
+        error: 'Este producto tiene ventas, cotizaciones o movimientos contables registrados y no se puede borrar sin perder ese historial.',
+        con_historial: true,
+      });
+    }
+
     if (producto.imagen_url) {
       StorageService.deleteFile(producto.imagen_url).catch(() => {});
     }

@@ -1,5 +1,5 @@
 import { AppDataSource } from '../../config/database';
-import { Articulo } from '../../models/Articulo';
+import { InsumoInventario } from '../../models/InsumoInventario';
 import { MetaNegocio as MetaNegocioEntity } from '../../models/MetaNegocio';
 import { evaluarAlertas } from './alertasService';
 import { rangosPeriodo, resumirYFiltrar, ResumenNiveles, RangoFechas } from './periodos';
@@ -59,35 +59,40 @@ export async function agregarVentas(
 }
 
 /**
- * Artículos con control de stock relevante. Se excluyen los servicios (no tienen
- * existencias) y los vendibles sin mínimo configurado que además no son insumos,
- * para no inundar el panel con falsos "agotado".
+ * Insumos de la herramienta de Inventario con existencias bajas.
+ *
+ * Antes se leía la tabla `articulos`, que nació como "fase 1" de un catálogo
+ * unificado que nunca se terminó: nada la escribe, así que el panel jamás
+ * avisaba de un insumo agotado. La fuente real es `insumos_inventario` (la
+ * mueven las compras, las mermas y cada venta del POS con receta).
+ *
+ * Solo trae candidatos: agotados o en/bajo su mínimo. `alertasStock` decide el
+ * nivel (rojo agotado, amarillo bajo mínimo).
  */
 export async function obtenerStockCritico(
   usuarioId: string,
   negocioId: string | null = null,
   limite = 200,
 ): Promise<ItemStock[]> {
-  const qb = AppDataSource.getRepository(Articulo)
-    .createQueryBuilder('a')
-    .select(['a.id', 'a.nombre', 'a.stock_actual', 'a.stock_minimo', 'a.unidad'])
-    .where('a.usuario_id = :usuarioId', { usuarioId })
-    .andWhere('a.activo = true')
-    .andWhere("a.tipo <> 'servicio'")
-    .andWhere('(a.es_insumo = true OR a.stock_minimo > 0)')
-    .orderBy('a.stock_actual', 'ASC')
+  const qb = AppDataSource.getRepository(InsumoInventario)
+    .createQueryBuilder('i')
+    .select(['i.id', 'i.nombre', 'i.stock_actual', 'i.stock_minimo', 'i.unidad'])
+    .where('i.usuario_id = :usuarioId', { usuarioId })
+    .andWhere('i.activo = true')
+    .andWhere('(i.stock_actual <= 0 OR (i.stock_minimo > 0 AND i.stock_actual <= i.stock_minimo))')
+    .orderBy('i.stock_actual', 'ASC')
     .take(limite);
 
   if (negocioId) {
-    qb.andWhere('a.negocio_id = :negocioId', { negocioId });
+    qb.andWhere('(i.negocio_id = :negocioId OR i.negocio_id IS NULL)', { negocioId });
   }
 
   const filas = await qb.getMany();
-  return filas.map((a) => ({
-    nombre: a.nombre,
-    stock_actual: num(a.stock_actual),
-    stock_minimo: num(a.stock_minimo),
-    unidad: a.unidad ?? undefined,
+  return filas.map((i) => ({
+    nombre: i.nombre,
+    stock_actual: num(i.stock_actual),
+    stock_minimo: num(i.stock_minimo),
+    unidad: i.unidad ?? undefined,
   }));
 }
 
@@ -164,6 +169,8 @@ export interface OpcionesAlertasOperativas {
   dias?: number;
   umbralCaidaIngresos?: number;
   soloAccionables?: boolean;
+  /** "Hoy" local de quien consulta (utils/fechaLocal.ts). Sin él, el día UTC. */
+  hoy?: string;
 }
 
 export interface AlertasOperativas {
@@ -199,17 +206,22 @@ export async function generarAlertasOperativas(
 ): Promise<AlertasOperativas> {
   const { usuarioId } = opciones;
   const negocioId = opciones.negocioId ?? null;
-  const rangos = rangosPeriodo(opciones.dias ?? 30);
+  const rangos = rangosPeriodo(opciones.dias ?? 30, opciones.hoy ? new Date(`${opciones.hoy}T00:00:00Z`) : new Date());
 
   const metasRepo = AppDataSource.getRepository(MetaNegocioEntity);
   const whereMetas = negocioId
     ? { usuario_id: usuarioId, activa: true, negocio_id: negocioId }
     : { usuario_id: usuarioId, activa: true };
 
-  const [ventasActual, ventasAnterior, stock, metas, mantenimientos] = await Promise.all([
+  const [ventasActual, ventasAnterior, stock, insumosActivos, metas, mantenimientos] = await Promise.all([
     agregarVentas(usuarioId, rangos.actual.desde, rangos.actual.hasta, negocioId),
     agregarVentas(usuarioId, rangos.anterior.desde, rangos.anterior.hasta, negocioId),
     obtenerStockCritico(usuarioId, negocioId),
+    AppDataSource.getRepository(InsumoInventario)
+      .createQueryBuilder('i')
+      .where('i.usuario_id = :usuarioId AND i.activo = true', { usuarioId })
+      .andWhere(negocioId ? '(i.negocio_id = :negocioId OR i.negocio_id IS NULL)' : '1=1', { negocioId })
+      .getCount(),
     metasRepo.find({ where: whereMetas, order: { periodo_fin: 'ASC' }, take: 100 }),
     obtenerMantenimientosPendientes(usuarioId, negocioId, rangos.actual.hasta),
   ]);
@@ -255,7 +267,7 @@ export async function generarAlertasOperativas(
       ventas_anterior: ventasAnterior.conteo,
     },
     metas_evaluadas: entradaMetas.length,
-    articulos_evaluados: stock.length,
+    articulos_evaluados: insumosActivos,
     equipos_pendientes: mantenimientos.length,
   };
 }

@@ -33,7 +33,7 @@ export class MovimientoInventario {
   @Column({ type: 'uuid', nullable: true })
   creado_por_id!: string | null;
 
-  @ManyToOne(() => InsumoInventario, { onDelete: 'CASCADE' })
+  @ManyToOne(() => InsumoInventario, { onDelete: 'NO ACTION' }) // el insumo se archiva, no se borra
   @JoinColumn({ name: 'insumo_id' })
   insumo!: InsumoInventario;
 

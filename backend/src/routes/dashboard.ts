@@ -13,6 +13,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { getLimites } from '../services/billing/planService';
 import { extraerAlertas, resumirNiveles } from '../services/alertas/extractorAnalisis';
 import { generarAlertasOperativas } from '../services/alertas/agregadorOperativo';
+import { hoyDePeticion } from '../utils/fechaLocal';
 import { generarResumenIaAlertas } from '../services/alertas/resumenIaService';
 import { generarResumenCompleto } from '../services/alertas/resumenCompletoService';
 import { requirePlanFeature, getPlanFromDB } from '../middleware/requirePlan';
@@ -275,6 +276,7 @@ router.get('/alertas-operativas', authenticate, async (req: AuthRequest, res: Re
       dias,
       umbralCaidaIngresos,
       soloAccionables,
+      hoy: await hoyDePeticion(req),
     });
 
     res.json(resultado);
@@ -308,6 +310,7 @@ router.get(
         dias,
         umbralCaidaIngresos,
         soloAccionables: false,
+        hoy: await hoyDePeticion(req),
       });
 
       const resumenIa = await generarResumenIaAlertas({

@@ -26,7 +26,7 @@ export class PagoNomina {
   @Column({ type: 'uuid', nullable: true })
   creado_por_id!: string | null;
 
-  @ManyToOne(() => Empleado, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Empleado, { onDelete: 'NO ACTION' }) // el historial de nómina se conserva
   @JoinColumn({ name: 'empleado_id' })
   empleado!: Empleado;
 
