@@ -45,7 +45,7 @@ Este documento es la **fuente única de verdad técnica** para Claude, Antigravi
 - **Runtime & Servidor**: Node.js 20 + Express 4.18 + TypeScript 5 (CommonJS, `dist/app.js`).
 - **ORM & DB**: TypeORM 0.3 + PostgreSQL 15 (`AppDataSource` en `src/config/database.ts`).
   - **Identificadores**: Todas las entidades usan **UUID v4** como cadenas (`@PrimaryGeneratedColumn('uuid')`). **Prohibido usar `parseInt()`**.
-- **Colas y Tareas en Segundo Plano**: BullMQ 5 + ioredis 5 (`src/workers/analysisQueue.ts` y `src/workers/analysisWorker.ts`). BullMQ exige ioredis; el resto (auth, denylist, locks, rate limit, SSE pub/sub) usa `redis` (node-redis) de `config/redis.ts`. Los dos clientes son deliberados. Solo se reintentan errores transitorios (`utils/erroresTransitorios.ts`).
+- **Colas y Tareas en Segundo Plano**: BullMQ 5 + ioredis 5 (`src/workers/analysisQueue.ts` y `src/workers/analysisWorker.ts`). BullMQ exige ioredis; el resto (auth, denylist, locks, rate limit, SSE pub/sub) usa `redis` (node-redis) de `config/redis.ts`. Los dos clientes son deliberados. Solo se reintentan errores transitorios (`utils/erroresTransitorios.ts`). En producción los workers (análisis y `calendar-sync`) corren en un **proceso aparte** (`workers/runWorker.ts`, `npm run worker:prod`, servicio `worker` de `docker-compose.prod.yml`) y la API lleva `RUN_WORKER=false`; sin esa variable la API arranca los workers dentro de su proceso (útil en desarrollo). Los eventos del worker llegan al navegador por el puente SSE de Redis.
 - **Dependencias dobles conocidas**: `resend` + `nodemailer` (SMTP como alternativa en `emailService`), `express-validator` (admin, billing, equipo, marca, vertical) + `zod` (resto; preferir zod en código nuevo).
 - **Inteligencia Artificial**: `@anthropic-ai/sdk` 0.125, modelo por tarea (Haiku 4.5 / Sonnet 5 / Opus 5, ver *Modelos de IA*) con fallback determinista estructurado y validación Zod.
 - **Seguridad & Auth**: JWT (Access Token 15 min, Refresh Token 7 días), revocación en Redis vía `deny:${jti}`, `bcryptjs`, Helmet, CORS parametrizado y `cookie-parser`.
@@ -56,7 +56,7 @@ Este documento es la **fuente única de verdad técnica** para Claude, Antigravi
 - **Framework**: Next.js 16 (React 19, Turbopack, App Router, `output: 'standalone'`).
 - **Estilos & UI**: Tailwind CSS + Lucide React Icons.
 - **Animaciones**: GSAP 3 (GreenSock) en auth y landing (optimizadas con `requestAnimationFrame` sin forzar re-renders de React) y `framer-motion` en el dashboard (~55 componentes). `react-is` es dependencia de pares de `recharts`: no quitarla.
-- **Gestión de Estado**: Zustand (`analysisStore.ts`) para estado global de análisis + React Context para temas.
+- **Gestión de Estado**: sin store global (Zustand se retiró en 2026-09: `analysisStore.ts` no tenía consumidores). Estado local de React + React Context para temas (`components/ThemeProvider.tsx`); el progreso de un análisis se sigue con `app/hooks/useAnalysisEvents.ts` (SSE con ticket + polling escalonado de respaldo).
 - **Cliente HTTP**: Axios centralizado (`lib/api.ts` y `lib/config.ts`) con interceptores para rotación automática de JWT, detección de desconexión y `AbortController`.
 - **Sin proxy en Next**: el navegador llama al API con `NEXT_PUBLIC_API_URL` (absoluta). El refresh token va en la cookie HttpOnly `bi_refresh` (`Path=/api/auth`), así que frontend y API deben compartir dominio registrable (`app.tudominio.com` + `api.tudominio.com`); el access token (15 min) va en `localStorage`. SSE usa ticket de un solo uso (`POST /api/events/ticket`), nunca el JWT en la URL.
 
@@ -119,10 +119,10 @@ Montadas en `backend/src/app.ts`:
 8. `/api/brief`: Diagnóstico ejecutivo con IA Claude Sonnet 5 (cuota global).
 9. `/api/herramientas`: Directorio y asignación de herramientas de negocio.
 10. `/api/equipo`: Invitaciones y asignaciones de colaboradores (`trabajador`).
-11. `/api/pos`: Terminal punto de venta, tickets con folios seguros bajo advisory locks.
-12. `/api/cotizaciones`: Generación de cotizaciones con folios correlativos `MAX(...) + 1`.
+11. `/api/pos`: Terminal punto de venta, tickets con folio de `secuencias_folio` (ver regla 4). Las ventas se cancelan, nunca se borran (ver regla 9).
+12. `/api/cotizaciones`: Generación de cotizaciones con folio de `secuencias_folio` (ver regla 4); la conversión a venta es atómica (índice único en `ventas.cotizacion_id`).
 13. `/api/inventario`: Control de stock de insumos con bloqueo pesimista `pessimistic_write`.
-14. `/api/contabilidad`: Importación de transacciones CSV, conciliación y deduplicación.
+14. `/api/contabilidad`: Importación de transacciones CSV, conciliación y deduplicación. **El listado va paginado por cursor** (`GET /:productoId` → `{ movimientos, siguiente }`, filtros `tipo/fuente/categoria/q/desde/hasta`, `limite` ≤ 500) y los KPIs, P&L, canales, liquidaciones y calibración se agregan en SQL (`services/contabilidad/consultasContables.ts`; `GET /:productoId/resumen`, `GET /:productoId/exportar` en streaming). Nunca cargues el historial completo con `getMany()`: con 600k movimientos el proceso se quedaba sin memoria y tumbaba la API para todos.
 15. `/api/nomina`: Registro y cálculo de nóminas para colaboradores.
 16. `/api/clientes`: Directorio de clientes y CRM básico.
 17. `/api/negocios`: Perfil empresarial y configuración de actividad económica.
@@ -161,7 +161,7 @@ Montadas en `backend/src/app.ts`:
 
 > [!IMPORTANT]
 > **4. Generación de Folios y Concurrencia**
-> En cotizaciones y POS, los folios se generan con `MAX(NULLIF(regexp_replace(...)))::integer + 1` dentro de transacciones protegidas con `pg_advisory_xact_lock()`. NUNCA uses `count()` porque produce colisiones si se eliminan registros previos.
+> En POS y cotizaciones el folio sale de `siguienteFolio(manager, usuarioId, 'venta' | 'cotizacion')` (`utils/folios.ts`), **dentro de la transacción que crea el registro**: `UPDATE secuencias_folio SET ultimo = ultimo + 1 … RETURNING` (O(1), bloqueo de fila). El primer uso siembra el contador desde el máximo `POS-`/`COT-` existente, y si el número ya existe se resincroniza solo. NUNCA vuelvas a `MAX(...) + 1` (escanea todas las ventas de la cuenta con el lock tomado) ni a `count()` (colisiona si se borran registros).
 
 > [!IMPORTANT]
 > **5. Conexión Perezosa de BullMQ**
@@ -181,6 +181,20 @@ Montadas en `backend/src/app.ts`:
 > - Orígenes no permitidos → 403 en `middleware/cors.ts`; los rate limits usan `AlmacenLimiteRedis` (compartido entre réplicas, memoria de respaldo).
 > - Los seeds y scripts de demo importan primero `scripts/guardiaSeeds.ts`: abortan con `NODE_ENV=production` o base de datos remota.
 > - Los tests de integración solo escriben en bases cuyo nombre contenga `test` (`__tests__/helpers/dbGuard.ts`).
+> - **"Hoy" nunca con `new Date().toISOString().slice(0, 10)`** (día UTC: en México lo cobrado desde las 18:00 quedaba con fecha de mañana). Usa `hoyDePeticion(req)` de `utils/fechaLocal.ts` (zona del navegador por `X-Zona-Horaria`, luego la guardada del usuario, luego CDMX).
+> - **Historial que no se borra:** ventas, pagos de nómina y movimientos de inventario tienen FK `NO ACTION` hacia producto, empleado e insumo (migración `1775590000000`). Un producto con ventas no se borra (409); un empleado con pagos o un insumo con movimientos se **archivan** (`activo = false`). No vuelvas a poner `CASCADE` en esas FK.
+> - **Altas de dinero con `idempotente('<ámbito>')`** (`middleware/idempotency.ts`): el cliente manda `Idempotency-Key` (8–100 caracteres `[A-Za-z0-9_-]`, uno por intento de guardado; `nuevaClaveIdempotencia()` en `frontend/lib/api.ts`) y un reintento devuelve la respuesta guardada 24 h con `Idempotent-Replayed: true`; otro cuerpo con la misma clave → 422. Sin cabecera se comporta como antes. Un `POST` nuevo que cree ventas, pagos o movimientos debe llevarlo.
+> - **Listados con historial paginan por cursor** con `paginar()`/`responderPagina()` de `utils/paginacion.ts`: `?antes=<cursor>&limite=<n>` (200 por defecto, 500 máx.) y el cursor siguiente en la cabecera `X-Siguiente` (expuesta en CORS); el cuerpo sigue siendo el array. Nada de `.limit()` con `leftJoinAndSelect` (limita filas unidas, no entidades) ni de `OFFSET`.
+> - **Números con tope de columna**: usa `dinero()`, `cantidad()` y `costoUnitario()` de `utils/limitesNumericos.ts` en los esquemas Zod (un `1e12` o un `NaN` no llegan a Postgres). `venta_items.cantidad` es `numeric(12,3)`.
+> - **Gating por petición**: `requireToolCapability`/`requireHerramientaAccess` memorizan usuario y permisos en `req`, y la selección de herramientas vive en Redis 60 s (`herr_sel:{cuenta}`). Al cambiar la selección llama a `invalidatePlanCache(cuentaId)`. El tope del plan gratuito se cuenta bajo un candado Redis por cuenta y herramienta.
+> - **Tiempo máximo por consulta**: el pool fija `statement_timeout` (30 s, `DB_STATEMENT_TIMEOUT_MS`) e `idle_in_transaction_session_timeout` (60 s). Un trabajo largo legítimo hace `SET LOCAL statement_timeout = 0` dentro de su transacción (como la purga de papelera); las migraciones ya van sin límite (`config/cli-datasource.ts`).
+> - **Rate limit general por usuario**: con token de firma válida cuenta por `userId` (`RATE_LIMIT_MAX_USUARIO`, 1 200 / 15 min); sin sesión, por IP (`RATE_LIMIT_MAX`, 300). `req.ip` depende de `TRUST_PROXY` (saltos de proxy delante del backend; 1 por defecto, 2 con Cloudflare delante del hosting).
+> - **Una venta no se borra: se cancela.** `POST /api/pos/ventas/:id/cancelar` (y el alias antiguo `DELETE`) deja `ventas.estado = 'cancelada'` con `cancelada_por_id`, `motivo_cancelacion` y `fecha_cancelacion`, genera asientos contables **inversos** con fecha de hoy (categoría `Cancelaciones`, para no tocar un mes ya cerrado), devuelve el almacén con movimientos de **entrada** (la salida original se conserva) y escribe en `auditoria_dinero`. Reportes ya excluye las canceladas en `filtroVentas`/`filtroAmbito`; si escribes una consulta nueva sobre `ventas`, filtra `estado <> 'cancelada'`.
+> - **Acciones sensibles dentro de una herramienta** (`ACCIONES_SENSIBLES` en `planService.ts`: `cancelar_ventas`, `precio_libre`): viven en el mismo objeto `permisos` del trabajador pero NO son capacidades (están fuera de `CapabilityKey`). Se comprueban con `await permiteAccion(req, 'accion')` de `middleware/requirePlan.ts`, **después** del gating de la herramienta; el dueño siempre puede. Una acción nueva se declara en `PermisosTrabajador`, en `ACCIONES_SENSIBLES` y en el tipo `AccionSensibleKey`.
+> - **El precio lo pone el catálogo.** Con `item_pos_id`, el item debe ser de la cuenta (si no, 404) y el precio se compara con el del catálogo: si difiere hace falta `precio_libre`, y la línea guarda `precio_catalogo` junto a `precio_unitario` más un apunte en `auditoria_dinero`.
+> - **Los asientos derivados se corrigen en su herramienta**, no en Contabilidad: `PATCH`/`DELETE /contabilidad/movimiento/:id` responden 409 si el movimiento tiene `referencia_tipo` distinto de `ajuste_manual`. Igual en Almacén: un movimiento con `venta_id` no se borra a mano. Editar o borrar un movimiento manual queda auditado (`GET /api/contabilidad/auditoria`, solo el dueño).
+> - **Redondeo de dinero solo con `r2`/`r3`/`r4` de `utils/dinero.ts`**. Nada de `Math.round(v * 100) / 100` suelto: con coma flotante, 1,005 se redondeaba a 1,00 y el ticket no cuadraba con su asiento.
+> - **Moneda por defecto**: `monedaDeCuenta(usuarioId, productoId)` (`utils/monedaCuenta.ts`), nunca `'USD'` fijo; un negocio mexicano daba de alta sueldos y cotizaciones en dólares.
 > - Una herramienta nueva se declara en CUATRO sitios con exhaustividad en tipos: `PermisosTrabajador` (`models/AsignacionTrabajador.ts`), `CAPABILITIES` y `HERRAMIENTAS_POR_PLAN` (`services/billing/planService.ts`), `SERVICIOS_CATALOGO` (`services/billing/serviciosCatalogo.ts`) y la tarjeta `META` de `frontend/app/dashboard/herramientas/page.tsx`. Si falta alguno, no compila.
 
 > [!CAUTION]
