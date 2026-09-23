@@ -251,7 +251,7 @@ function InventarioInner({
   }, []);
 
   const eliminarInsumo = useCallback(async (id: string) => {
-    if (!confirm('¿Eliminar este insumo? Sus movimientos quedarán huérfanos.')) return;
+    if (!confirm('¿Eliminar este insumo? Si tiene movimientos se archivará para conservar su historial, y saldrá de las recetas.')) return;
     await api.delete(`/inventario/insumos/${id}`).catch(() => {});
     setInsumos((prev) => prev.filter((i) => i.id !== id));
     cargarDatos();
