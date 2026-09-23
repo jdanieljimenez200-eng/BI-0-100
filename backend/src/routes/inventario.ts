@@ -1,11 +1,12 @@
 import { Router, Response } from 'express';
-import { exigirUuid, fechaISO } from '../middleware/validate';
+import { exigirUuid, esUuid, fechaISO, fechaISOOpcional, validateBody } from '../middleware/validate';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
 import { ah } from '../utils/asyncHandler';
 import { logger } from '../utils/logger';
 import { InsumoInventario } from '../models/InsumoInventario';
+import { ItemPOSInsumo } from '../models/ItemPOSInsumo';
 import { MovimientoInventario } from '../models/MovimientoInventario';
 import { MovimientoContable } from '../models/MovimientoContable';
 import { Producto } from '../models/Producto';
@@ -13,7 +14,14 @@ import {
   aplicarMovimiento,
   calcularResumenInventario,
   TipoMovInventario,
+  ErrorMovimiento,
 } from '../services/inventario/inventarioService';
+import { hoyDePeticion } from '../utils/fechaLocal';
+import { idempotente } from '../middleware/idempotency';
+import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
+import { z } from 'zod';
+import { cantidad, costoUnitario } from '../utils/limitesNumericos';
+import { Negocio } from '../models/Negocio';
 
 const router = Router();
 exigirUuid(router, 'id');
@@ -38,11 +46,13 @@ const repoProd    = () => AppDataSource.getRepository(Producto);
 // ═══════════════════════════════════════════════════════════════════════════
 
 router.get('/insumos', ah(async (req: AuthRequest, res: Response) => {
-  const { negocio_id } = req.query as Record<string, string | undefined>;
+  const { negocio_id, incluir_inactivos } = req.query as Record<string, string | undefined>;
+  // Los archivados (borrados con historial) no se listan salvo que se pidan.
+  const soloActivos = incluir_inactivos === 'true' ? {} : { activo: true };
   const insumos = await repoInsumos().find({
     where: negocio_id
-      ? { usuario_id: req.userId!, negocio_id }
-      : { usuario_id: req.userId! },
+      ? { usuario_id: req.userId!, negocio_id, ...soloActivos }
+      : { usuario_id: req.userId!, ...soloActivos },
     order: { nombre: 'ASC' },
   });
 
@@ -50,22 +60,34 @@ router.get('/insumos', ah(async (req: AuthRequest, res: Response) => {
   res.json({ insumos, resumen });
 }));
 
-router.post('/insumos', ah(async (req: AuthRequest, res: Response) => {
-  const { nombre, categoria, unidad, stock_minimo, costo_promedio, proveedor_default, ubicacion, emoji, negocio_id, stock_actual } = req.body as {
-    nombre: string;
-    categoria?: string;
-    unidad?: string;
-    stock_minimo?: number;
-    stock_actual?: number;
-    costo_promedio?: number;
-    proveedor_default?: string;
-    ubicacion?: string;
-    emoji?: string;
-    negocio_id?: string | null;
-  };
+// Longitudes y máximos = columnas de `insumos_inventario`. Sin esquema, un texto
+// en un campo numérico acababa guardado como NaN (numeric lo admite) y
+// envenenaba la valuación del almacén.
+const textoOpcional = (max: number) => z.string().trim().max(max).nullable().optional();
+const CamposInsumo = {
+  nombre: z.string().trim().min(1, 'nombre es requerido').max(255),
+  categoria: textoOpcional(100),
+  unidad: z.string().trim().min(1).max(30).optional(),
+  stock_minimo: cantidad('stock_minimo').optional(),
+  proveedor_default: textoOpcional(200),
+  ubicacion: textoOpcional(200),
+  emoji: z.string().refine((e) => [...e].length <= 8, 'emoji demasiado largo').nullable().optional(),
+};
+const CrearInsumoSchema = z.object({
+  ...CamposInsumo,
+  stock_actual: cantidad('stock_actual').optional(),
+  costo_promedio: costoUnitario('costo_promedio').optional(),
+  negocio_id: z.string().uuid().nullable().optional(),
+});
+// Stock y costo solo cambian con movimientos (así queda el historial).
+const EditarInsumoSchema = z.object(CamposInsumo).partial().extend({ activo: z.boolean().optional() });
 
-  if (!nombre?.trim()) {
-    res.status(400).json({ error: 'nombre es requerido' });
+router.post('/insumos', validateBody(CrearInsumoSchema), ah(async (req: AuthRequest, res: Response) => {
+  const { nombre, categoria, unidad, stock_minimo, costo_promedio, proveedor_default, ubicacion, emoji, negocio_id, stock_actual } =
+    req.body as z.infer<typeof CrearInsumoSchema>;
+
+  if (negocio_id && !(await AppDataSource.getRepository(Negocio).exists({ where: { id: negocio_id, usuario_id: req.userId! } }))) {
+    res.status(404).json({ error: 'Negocio no encontrado' });
     return;
   }
 
@@ -88,7 +110,7 @@ router.post('/insumos', ah(async (req: AuthRequest, res: Response) => {
   res.status(201).json(insumo);
 }));
 
-router.patch('/insumos/:id', ah(async (req: AuthRequest, res: Response) => {
+router.patch('/insumos/:id', validateBody(EditarInsumoSchema), ah(async (req: AuthRequest, res: Response) => {
   const insumo = await repoInsumos().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!insumo) { res.status(404).json({ error: 'Insumo no encontrado' }); return; }
 
@@ -103,11 +125,24 @@ router.patch('/insumos/:id', ah(async (req: AuthRequest, res: Response) => {
   res.json(insumo);
 }));
 
+// Con movimientos, el insumo se archiva: borrarlo arrastraba en cascada todo su
+// historial de compras, mermas y consumos por venta. Sale de las recetas (como
+// antes con el borrado), así que ninguna venta nueva lo descuenta.
 router.delete('/insumos/:id', ah(async (req: AuthRequest, res: Response) => {
   const insumo = await repoInsumos().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!insumo) { res.status(404).json({ error: 'Insumo no encontrado' }); return; }
-  await repoInsumos().remove(insumo);
-  res.json({ ok: true });
+
+  const conHistorial = await repoMovs().exists({ where: { insumo_id: insumo.id, usuario_id: req.userId! } });
+  if (!conHistorial) {
+    await repoInsumos().remove(insumo);
+    res.json({ ok: true, archivado: false });
+    return;
+  }
+  await AppDataSource.transaction(async (manager) => {
+    await manager.delete(ItemPOSInsumo, { insumo_id: insumo.id, usuario_id: req.userId! });
+    await manager.update(InsumoInventario, { id: insumo.id, usuario_id: req.userId! }, { activo: false });
+  });
+  res.json({ ok: true, archivado: true, mensaje: 'El insumo tiene movimientos: se archivó para conservar su historial.' });
 }));
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -116,26 +151,58 @@ router.delete('/insumos/:id', ah(async (req: AuthRequest, res: Response) => {
 
 router.get('/movimientos', ah(async (req: AuthRequest, res: Response) => {
   const { insumo_id, desde, hasta } = req.query as Record<string, string | undefined>;
+  if (
+    (insumo_id && !esUuid(insumo_id)) ||
+    (desde && !fechaISO().safeParse(desde).success) ||
+    (hasta && !fechaISO().safeParse(hasta).success)
+  ) {
+    res.status(400).json({ error: 'Filtros inválidos (insumo_id UUID, fechas YYYY-MM-DD)' });
+    return;
+  }
+  // El join con el insumo es muchos-a-uno: no multiplica filas, así que la
+  // paginación por cursor cuenta movimientos, no filas unidas.
   const qb = repoMovs()
     .createQueryBuilder('m')
     .leftJoinAndSelect('m.insumo', 'insumo')
-    .where('m.usuario_id = :uid', { uid: req.userId })
-    .orderBy('m.fecha', 'DESC')
-    .addOrderBy('m.fecha_creacion', 'DESC');
+    .where('m.usuario_id = :uid', { uid: req.userId });
 
   if (insumo_id) qb.andWhere('m.insumo_id = :iid', { iid: insumo_id });
   if (desde)     qb.andWhere('m.fecha >= :d', { d: desde });
   if (hasta)     qb.andWhere('m.fecha <= :h', { h: hasta });
 
-  const movs = await qb.limit(200).getMany();
-  res.json(movs);
+  const pagina = await paginar(
+    qb,
+    [{ expr: 'm.fecha', tipo: 'date' }, { expr: 'm.fecha_creacion', tipo: 'timestamp' }, { expr: 'm.id', tipo: 'uuid' }],
+    req.query.antes,
+    leerLimite(req.query.limite)
+  );
+  if (!pagina) { res.status(400).json({ error: 'Cursor de paginación inválido' }); return; }
+  responderPagina(res, pagina);
 }));
 
-router.post('/movimientos', requireHerramientaAccess('inventario', contarMovimientosInventario), ah(async (req: AuthRequest, res: Response) => {
+const MovimientoSchema = z.object({
+  insumo_id: z.string().uuid('insumo_id debe ser un UUID válido'),
+  tipo: z.enum(['entrada', 'salida', 'ajuste', 'merma'], { errorMap: () => ({ message: 'tipo debe ser entrada, salida, ajuste o merma' }) }),
+  cantidad: cantidad('cantidad').optional(),
+  costo_unitario: costoUnitario('costo_unitario').optional(),
+  stock_objetivo: cantidad('stock_objetivo').optional(),
+  motivo: z.string().trim().max(255).optional(),
+  proveedor: z.string().trim().max(200).optional(),
+  fecha: fechaISOOpcional('fecha inválida (YYYY-MM-DD)'),
+  producto_id: z.string().uuid().optional(),
+  registrar_en_finanzas: z.boolean().optional(),
+});
+
+router.post('/movimientos', idempotente('inventario_mov'), requireHerramientaAccess('inventario', contarMovimientosInventario), ah(async (req: AuthRequest, res: Response) => {
+  const parsed = MovimientoSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Movimiento inválido' });
+    return;
+  }
   const {
     insumo_id,
     tipo,
-    cantidad,
+    cantidad: cantidadMov,
     costo_unitario,
     stock_objetivo,
     motivo,
@@ -143,29 +210,8 @@ router.post('/movimientos', requireHerramientaAccess('inventario', contarMovimie
     fecha,
     producto_id,
     registrar_en_finanzas,
-  } = req.body as {
-    insumo_id: string;
-    tipo: TipoMovInventario;
-    cantidad?: number;
-    costo_unitario?: number;
-    stock_objetivo?: number;
-    motivo?: string;
-    proveedor?: string;
-    fecha?: string;
-    producto_id?: string;       // necesario si tipo='entrada' Y registrar_en_finanzas
-    registrar_en_finanzas?: boolean;
-  };
-
-  if (!insumo_id || !tipo) {
-    res.status(400).json({ error: 'insumo_id y tipo son requeridos' });
-    return;
-  }
-
-  if (fecha !== undefined && fecha !== '' && !fechaISO().safeParse(fecha).success) {
-    res.status(400).json({ error: 'fecha inválida (YYYY-MM-DD)' });
-    return;
-  }
-  const fechaMov = fecha || new Date().toISOString().slice(0, 10);
+  } = parsed.data;
+  const fechaMov = fecha || (await hoyDePeticion(req));
 
   // Pre-verificar producto si se registrará en finanzas
   const prod = (tipo === 'entrada' && registrar_en_finanzas !== false && producto_id)
@@ -187,7 +233,7 @@ router.post('/movimientos', requireHerramientaAccess('inventario', contarMovimie
         tipo,
         stockActual:         Number(insumo.stock_actual),
         costoPromedioActual: Number(insumo.costo_promedio),
-        cantidad:            Number(cantidad ?? 0),
+        cantidad:            Number(cantidadMov ?? 0),
         costoUnitarioMov:    Number(costo_unitario ?? 0),
         stockObjetivo:       stock_objetivo !== undefined ? Number(stock_objetivo) : undefined,
       });
@@ -250,7 +296,13 @@ router.post('/movimientos', requireHerramientaAccess('inventario', contarMovimie
       res.status(404).json({ error: 'Insumo no encontrado' });
       return;
     }
-    res.status(400).json({ error: err instanceof Error ? err.message : 'Movimiento inválido' });
+    // Solo los errores de la operación son 400. Antes CUALQUIER error (incluido
+    // un corte de la base) salía como 400 con el mensaje interno de Postgres.
+    if (err instanceof ErrorMovimiento) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
   }
 }));
 
@@ -261,6 +313,18 @@ router.delete('/movimientos/:id', ah(async (req: AuthRequest, res: Response) => 
   // Si el usuario quiere "revertir" un movimiento, debe crear el contrario.
   const mov = await repoMovs().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!mov) { res.status(404).json({ error: 'Movimiento no encontrado' }); return; }
+
+  // Un movimiento de una venta no se borra desde aquí: es el consumo (o la
+  // devolución) que respalda esa venta, y borrarlo deja al almacén sin poder
+  // explicar el stock y rompe la devolución al cancelar. Se corrige cancelando
+  // la venta en el POS.
+  if (mov.venta_id) {
+    res.status(409).json({
+      error: 'Este movimiento lo generó una venta del POS. Cancela la venta y el almacén se ajusta solo.',
+      venta_id: mov.venta_id,
+    });
+    return;
+  }
 
   if (mov.movimiento_contable_id) {
     await repoCont().delete({ id: mov.movimiento_contable_id, usuario_id: req.userId! }).catch((err) => {

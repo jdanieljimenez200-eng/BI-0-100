@@ -18,6 +18,7 @@ import {
   sanitizePermisos,
   isCapabilityKey,
   CAPABILITIES,
+  ACCIONES_SENSIBLES,
 } from '../services/billing/planService';
 import { bloquearSesiones } from '../services/auth/bloqueoSesion';
 
@@ -57,8 +58,24 @@ function handleValidation(req: AuthRequest, res: Response): boolean {
 // ─── GET /api/equipo/capabilities ─────────────────────────────────────────────
 // Catálogo de capacidades para que la UI pinte los toggles con su label y marca
 // las sensibles (finanzas, nómina, contabilidad) para pedir confirmación.
+//
+// Al final van las ACCIONES sensibles (cancelar ventas, cobrar fuera del
+// catálogo) con `grupo: 'acciones'`: no dan acceso a nada nuevo, afinan lo que
+// se puede hacer dentro de una herramienta ya concedida. Se conceden por el
+// mismo PATCH de permisos. Van en la misma lista, y no en un endpoint aparte,
+// para que una UI que solo conozca los dos grupos de siempre simplemente no las
+// pinte en vez de romperse.
 router.get('/capabilities', (_req: AuthRequest, res: Response) => {
-  res.json(CAPABILITIES);
+  res.json([
+    ...CAPABILITIES,
+    ...ACCIONES_SENSIBLES.map((a) => ({
+      key: a.key,
+      grupo: 'acciones' as const,
+      label: a.label,
+      sensible: true,
+      requiere: a.requiere,
+    })),
+  ]);
 });
 
 // ─── GET /api/equipo/trabajadores ─────────────────────────────────────────────

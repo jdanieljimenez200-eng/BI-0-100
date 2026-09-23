@@ -4,19 +4,24 @@ import { EntityManager } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
-import { validateBody, exigirUuid, fechaISOOpcional } from '../middleware/validate';
+import { validateBody, exigirUuid, esUuid, fechaISOOpcional } from '../middleware/validate';
 import { Cotizacion, CotizacionItem } from '../models/Cotizacion';
 import { Marca } from '../models/Marca';
 import { Plan } from '../models/Usuario';
 import { getPlanFromDB } from '../middleware/requirePlan';
 import { resolveMarca } from '../services/branding/brandingService';
 import { ah } from '../utils/asyncHandler';
-import { siguienteFolioVenta } from '../utils/folios';
+import { monedaDeCuenta } from '../utils/monedaCuenta';
+import { siguienteFolio, siguienteFolioVenta } from '../utils/folios';
 import { Venta } from '../models/Venta';
 import { requireHerramientaAccess as requireHerramienta } from '../middleware/requirePlan';
 import { VentaItem } from '../models/VentaItem';
 import { MovimientoContable } from '../models/MovimientoContable';
 import { Producto } from '../models/Producto';
+import { hoyDePeticion } from '../utils/fechaLocal';
+import { idempotente } from '../middleware/idempotency';
+import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
+import { r2 } from '../utils/dinero';
 
 const CotizacionItemSchema = z.object({
   descripcion: z.string().trim().min(1, 'descripción requerida'),
@@ -37,7 +42,7 @@ const CrearCotizacionSchema = z.object({
   descuento_pct: z.number().min(0).max(100).optional().default(0),
   impuesto_tasa: z.number().min(0).optional().default(0),
   impuesto_nombre: z.string().optional().default('IVA'),
-  moneda: z.string().optional().default('USD'),
+  moneda: z.string().optional(), // sin valor: la del país del producto (monedaDeCuenta)
   estado: z.enum(['borrador', 'enviada', 'aceptada', 'rechazada', 'vencida']).optional().default('borrador'),
   fecha_vencimiento: fechaISOOpcional('fecha_vencimiento inválida (YYYY-MM-DD)'),
   notas: z.string().optional(),
@@ -71,7 +76,7 @@ function validateItems(items: CotizacionItem[]): string | null {
     if (!isFinite(it.cantidad) || it.cantidad <= 0) return `Item ${i + 1}: cantidad debe ser > 0`;
     if (!isFinite(it.precio_unitario) || it.precio_unitario < 0) return `Item ${i + 1}: precio_unitario debe ser >= 0`;
     // Recalculate subtotal server-side — never trust the client
-    it.subtotal = Math.round(it.cantidad * it.precio_unitario * 100) / 100;
+    it.subtotal = r2(it.cantidad * it.precio_unitario);
   }
   return null;
 }
@@ -82,28 +87,16 @@ function calcTotales(
   impuestoTasa: number,
 ): { subtotal: number; descuento_monto: number; impuesto_monto: number; total: number } {
   const subtotal = items.reduce((s, i) => s + i.subtotal, 0);
-  const descuento_monto = Math.round(subtotal * (descuentoPct / 100) * 100) / 100;
+  const descuento_monto = r2(subtotal * (descuentoPct / 100));
   const baseImponible = subtotal - descuento_monto;
-  const impuesto_monto = Math.round(baseImponible * (impuestoTasa / 100) * 100) / 100;
-  const total = Math.round((baseImponible + impuesto_monto) * 100) / 100;
+  const impuesto_monto = r2(baseImponible * (impuestoTasa / 100));
+  const total = r2(baseImponible + impuesto_monto);
   return { subtotal, descuento_monto, impuesto_monto, total };
 }
 
-async function nextNumero(manager: EntityManager, userId: string): Promise<string> {
-  // pg_advisory_xact_lock serializes concurrent creates per user.
-  // Lock is held until the transaction commits, preventing duplicate numbers.
-  await manager.query(
-    `SELECT pg_advisory_xact_lock(('x' || substr(md5($1), 1, 16))::bit(64)::bigint)`,
-    [`cot_seq:${userId}`],
-  );
-  const result = await manager.query(
-    `SELECT MAX(NULLIF(regexp_replace(numero, '[^0-9]', '', 'g'), '')::integer) AS max_num
-     FROM cotizaciones
-     WHERE usuario_id = $1`,
-    [userId],
-  );
-  const maxNum = Number(result[0]?.max_num ?? 0);
-  return `COT-${String(maxNum + 1).padStart(6, '0')}`;
+/** Siguiente COT-###### de la cuenta (contador O(1), ver utils/folios.ts). */
+function nextNumero(manager: EntityManager, userId: string): Promise<string> {
+  return siguienteFolio(manager, userId, 'cotizacion');
 }
 
 // Sella en la cotización la marca a mostrar, GATEADA por el plan de la cuenta.
@@ -136,14 +129,23 @@ async function getMarcaSnapshot(
 // ─── GET /api/cotizaciones ────────────────────────────────────────────────────
 router.get('/', ah(async (req: AuthRequest, res: Response) => {
   const { estado, negocio_id, producto_id } = req.query as Record<string, string | undefined>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = { usuario_id: req.userId! };
-  if (estado)      where.estado      = estado;
-  if (negocio_id)  where.negocio_id  = negocio_id;
-  if (producto_id) where.producto_id = producto_id;
+  if ((negocio_id && !esUuid(negocio_id)) || (producto_id && !esUuid(producto_id))) {
+    res.status(400).json({ error: 'negocio_id y producto_id deben ser UUID' });
+    return;
+  }
+  const qb = repo().createQueryBuilder('c').where('c.usuario_id = :uid', { uid: req.userId! });
+  if (estado)      qb.andWhere('c.estado = :estado', { estado });
+  if (negocio_id)  qb.andWhere('c.negocio_id = :negocio_id', { negocio_id });
+  if (producto_id) qb.andWhere('c.producto_id = :producto_id', { producto_id });
 
-  const rows = await repo().find({ where, order: { fecha_creacion: 'DESC' }, take: 200 });
-  res.json(rows);
+  const pagina = await paginar(
+    qb,
+    [{ expr: 'c.fecha_creacion', tipo: 'timestamp' }, { expr: 'c.id', tipo: 'uuid' }],
+    req.query.antes,
+    leerLimite(req.query.limite)
+  );
+  if (!pagina) { res.status(400).json({ error: 'Cursor de paginación inválido' }); return; }
+  responderPagina(res, pagina);
 }));
 
 // ─── GET /api/cotizaciones/:id ────────────────────────────────────────────────
@@ -154,11 +156,11 @@ router.get('/:id', ah(async (req: AuthRequest, res: Response) => {
 }));
 
 // ─── POST /api/cotizaciones ───────────────────────────────────────────────────
-router.post('/', requireHerramientaAccess('cotizaciones', contarCotizaciones), validateBody(CrearCotizacionSchema), ah(async (req: AuthRequest, res: Response) => {
+router.post('/', idempotente('cotizacion'), requireHerramientaAccess('cotizaciones', contarCotizaciones), validateBody(CrearCotizacionSchema), ah(async (req: AuthRequest, res: Response) => {
   const {
     cliente_nombre, cliente_empresa, cliente_email, cliente_telefono,
     items = [], descuento_pct = 0, impuesto_tasa = 0, impuesto_nombre = 'IVA',
-    moneda = 'USD', estado = 'borrador', fecha_vencimiento, notas, negocio_id, producto_id,
+    moneda, estado = 'borrador', fecha_vencimiento, notas, negocio_id, producto_id,
   } = req.body as {
     cliente_nombre: string;
     cliente_empresa?: string;
@@ -208,7 +210,9 @@ router.post('/', requireHerramientaAccess('cotizaciones', contarCotizaciones), v
       impuesto_nombre,
       impuesto_monto,
       total,
-      moneda,
+      // Sin moneda explícita, la del país del producto: una cotización mexicana
+      // salía al cliente en dólares.
+      moneda: moneda || (await monedaDeCuenta(req.userId!, producto_id)),
       estado,
       fecha_vencimiento: fecha_vencimiento ?? null,
       notas:            notas?.trim() || null,
@@ -297,6 +301,7 @@ router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
 
   router.post(
     '/:id/convertir-venta',
+    idempotente('cotizacion_venta'),
     requireHerramienta('pos', contarVentasPOS),
     ah(async (req: AuthRequest, res: Response) => {
     const cot = await repo().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
@@ -327,7 +332,19 @@ router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
     });
     if (!producto) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
+    const hoy = await hoyDePeticion(req);
     const venta = await AppDataSource.transaction(async manager => {
+      // Primero se "toma" la cotización: el UPDATE bloquea la fila, así que dos
+      // conversiones simultáneas no pueden pasar las dos. Antes la comprobación
+      // de estado iba fuera de la transacción y tres clics creaban tres ventas.
+      const tomada = await manager
+        .createQueryBuilder()
+        .update(Cotizacion)
+        .set({ estado: 'aceptada' })
+        .where('id = :id AND usuario_id = :uid AND estado <> :aceptada', { id: cot.id, uid: req.userId!, aceptada: 'aceptada' })
+        .execute();
+      if (!tomada.affected) return null;
+
       const numeroTicket = await siguienteFolioVenta(manager, req.userId!);
 
       // Los importes se copian de la cotizacion tal cual, sin recalcular: el
@@ -338,7 +355,7 @@ router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
         producto_id:      productoId,
         negocio_id:       cot.negocio_id ?? null,
         numero_ticket:    numeroTicket,
-        fecha:            new Date().toISOString().slice(0, 10),
+        fecha:            hoy,
         subtotal:         Number(cot.subtotal) - Number(cot.descuento_monto),
         impuesto_monto:   Number(cot.impuesto_monto),
         impuesto_tasa:    Number(cot.impuesto_tasa) / 100, // la cotizacion la guarda en %
@@ -387,11 +404,13 @@ router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
       v.movimiento_contable_id = mov.id;
       await manager.save(Venta, v);
 
-      await manager.update(Cotizacion, { id: cot.id }, { estado: 'aceptada' });
-
       return v;
     });
 
+    if (!venta) {
+      res.status(409).json({ error: 'Esta cotización ya se convirtió en venta' });
+      return;
+    }
     res.status(201).json({ venta, cotizacion_id: cot.id });
   }),
 );

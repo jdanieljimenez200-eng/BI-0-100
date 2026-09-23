@@ -11,6 +11,8 @@ import { Producto } from '../models/Producto';
 import { ah } from '../utils/asyncHandler';
 import { resolverClienteParaVenta } from '../services/crm/resolverCliente';
 import { encolarBorrarEvento, encolarGuardarCita } from '../workers/calendarQueue';
+import { hoyDePeticion } from '../utils/fechaLocal';
+import { idempotente } from '../middleware/idempotency';
 
 const router = Router();
 exigirUuid(router, 'id');
@@ -123,7 +125,7 @@ router.get('/:id', ah(async (req: AuthRequest, res: Response) => {
 }));
 
 // ─── POST /api/calendario ─────────────────────────────────────────────────────
-router.post('/', requireHerramientaAccess('citas', contarCitas), validateBody(CrearCitaSchema), ah(async (req: AuthRequest, res: Response) => {
+router.post('/', idempotente('cita'), requireHerramientaAccess('citas', contarCitas), validateBody(CrearCitaSchema), ah(async (req: AuthRequest, res: Response) => {
   const body = req.body as z.infer<typeof CrearCitaSchema>;
 
   // Vínculo con el CRM, con el mismo servicio que usa el POS: valida que el
@@ -143,6 +145,7 @@ router.post('/', requireHerramientaAccess('citas', contarCitas), validateBody(Cr
       crearCliente:  body.crear_cliente ?? null,
       nombreLibre:   body.cliente_nombre ?? null,
       telefonoLibre: body.cliente_telefono ?? null,
+      hoy: await hoyDePeticion(req),
     });
     if (!resCliente.ok) return resCliente;
 
@@ -202,6 +205,7 @@ router.patch('/:id', validateBody(EditarCitaSchema), ah(async (req: AuthRequest,
         crearCliente:  body.cliente_id ? null : body.crear_cliente ?? null,
         nombreLibre:   body.cliente_nombre ?? cita.cliente_nombre,
         telefonoLibre: body.cliente_telefono ?? cita.cliente_telefono,
+        hoy: await hoyDePeticion(req),
       });
       if (!resCliente.ok) return resCliente;
       cita.cliente_id = resCliente.cliente_id;

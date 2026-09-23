@@ -11,6 +11,9 @@ import { Negocio } from '../models/Negocio';
 import { Producto } from '../models/Producto';
 import { camposExpedientePorVertical, filtrarAtributosPermitidos } from '../services/vertical/camposExpediente';
 import { ah } from '../utils/asyncHandler';
+import { hoyDePeticion } from '../utils/fechaLocal';
+import { idempotente } from '../middleware/idempotency';
+import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
 
 // Longitudes = columnas de `clientes`: sin tope, un texto largo era un 500.
 const textoOpcional = (max: number) => z.string().trim().max(max).nullable().optional();
@@ -69,12 +72,14 @@ router.get('/', ah(async (req: AuthRequest, res: Response) => {
     );
   }
 
-  const clientes = await qb
-    .orderBy('c.fecha_actualizacion', 'DESC')
-    .limit(200)
-    .getMany();
-
-  res.json(clientes);
+  const pagina = await paginar(
+    qb,
+    [{ expr: 'c.fecha_actualizacion', tipo: 'timestamp' }, { expr: 'c.id', tipo: 'uuid' }],
+    req.query.antes,
+    leerLimite(req.query.limite)
+  );
+  if (!pagina) { res.status(400).json({ error: 'Cursor de paginación inválido' }); return; }
+  responderPagina(res, pagina);
 }));
 
 // ─── GET /api/clientes/expediente/campos — definición de campos del vertical ──
@@ -110,7 +115,7 @@ router.get('/:id/citas', ah(async (req: AuthRequest, res: Response) => {
 }));
 
 // ─── POST /api/clientes ──────────────────────────────────────────────────────
-router.post('/', requireHerramientaAccess('clientes', contarClientes), validateBody(ClienteSchema), ah(async (req: AuthRequest, res: Response) => {
+router.post('/', idempotente('cliente'), requireHerramientaAccess('clientes', contarClientes), validateBody(ClienteSchema), ah(async (req: AuthRequest, res: Response) => {
   const { nombre, empresa, email, telefono, direccion, notas, categoria, emoji, estado, negocio_id, producto_id, fecha_ultimo_contacto, atributos_extra } =
     req.body as z.infer<typeof ClienteSchema>;
 
@@ -213,7 +218,7 @@ router.post('/:id/whatsapp', ah(async (req: AuthRequest, res: Response) => {
   const url = `${base}?text=${encodeURIComponent(msgFinal)}`;
 
   // Auto-actualizar fecha_ultimo_contacto
-  cliente.fecha_ultimo_contacto = new Date().toISOString().slice(0, 10);
+  cliente.fecha_ultimo_contacto = await hoyDePeticion(req);
   await repo().save(cliente);
 
   res.json({ whatsapp_url: url, cliente });

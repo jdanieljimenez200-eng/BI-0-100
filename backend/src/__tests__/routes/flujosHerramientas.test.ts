@@ -5,6 +5,7 @@ import * as request from 'supertest';
 import { app, initTestDb, closeTestDb } from '../helpers/testApp';
 import { describeWithDb } from '../helpers/dbGuard';
 import { AppDataSource } from '../../config/database';
+import { hoyEnZona } from '../../utils/fechaLocal';
 
 /**
  * Las herramientas sincronizadas entre sí, de punta a punta.
@@ -23,7 +24,8 @@ describeWithDb('Flujos entre herramientas', () => {
   let productoId: string;
   let productoAjenoId: string;
 
-  const HOY = new Date().toISOString().slice(0, 10);
+  // Mismo 'hoy' que el servidor (CDMX por defecto, ver utils/fechaLocal.ts).
+  const HOY = hoyEnZona('America/Mexico_City');
 
   const q = (sql: string, p: unknown[] = []) => AppDataSource.query(sql, p);
   const tokenDe = (uid: string, email: string) =>
@@ -199,11 +201,44 @@ describeWithDb('Flujos entre herramientas', () => {
       expect(rep.status).toBe(200);
       expect(rep.body.totales).toMatchObject({ num_ventas: 1, importe: 348 });
 
-      // Cancelar: vuelve el stock y desaparecen todos los asientos
-      expect((await api().delete(`/pos/ventas/${venta.id}`)).status).toBe(200);
+      // Cancelar: la venta NO se borra. Queda cancelada, el stock vuelve con una
+      // entrada de devolución y cada asiento recibe su inverso.
+      const cancel = await api().post(`/pos/ventas/${venta.id}/cancelar`, { motivo: 'Cliente se arrepintió' });
+      expect(cancel.status).toBe(200);
+      expect(cancel.body.venta.estado).toBe('cancelada');
       expect(await stock(insumoId)).toBe(10);
-      expect(await movimientosDeVenta(venta.id)).toEqual([]);
+
+      const devolucion = await q(
+        `SELECT tipo, cantidad::float AS cantidad, motivo FROM movimientos_inventario WHERE venta_id = $1 AND tipo = 'entrada'`,
+        [venta.id]
+      );
+      expect(devolucion).toHaveLength(1);
+      expect(devolucion[0].motivo).toMatch(/Cancelación de venta/);
+      // La salida original sigue ahí: el almacén puede explicar los dos saltos.
+      expect((await q(`SELECT COUNT(*)::int AS n FROM movimientos_inventario WHERE venta_id = $1 AND tipo = 'salida'`, [venta.id]))[0].n).toBe(1);
+
+      const despues = await movimientosDeVenta(venta.id);
+      const inversos = despues.filter((m: { categoria: string }) => m.categoria === 'Cancelaciones');
+      expect(inversos).toHaveLength(movs.length);
+      // Ingresos y egresos se anulan entre sí: la venta cancelada suma cero.
+      const neto = despues.reduce(
+        (suma: number, m: { tipo: string; monto: number }) => suma + (m.tipo === 'ingreso' ? Number(m.monto) : -Number(m.monto)),
+        0
+      );
+      expect(neto).toBeCloseTo(0, 2); // suma de floats en el propio test
+
+      // Reportes deja de contarla y la auditoría guarda quién la canceló.
       expect((await api().get(`/reportes/area/ventas?desde=${HOY}&hasta=${HOY}`)).body.totales.num_ventas).toBe(0);
+      const auditoria = await api().get('/contabilidad/auditoria');
+      expect(auditoria.body[0]).toMatchObject({
+        accion: 'venta_cancelada',
+        entidad_id: venta.id,
+        motivo: 'Cliente se arrepintió',
+      });
+
+      // Cancelar dos veces no duplica nada.
+      expect((await api().post(`/pos/ventas/${venta.id}/cancelar`, {})).status).toBe(409);
+      expect(await stock(insumoId)).toBe(10);
     });
 
     it('en efectivo el ingreso ya está en caja (no queda pendiente de liquidar)', async () => {
@@ -214,7 +249,7 @@ describeWithDb('Flujos entre herramientas', () => {
       ]);
       expect(padre.estado_liquidacion).toBe('liquidado');
       expect(padre.canal_cobro_id).toBeNull();
-      await api().delete(`/pos/ventas/${r.body.venta.id}`);
+      await api().post(`/pos/ventas/${r.body.venta.id}/cancelar`, {});
     });
 
     it('un canal inexistente, desactivado o de otra cuenta aborta la venta sin dejar rastro', async () => {
@@ -270,10 +305,20 @@ describeWithDb('Flujos entre herramientas', () => {
 
       expect((await api().post(`/cotizaciones/${cot.body.id}/convertir-venta`, {})).status).toBe(409);
 
-      await api().delete(`/pos/ventas/${ventaId}`);
+      expect((await api().post(`/pos/ventas/${ventaId}/cancelar`, {})).status).toBe(200);
       expect((await api().get(`/cotizaciones/${cot.body.id}`)).body.estado).toBe('enviada');
-      const huerfanos = await q(`SELECT COUNT(*)::int AS n FROM movimientos_contables WHERE referencia_id = $1`, [cot.body.id]);
-      expect(huerfanos[0].n).toBe(0);
+      // El ingreso de la cotización sigue, con su inverso al lado: neto cero.
+      const asientos = await q(
+        `SELECT tipo, monto::float AS monto FROM movimientos_contables WHERE referencia_id = $1`,
+        [cot.body.id]
+      );
+      expect(asientos).toHaveLength(1);
+      const netoCot = await q(
+        `SELECT COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE -monto END), 0)::float AS neto
+           FROM movimientos_contables WHERE referencia_tipo = 'venta' AND referencia_id = $1`,
+        [ventaId]
+      );
+      expect(netoCot[0].neto).toBe(0);
     });
 
     it('editar valida estado, fecha e items', async () => {
@@ -400,7 +445,7 @@ describeWithDb('Flujos entre herramientas', () => {
       expect(mov.estado_liquidacion).toBe('liquidado');
 
       expect((await api(tokenOtra).delete(`/contabilidad/movimiento/${id}`)).status).toBe(404);
-      expect((await api().get(`/contabilidad/${productoId}`)).body.some((m: { id: string }) => m.id === id)).toBe(true);
+      expect((await api().get(`/contabilidad/${productoId}`)).body.movimientos.some((m: { id: string }) => m.id === id)).toBe(true);
     });
 
     it('un ingreso con canal de depósito diferido queda pendiente con su desglose', async () => {

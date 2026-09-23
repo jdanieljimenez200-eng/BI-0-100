@@ -4,18 +4,21 @@ import { In } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
-import { validateBody, exigirUuid, fechaISO, fechaISOOpcional } from '../middleware/validate';
+import { validateBody, exigirUuid, esUuid, fechaISO, fechaISOOpcional } from '../middleware/validate';
 import { Empleado } from '../models/Empleado';
 import { PagoNomina } from '../models/PagoNomina';
 import { MovimientoContable } from '../models/MovimientoContable';
 import { ah } from '../utils/asyncHandler';
+import { monedaDeCuenta } from '../utils/monedaCuenta';
+import { idempotente } from '../middleware/idempotency';
+import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
 
 const CrearEmpleadoSchema = z.object({
   nombre: z.string().trim().min(1, 'nombre es requerido'),
   cargo: z.string().optional(),
   salario: z.number({ invalid_type_error: 'salario debe ser numérico' }).positive('salario debe ser mayor a 0'),
   tipo_pago: z.enum(['semanal', 'quincenal', 'mensual', 'por_hora', 'honorarios']).optional().default('mensual'),
-  moneda: z.string().optional().default('USD'),
+  moneda: z.string().optional(), // sin valor: la del país del producto (monedaDeCuenta)
   telefono: z.string().optional(),
   email: z.string().optional(),
   fecha_inicio: fechaISOOpcional('fecha_inicio inválida (YYYY-MM-DD)'),
@@ -84,7 +87,7 @@ router.get('/empleados/:id', ah(async (req: AuthRequest, res: Response) => {
 }));
 
 router.post('/empleados', validateBody(CrearEmpleadoSchema), ah(async (req: AuthRequest, res: Response) => {
-  const { nombre, cargo, salario, tipo_pago = 'mensual', moneda = 'USD',
+  const { nombre, cargo, salario, tipo_pago = 'mensual', moneda,
     telefono, email, fecha_inicio, notas, negocio_id, producto_id } = req.body as {
     nombre: string; cargo?: string; salario: number;
     tipo_pago?: Empleado['tipo_pago']; moneda?: string;
@@ -95,9 +98,13 @@ router.post('/empleados', validateBody(CrearEmpleadoSchema), ah(async (req: Auth
   if (!nombre?.trim()) { res.status(400).json({ error: 'nombre es requerido' }); return; }
   if (!salario || salario <= 0) { res.status(400).json({ error: 'salario debe ser mayor a 0' }); return; }
 
+  // Sin moneda explícita, la del país del producto: un negocio mexicano daba de
+  // alta a su gente con sueldos en dólares.
+  const monedaEmpleado = moneda || (await monedaDeCuenta(req.userId!, producto_id));
+
   const emp = repoEmp().create({
     usuario_id: req.userId!, negocio_id: negocio_id ?? null, producto_id: producto_id ?? null,
-    nombre: nombre.trim(), cargo: cargo?.trim() || null, salario, tipo_pago, moneda,
+    nombre: nombre.trim(), cargo: cargo?.trim() || null, salario, tipo_pago, moneda: monedaEmpleado,
     telefono: telefono?.trim() || null, email: email?.trim() || null,
     fecha_inicio: fecha_inicio ?? null, notas: notas?.trim() || null, activo: true,
   });
@@ -118,11 +125,21 @@ router.patch('/empleados/:id', validateBody(EditarEmpleadoSchema), ah(async (req
   res.json(emp);
 }));
 
+// Con pagos registrados, el empleado se desactiva en lugar de borrarse: el
+// borrado arrastraba en cascada su historial de nómina, que hay que conservar.
 router.delete('/empleados/:id', ah(async (req: AuthRequest, res: Response) => {
   const emp = await repoEmp().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!emp) { res.status(404).json({ error: 'Empleado no encontrado' }); return; }
-  await repoEmp().remove(emp);
-  res.json({ ok: true });
+
+  const conPagos = await repoPago().exists({ where: { empleado_id: emp.id, usuario_id: req.userId! } });
+  if (!conPagos) {
+    await repoEmp().remove(emp);
+    res.json({ ok: true, archivado: false });
+    return;
+  }
+  emp.activo = false;
+  await repoEmp().save(emp);
+  res.json({ ok: true, archivado: true, empleado: emp, mensaje: 'El empleado tiene pagos registrados: se desactivó para conservar su historial de nómina.' });
 }));
 
 // ═══════════════════════════════════════════════════════════════
@@ -131,19 +148,28 @@ router.delete('/empleados/:id', ah(async (req: AuthRequest, res: Response) => {
 
 router.get('/pagos', ah(async (req: AuthRequest, res: Response) => {
   const { empleado_id, negocio_id } = req.query as { empleado_id?: string; negocio_id?: string };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = { usuario_id: req.userId! };
-  if (empleado_id) where.empleado_id = empleado_id;
-  if (negocio_id) {
-    const empIds = (await repoEmp().find({ where: { usuario_id: req.userId!, negocio_id }, select: ['id'] })).map(e => e.id);
-    if (empIds.length === 0) { res.json([]); return; }
-    where.empleado_id = In(empIds);
+  if ((empleado_id && !esUuid(empleado_id)) || (negocio_id && !esUuid(negocio_id))) {
+    res.status(400).json({ error: 'empleado_id y negocio_id deben ser UUID' });
+    return;
   }
-  const rows = await repoPago().find({ where, order: { fecha_pago: 'DESC' }, take: 100 });
-  res.json(rows);
+  const qb = repoPago().createQueryBuilder('p').where('p.usuario_id = :uid', { uid: req.userId! });
+  if (empleado_id) qb.andWhere('p.empleado_id = :empleado_id', { empleado_id });
+  if (negocio_id) {
+    qb.andWhere('p.empleado_id IN (SELECT e.id FROM empleados e WHERE e.usuario_id = :uid AND e.negocio_id = :negocio_id)', {
+      negocio_id,
+    });
+  }
+  const pagina = await paginar(
+    qb,
+    [{ expr: 'p.fecha_pago', tipo: 'date' }, { expr: 'p.fecha_creacion', tipo: 'timestamp' }, { expr: 'p.id', tipo: 'uuid' }],
+    req.query.antes,
+    leerLimite(req.query.limite, 100)
+  );
+  if (!pagina) { res.status(400).json({ error: 'Cursor de paginación inválido' }); return; }
+  responderPagina(res, pagina);
 }));
 
-router.post('/pagos', requireHerramientaAccess('nomina', contarPagosNomina), validateBody(CrearPagoNominaSchema), ah(async (req: AuthRequest, res: Response) => {
+router.post('/pagos', idempotente('nomina_pago'), requireHerramientaAccess('nomina', contarPagosNomina), validateBody(CrearPagoNominaSchema), ah(async (req: AuthRequest, res: Response) => {
   const { empleado_id, monto, periodo_inicio, periodo_fin, fecha_pago, notas } = req.body as {
     empleado_id: string; monto: number;
     periodo_inicio: string; periodo_fin: string; fecha_pago: string; notas?: string;

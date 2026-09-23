@@ -5,6 +5,7 @@ import * as request from 'supertest';
 import { app, initTestDb, closeTestDb } from '../helpers/testApp';
 import { describeWithDb } from '../helpers/dbGuard';
 import { AppDataSource } from '../../config/database';
+import { hoyEnZona } from '../../utils/fechaLocal';
 
 /**
  * Conciliar una liquidación (PATCH /contabilidad/liquidaciones/:id/conciliar).
@@ -83,7 +84,7 @@ describeWithDb('Conciliación de liquidaciones', () => {
     const res = await conciliar(id, {});
 
     expect(res.status).toBe(200);
-    expect(res.body.movimiento.fecha_liquidacion).toBe(new Date().toISOString().slice(0, 10));
+    expect(res.body.movimiento.fecha_liquidacion).toBe(hoyEnZona('America/Mexico_City'));
   });
 
   it('una fecha con formato inválido responde 400, no 500', async () => {

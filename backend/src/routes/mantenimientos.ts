@@ -3,14 +3,14 @@ import { z } from 'zod';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess, getPlanFromDB } from '../middleware/requirePlan';
-import { validateBody, exigirUuid, fechaISO } from '../middleware/validate';
+import { validateBody, exigirUuid, fechaISO, esUuid } from '../middleware/validate';
+import { idempotente } from '../middleware/idempotency';
 import { EquipoMantenimiento } from '../models/EquipoMantenimiento';
 import { MantenimientoRealizado } from '../models/MantenimientoRealizado';
 import { MovimientoContable } from '../models/MovimientoContable';
 import {
   CATALOGO_MANTENIMIENTO,
   INTENSIDADES,
-  aISO,
   estadoEquipo,
   sugerirIntervalo,
   tipoPorClave,
@@ -19,6 +19,8 @@ import { sugerirIntervaloConIa, sugerenciaGenerica } from '../services/mantenimi
 import { hayClaveAnthropic } from '../config/anthropic';
 import { CreditosInsuficientesError, conCreditos, responderSinCreditos } from '../services/billing/creditosIA';
 import { ah } from '../utils/asyncHandler';
+import { hoyDePeticion } from '../utils/fechaLocal';
+import { leerLimite, paginar } from '../utils/paginacion';
 
 /**
  * Herramienta «Mantenimientos»: qué equipos hay que atender y cada cuánto.
@@ -154,7 +156,10 @@ router.post('/sugerencia', validateBody(SugerenciaSchema), ah(async (req: AuthRe
 // ─── GET /api/mantenimientos ─────────────────────────────────────────────────
 router.get('/', ah(async (req: AuthRequest, res: Response) => {
   const { negocio_id, incluir_inactivos } = req.query as Record<string, string | undefined>;
+  if (negocio_id && !esUuid(negocio_id)) { res.status(400).json({ error: 'negocio_id inválido' }); return; }
 
+  // Catálogo de equipos físicos (no un historial que crece): se devuelve entero,
+  // con tope de seguridad, porque el resumen del semáforo cuenta sobre todos.
   const qb = repoEquipos()
     .createQueryBuilder('e')
     .where('e.usuario_id = :uid', { uid: req.userId! });
@@ -162,7 +167,7 @@ router.get('/', ah(async (req: AuthRequest, res: Response) => {
   if (incluir_inactivos !== 'true') qb.andWhere('e.activo = true');
 
   const equipos = await qb.orderBy('e.fecha_creacion', 'DESC').limit(300).getMany();
-  const hoy = aISO(new Date());
+  const hoy = await hoyDePeticion(req);
   const conSemaforo = equipos.map((e) => conEstado(e, hoy));
 
   res.json({
@@ -219,7 +224,7 @@ router.post(
     });
 
     await repoEquipos().save(equipo);
-    res.status(201).json(conEstado(equipo, aISO(new Date())));
+    res.status(201).json(conEstado(equipo, await hoyDePeticion(req)));
   })
 );
 
@@ -250,7 +255,7 @@ router.patch('/:id', validateBody(EditarEquipoSchema), ah(async (req: AuthReques
   if (datos.intensidad_uso) equipo.intensidad_uso = datos.intensidad_uso;
 
   await repoEquipos().save(equipo);
-  res.json(conEstado(equipo, aISO(new Date())));
+  res.json(conEstado(equipo, await hoyDePeticion(req)));
 }));
 
 // ─── DELETE /api/mantenimientos/:id ──────────────────────────────────────────
@@ -264,12 +269,12 @@ router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
 // ─── POST /api/mantenimientos/:id/registrar ──────────────────────────────────
 // «Ya le di mantenimiento»: historial, nueva fecha base del semáforo y, si hubo
 // costo, el egreso en Contabilidad. Todo en una transacción.
-router.post('/:id/registrar', validateBody(RegistrarSchema), ah(async (req: AuthRequest, res: Response) => {
+router.post('/:id/registrar', idempotente('mantenimiento'), validateBody(RegistrarSchema), ah(async (req: AuthRequest, res: Response) => {
   const equipo = await repoEquipos().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!equipo) { res.status(404).json({ error: 'Equipo no encontrado' }); return; }
 
   const datos = req.body as z.infer<typeof RegistrarSchema>;
-  const hoy = aISO(new Date());
+  const hoy = await hoyDePeticion(req);
   const fecha = datos.fecha ?? hoy;
   if (fecha > hoy) {
     res.status(400).json({ error: 'La fecha del mantenimiento no puede ser futura' });
@@ -337,14 +342,29 @@ router.get('/:id/historial', ah(async (req: AuthRequest, res: Response) => {
   const equipo = await repoEquipos().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!equipo) { res.status(404).json({ error: 'Equipo no encontrado' }); return; }
 
-  const historial = await repoHistorial().find({
-    where: { usuario_id: req.userId!, equipo_id: equipo.id },
-    order: { fecha: 'DESC', fecha_creacion: 'DESC' },
-    take: 200,
-  });
+  // Paginado por cursor (cabecera X-Siguiente); el gasto total se suma en SQL
+  // sobre todo el historial, no solo sobre la página.
+  const qb = repoHistorial()
+    .createQueryBuilder('h')
+    .where('h.usuario_id = :uid AND h.equipo_id = :eid', { uid: req.userId!, eid: equipo.id });
+  const pagina = await paginar(
+    qb,
+    [
+      { expr: 'h.fecha', tipo: 'date' },
+      { expr: 'h.fecha_creacion', tipo: 'timestamp' },
+      { expr: 'h.id', tipo: 'uuid' },
+    ],
+    req.query.antes,
+    leerLimite(req.query.limite)
+  );
+  if (!pagina) { res.status(400).json({ error: 'Cursor inválido' }); return; }
 
-  const gastoTotal = historial.reduce((suma, h) => suma + (h.costo ?? 0), 0);
-  res.json({ historial, gasto_total: gastoTotal });
+  const [{ total }] = await repoHistorial().query(
+    'SELECT COALESCE(SUM(costo), 0)::float8 AS total FROM mantenimientos_realizados WHERE usuario_id = $1 AND equipo_id = $2',
+    [req.userId!, equipo.id]
+  );
+  if (pagina.siguiente) res.setHeader('X-Siguiente', pagina.siguiente);
+  res.json({ historial: pagina.filas, gasto_total: Number(total) });
 }));
 
 export default router;

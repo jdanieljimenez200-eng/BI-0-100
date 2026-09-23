@@ -9,7 +9,20 @@ import { CanalCobro } from '../models/CanalCobro';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess, requirePlanFeature, getPlanFromDB } from '../middleware/requirePlan';
 import { validateBody, exigirUuid, fechaISO } from '../middleware/validate';
-import { calcularCalibracion } from '../services/contabilidad/calibracionService';
+import { calcularCalibracionMensual } from '../services/contabilidad/calibracionService';
+import {
+  FUENTES,
+  FiltrosMovimientos,
+  agregadoMensual,
+  analisisCanales,
+  decodificarCursor,
+  kpisLiquidaciones,
+  listarLiquidaciones,
+  listarMovimientos,
+  pnl,
+  recorrerMovimientos,
+  resumenContable,
+} from '../services/contabilidad/consultasContables';
 import {
   calcularDesgloseComision,
   calcularPrecioObjetivo,
@@ -17,6 +30,12 @@ import {
   PRESETS_CANALES_DEFAULT,
 } from '../services/contabilidad/comisionesService';
 import { ah } from '../utils/asyncHandler';
+import { auditarDinero } from '../services/auditoria/auditoriaDinero';
+import { AuditoriaDinero } from '../models/AuditoriaDinero';
+import { paginar, responderPagina, leerLimite as leerLimitePagina } from '../utils/paginacion';
+import { hoyDePeticion, hoyEnZona, zonaDePeticion } from '../utils/fechaLocal';
+import { idempotente } from '../middleware/idempotency';
+import { dinero, MAX_DINERO } from '../utils/limitesNumericos';
 
 const CrearMovimientoContableSchema = z.object({
   tipo: z.enum(['ingreso', 'egreso'], { errorMap: () => ({ message: 'tipo debe ser ingreso o egreso' }) }),
@@ -93,15 +112,16 @@ interface ImportRow {
   tiene_cfdi?: boolean;
 }
 
-function isValidDate(s: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s));
-}
+// `Date.parse('2026-02-30')` es válido en JavaScript (lo pasa a 2 de marzo) y
+// Postgres lo rechazaba a mitad de la importación.
+const isValidDate = (s: string): boolean => fechaISO().safeParse(s).success;
 
 function validateRow(row: ImportRow): string | null {
   if (!isValidDate(row.fecha)) return `Fecha inválida: "${row.fecha}"`;
   if (!row.descripcion?.trim()) return 'Descripción vacía';
   if (!['ingreso', 'egreso'].includes(row.tipo)) return `Tipo inválido: "${row.tipo}"`;
-  if (typeof row.monto !== 'number' || row.monto <= 0 || !isFinite(row.monto)) return `Monto inválido: ${row.monto}`;
+  if (typeof row.monto !== 'number' || row.monto <= 0 || !isFinite(row.monto) || row.monto > MAX_DINERO) return `Monto inválido: ${row.monto}`;
+  if (row.descripcion.trim().length > 500) return 'Descripción de más de 500 caracteres';
   return null;
 }
 
@@ -122,20 +142,135 @@ const contarMovimientosManuales = (cuentaId: string) =>
 
 const repo = () => AppDataSource.getRepository(MovimientoContable);
 
-// GET /api/contabilidad/:productoId — list all movements for user+product
+/**
+ * El producto de la ruta tiene que ser de la cuenta: crear canales o importar
+ * movimientos sobre un producto ajeno dejaba filas con FK a datos de otra cuenta.
+ */
+const exigirProductoPropio = ah(async (req: AuthRequest, res: Response, next: NextFunction) => {
+  const existe = await AppDataSource.getRepository(Producto).exists({
+    where: { id: req.params.productoId, usuario_id: req.userId! },
+  });
+  if (!existe) {
+    res.status(404).json({ error: 'Producto no encontrado' });
+    return;
+  }
+  next();
+});
+
+// ── Filtros comunes de las consultas (query string) ──────────────────────────
+const FiltrosQuerySchema = z
+  .object({
+    tipo: z.enum(['ingreso', 'egreso']).optional(),
+    fuente: z.enum(FUENTES).optional(),
+    categoria: z.string().trim().max(100).optional(),
+    q: z.string().trim().max(100).optional(),
+    desde: fechaISO('desde inválida (YYYY-MM-DD)').optional(),
+    hasta: fechaISO('hasta inválida (YYYY-MM-DD)').optional(),
+  })
+  .refine((f) => !f.desde || !f.hasta || f.desde <= f.hasta, { message: 'desde no puede ser posterior a hasta' });
+
+function leerFiltros(req: AuthRequest, res: Response): FiltrosMovimientos | null {
+  const r = FiltrosQuerySchema.safeParse(req.query);
+  if (!r.success) {
+    res.status(400).json({ error: r.error.errors[0]?.message ?? 'Filtros inválidos' });
+    return null;
+  }
+  const { categoria, q, ...resto } = r.data;
+  return {
+    usuarioId: req.userId!,
+    productoId: req.params.productoId,
+    ...resto,
+    categoria: categoria || undefined,
+    q: q || undefined,
+  };
+}
+
+const LIMITE_PAGINA = 200;
+const LIMITE_MAXIMO = 500;
+const leerLimite = (valor: unknown) => {
+  const n = parseInt(String(valor ?? ''), 10);
+  return Number.isFinite(n) ? Math.min(Math.max(n, 1), LIMITE_MAXIMO) : LIMITE_PAGINA;
+};
+
+// GET /api/contabilidad/auditoria — quién tocó dinero ya registrado.
+//
+// Va ANTES de `/:productoId` a propósito: si no, Express leería "auditoria"
+// como un id de producto. Solo el dueño: es justo el registro que vigila a
+// quien opera la caja, así que un trabajador no puede ni leerlo.
+router.get('/auditoria', ah(async (req: AuthRequest, res: Response) => {
+  if (req.trabajadorRealId) {
+    res.status(403).json({ error: 'Solo el dueño de la cuenta puede ver la auditoría' });
+    return;
+  }
+  const qb = AppDataSource.getRepository(AuditoriaDinero)
+    .createQueryBuilder('a')
+    .where('a.usuario_id = :uid', { uid: req.userId! });
+  if (typeof req.query.accion === 'string' && req.query.accion) {
+    qb.andWhere('a.accion = :accion', { accion: req.query.accion });
+  }
+  const pagina = await paginar(
+    qb,
+    [
+      { expr: 'a.fecha_creacion', tipo: 'timestamp' },
+      { expr: 'a.id', tipo: 'uuid' },
+    ],
+    req.query.antes,
+    leerLimitePagina(req.query.limite),
+  );
+  if (!pagina) { res.status(400).json({ error: 'Cursor inválido' }); return; }
+  responderPagina(res, pagina);
+}));
+
+// GET /api/contabilidad/:productoId — una página de movimientos (más recientes primero).
+// Query: filtros + `limite` (1-500, 200 por defecto) + `antes` (cursor de la página anterior).
+// Respuesta: { movimientos, siguiente } — `siguiente` es null en la última página.
 router.get('/:productoId', ah(async (req: AuthRequest, res: Response) => {
-  const movimientos = await repo()
-    .createQueryBuilder('m')
-    .where('m.usuario_id = :uid', { uid: req.userId! })
-    .andWhere('(m.producto_id = :productoId OR m.producto_id IS NULL)', { productoId: req.params.productoId })
-    .orderBy('m.fecha', 'DESC')
-    .addOrderBy('m.fecha_creacion', 'DESC')
-    .getMany();
-  res.json(movimientos);
+  const filtros = leerFiltros(req, res);
+  if (!filtros) return;
+  const antes = req.query.antes ? decodificarCursor(req.query.antes) : null;
+  if (req.query.antes && !antes) {
+    res.status(400).json({ error: 'Cursor de paginación inválido' });
+    return;
+  }
+  res.json(await listarMovimientos(filtros, leerLimite(req.query.limite), antes));
+}));
+
+// GET /api/contabilidad/:productoId/resumen — KPIs, conteos, categorías,
+// calibración y base fiscal sobre TODO el historial (o el rango filtrado),
+// agregados en SQL: la pantalla ya no necesita descargar cada movimiento.
+router.get('/:productoId/resumen', ah(async (req: AuthRequest, res: Response) => {
+  const filtros = leerFiltros(req, res);
+  if (!filtros) return;
+  const [resumen, meses] = await Promise.all([resumenContable(filtros), agregadoMensual(filtros)]);
+  res.json({ ...resumen, calibracion: calcularCalibracionMensual(meses) });
+}));
+
+// GET /api/contabilidad/:productoId/exportar — CSV con los filtros aplicados.
+// Se escribe por lotes: la memoria no crece con el tamaño del historial.
+router.get('/:productoId/exportar', ah(async (req: AuthRequest, res: Response) => {
+  const filtros = leerFiltros(req, res);
+  if (!filtros) return;
+  const celda = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="movimientos_${hoyEnZona(await zonaDePeticion(req))}.csv"`);
+  res.write('\uFEFF' + ['ID', 'Fecha', 'Tipo', 'Descripcion', 'Categoria', 'Monto', 'Fuente', 'Comprobante_Fiscal', 'Auto_Generado'].join(',') + '\n');
+  for await (const lote of recorrerMovimientos(filtros)) {
+    const texto = lote
+      .map((m) =>
+        [
+          celda(m.id), celda(m.fecha), celda(m.tipo), celda(m.descripcion), celda(m.categoria),
+          Number(m.monto).toFixed(2), celda(m.fuente ?? 'manual'), celda(m.tiene_cfdi ? 'Si' : 'No'),
+          celda(m.es_auto_generado ? 'Si' : 'No'),
+        ].join(',')
+      )
+      .join('\n');
+    if (!res.write(texto + '\n')) await new Promise((r) => res.once('drain', r));
+  }
+  res.end();
 }));
 
 // POST /api/contabilidad/:productoId — create movement
-router.post('/:productoId', requireHerramientaAccess('contabilidad', contarMovimientosManuales), validateBody(CrearMovimientoContableSchema), ah(async (req: AuthRequest, res: Response) => {
+router.post('/:productoId', idempotente('contabilidad_mov'), requireHerramientaAccess('contabilidad', contarMovimientosManuales), validateBody(CrearMovimientoContableSchema), ah(async (req: AuthRequest, res: Response) => {
   const producto = await AppDataSource.getRepository(Producto).findOne({
     where: { id: req.params.productoId, usuario_id: req.userId },
   });
@@ -309,30 +444,89 @@ router.post('/:productoId', requireHerramientaAccess('contabilidad', contarMovim
 }));
 
 // PATCH /api/contabilidad/movimiento/:id — inline edit
-router.patch('/movimiento/:id', ah(async (req: AuthRequest, res: Response) => {
+const EditarMovimientoSchema = z.object({
+  monto: dinero('monto').refine((m) => m > 0, 'monto debe ser mayor que 0').optional(),
+  descripcion: z.string().trim().min(1, 'descripcion no puede estar vacía').max(500).optional(),
+});
+
+/**
+ * Un asiento DERIVADO (el ingreso de una venta, el egreso de una nómina, la
+ * comisión de una terminal…) no se edita ni se borra desde Contabilidad.
+ *
+ * Cambiarle el monto o borrarlo dejaba a Contabilidad diciendo una cosa y a
+ * Ventas, Nómina o Almacén otra, sin forma de saber cuál era la buena; y como
+ * era editable, también era la vía discreta para maquillar una caja. Lo que se
+ * corrige es el hecho, en su herramienta: la venta se cancela, el pago se borra
+ * desde Nómina, y el asiento se ajusta solo.
+ */
+const HERRAMIENTA_DE_ORIGEN: Record<string, string> = {
+  venta: 'el POS (cancela la venta)',
+  cotizacion: 'Cotizaciones',
+  pago_nomina: 'Nómina',
+  compra_inventario: 'Inventario',
+  mantenimiento: 'Mantenimientos',
+};
+
+function bloqueoPorDerivado(mov: MovimientoContable): string | null {
+  if (!mov.referencia_tipo || mov.referencia_tipo === 'ajuste_manual') return null;
+  const origen = HERRAMIENTA_DE_ORIGEN[mov.referencia_tipo] ?? 'la herramienta que lo generó';
+  return `Este movimiento lo genera ${origen}: corrígelo ahí y la contabilidad se actualiza sola.`;
+}
+
+router.patch('/movimiento/:id', validateBody(EditarMovimientoSchema), ah(async (req: AuthRequest, res: Response) => {
   const mov = await repo().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!mov) { res.status(404).json({ error: 'No encontrado' }); return; }
-  const { monto, descripcion } = req.body as { monto?: number; descripcion?: string };
-  if (monto !== undefined && Number(monto) > 0) mov.monto = Number(monto);
-  if (descripcion !== undefined) {
-    if (!descripcion.trim()) { res.status(400).json({ error: 'descripcion no puede estar vacía' }); return; }
-    mov.descripcion = descripcion.trim();
-  }
-  await repo().save(mov);
-  res.json(mov);
+  const bloqueo = bloqueoPorDerivado(mov);
+  if (bloqueo) { res.status(409).json({ error: bloqueo, referencia_tipo: mov.referencia_tipo }); return; }
+
+  const { monto, descripcion } = req.body as z.infer<typeof EditarMovimientoSchema>;
+  const montoAntes = Number(mov.monto);
+  const actualizado = await AppDataSource.transaction(async manager => {
+    if (monto !== undefined) mov.monto = monto;
+    if (descripcion !== undefined) mov.descripcion = descripcion;
+    await manager.save(MovimientoContable, mov);
+    if (monto !== undefined && monto !== montoAntes) {
+      await auditarDinero(manager, req, {
+        accion:       'movimiento_editado',
+        entidad:      'movimiento_contable',
+        entidadId:    mov.id,
+        productoId:   mov.producto_id,
+        montoAntes,
+        montoDespues: monto,
+        detalle:      { descripcion: mov.descripcion, fecha: mov.fecha },
+      });
+    }
+    return mov;
+  });
+  res.json(actualizado);
 }));
 
-// DELETE /api/contabilidad/movimiento/:id — delete own movement + auto-generated children
+// DELETE /api/contabilidad/movimiento/:id — borra un asiento MANUAL y sus hijos
 router.delete('/movimiento/:id', ah(async (req: AuthRequest, res: Response) => {
   const mov = await repo().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!mov) { res.status(404).json({ error: 'No encontrado' }); return; }
-  await repo().delete({ parent_movimiento_id: req.params.id, usuario_id: req.userId! });
-  await repo().remove(mov);
+  const bloqueo = bloqueoPorDerivado(mov);
+  if (bloqueo) { res.status(409).json({ error: bloqueo, referencia_tipo: mov.referencia_tipo }); return; }
+
+  // Padre e hijos, en una sola transacción: antes eran dos sentencias sueltas y
+  // un fallo a medias dejaba los hijos huérfanos.
+  await AppDataSource.transaction(async manager => {
+    await auditarDinero(manager, req, {
+      accion:     'movimiento_borrado',
+      entidad:    'movimiento_contable',
+      entidadId:  mov.id,
+      productoId: mov.producto_id,
+      montoAntes: Number(mov.monto),
+      detalle:    { descripcion: mov.descripcion, fecha: mov.fecha, tipo: mov.tipo, categoria: mov.categoria },
+    });
+    await manager.delete(MovimientoContable, { parent_movimiento_id: mov.id, usuario_id: req.userId! });
+    await manager.remove(MovimientoContable, mov);
+  });
   res.json({ ok: true });
 }));
 
 // POST /api/contabilidad/:productoId/import — bulk import pre-parsed rows (Pro only)
-router.post('/:productoId/import', requirePlanFeature('csv_import', 'La importación masiva CSV'), ah(async (req: AuthRequest, res: Response) => {
+router.post('/:productoId/import', requirePlanFeature('csv_import', 'La importación masiva CSV'), exigirProductoPropio, ah(async (req: AuthRequest, res: Response) => {
   const { rows, omitir_duplicados = true } = req.body as {
     rows: ImportRow[];
     omitir_duplicados?: boolean;
@@ -384,9 +578,11 @@ router.post('/:productoId/import', requirePlanFeature('csv_import', 'La importac
     });
   }
 
-  // Bulk insert en lotes de 500
+  // Bulk insert en lotes de 500, TODO en una transacción: si un lote falla no
+  // quedan a medias los anteriores (antes se guardaban y el usuario no lo sabía).
   let importados = 0;
   const CHUNK = 500;
+  await AppDataSource.transaction(async (manager) => {
   for (let i = 0; i < filasParaInsertar.length; i += CHUNK) {
     const chunk = filasParaInsertar.slice(i, i + CHUNK).map((r) =>
       repo().create({
@@ -403,15 +599,15 @@ router.post('/:productoId/import', requirePlanFeature('csv_import', 'La importac
         batch_id:     batchId,
       })
     );
-    await repo().save(chunk);
+    await manager.save(MovimientoContable, chunk);
     importados += chunk.length;
   }
-
-  // Calibración con todos los movimientos del producto
-  const todosMovimientos = await repo().find({
-    where: { usuario_id: req.userId!, producto_id: req.params.productoId },
   });
-  const calibracion = calcularCalibracion(todosMovimientos);
+
+  // Calibración con el historial del producto, agregado por mes en SQL.
+  const calibracion = calcularCalibracionMensual(
+    await agregadoMensual({ usuarioId: req.userId!, productoId: req.params.productoId })
+  );
 
   res.status(201).json({ importados, saltados, errores, batch_id: batchId, calibracion });
 }));
@@ -444,17 +640,6 @@ router.get('/:productoId/canales', ah(async (req: AuthRequest, res: Response) =>
   res.json(canales);
 }));
 
-/** Crear canales colgados de un producto ajeno dejaba filas con FK a datos de otra cuenta. */
-const exigirProductoPropio = ah(async (req: AuthRequest, res: Response, next: NextFunction) => {
-  const existe = await AppDataSource.getRepository(Producto).exists({
-    where: { id: req.params.productoId, usuario_id: req.userId! },
-  });
-  if (!existe) {
-    res.status(404).json({ error: 'Producto no encontrado' });
-    return;
-  }
-  next();
-});
 
 // POST /api/contabilidad/:productoId/canales — Crear nuevo canal
 router.post('/:productoId/canales', exigirProductoPropio, validateBody(CanalCobroInputSchema), ah(async (req: AuthRequest, res: Response) => {
@@ -529,12 +714,17 @@ router.delete('/:productoId/canales/:id', ah(async (req: AuthRequest, res: Respo
 router.post('/:productoId/canales/seed-defaults', exigirProductoPropio, ah(async (req: AuthRequest, res: Response) => {
   const existentes = await repoCanales().find({
     where: { usuario_id: req.userId!, producto_id: req.params.productoId },
-    select: ['nombre'],
+    select: ['nombre', 'institucion', 'tipo_canal'],
   });
   const nombresSet = new Set(existentes.map((c) => c.nombre.toLowerCase()));
+  // También por institución + tipo: si alguien renombró "Mercado Pago" a "MP",
+  // comparar solo nombres lo volvía a crear en cada carga del catálogo.
+  const huellaSet = new Set(existentes.map((c) => `${c.institucion?.toLowerCase() ?? ''}|${c.tipo_canal}`));
 
   const nuevos = PRESETS_CANALES_DEFAULT.filter(
-    (preset) => !nombresSet.has(preset.nombre.toLowerCase())
+    (preset) =>
+      !nombresSet.has(preset.nombre.toLowerCase()) &&
+      !huellaSet.has(`${preset.institucion?.toLowerCase() ?? ''}|${preset.tipo_canal}`)
   ).map((preset) =>
     repoCanales().create({
       usuario_id: req.userId!,
@@ -605,48 +795,24 @@ router.post('/:productoId/canales/simular', validateBody(SimularPreciosSchema), 
   res.json(simulacion);
 }));
 
-// GET /api/contabilidad/:productoId/liquidaciones — Movimientos y conciliación de liquidaciones
+// GET /api/contabilidad/:productoId/liquidaciones — movimientos por liquidar
+// (primero los pendientes) y KPIs sobre todo el historial, calculados en SQL.
+// Query: `estado` (pendiente | liquidado), `limite` (1-500, 200 por defecto).
 router.get('/:productoId/liquidaciones', ah(async (req: AuthRequest, res: Response) => {
-  const movs = await repo()
-    .createQueryBuilder('m')
-    .where('m.usuario_id = :uid', { uid: req.userId! })
-    .andWhere('(m.producto_id = :productoId OR m.producto_id IS NULL)', { productoId: req.params.productoId })
-    .andWhere('m.tipo = :tipo', { tipo: 'ingreso' })
-    .andWhere('(m.canal_cobro_id IS NOT NULL OR m.monto_bruto IS NOT NULL OR m.comision_monto IS NOT NULL)')
-    .orderBy('m.fecha', 'DESC')
-    .addOrderBy('m.fecha_creacion', 'DESC')
-    .getMany();
-
-  let totalPendienteCobro = 0;
-  let totalLiquidado = 0;
-  let totalComisionesDeducidas = 0;
-
-  for (const m of movs) {
-    const neto = Number(m.monto_neto ?? m.monto ?? 0);
-    const comision = Number(m.comision_monto ?? 0) + Number(m.comision_iva ?? 0) + Number(m.retencion_monto ?? 0);
-    totalComisionesDeducidas += comision;
-    if (m.estado_liquidacion === 'pendiente') {
-      totalPendienteCobro += neto;
-    } else {
-      totalLiquidado += neto;
-    }
-  }
-
-  res.json({
-    movimientos: movs,
-    kpis: {
-      total_pendiente_cobro: Math.round(totalPendienteCobro * 100) / 100,
-      total_liquidado: Math.round(totalLiquidado * 100) / 100,
-      total_comisiones_deducidas: Math.round(totalComisionesDeducidas * 100) / 100,
-      conteo_pendientes: movs.filter((m) => m.estado_liquidacion === 'pendiente').length,
-    },
-  });
+  const filtros = leerFiltros(req, res);
+  if (!filtros) return;
+  const estado = req.query.estado === 'pendiente' || req.query.estado === 'liquidado' ? req.query.estado : undefined;
+  const [movimientos, kpis] = await Promise.all([
+    listarLiquidaciones(filtros, estado, leerLimite(req.query.limite)),
+    kpisLiquidaciones(filtros),
+  ]);
+  res.json({ movimientos, kpis });
 }));
 
 // PATCH /api/contabilidad/liquidaciones/:id/conciliar — Marcar liquidación como depositada en banco
 router.patch('/liquidaciones/:id/conciliar', validateBody(ConciliarLiquidacionSchema), ah(async (req: AuthRequest, res: Response) => {
   const { fecha_liquidacion } = req.body as z.infer<typeof ConciliarLiquidacionSchema>;
-  const fechaEfectiva = fecha_liquidacion || new Date().toISOString().slice(0, 10);
+  const fechaEfectiva = fecha_liquidacion || (await hoyDePeticion(req));
 
   const actualizado = await AppDataSource.transaction(async (manager) => {
     const mov = await manager.getRepository(MovimientoContable).findOne({
@@ -680,164 +846,37 @@ router.patch('/liquidaciones/:id/conciliar', validateBody(ConciliarLiquidacionSc
   res.json({ ok: true, movimiento: actualizado });
 }));
 
-// GET /api/contabilidad/:productoId/analisis-canales — Fugas por comisiones por institución
+// GET /api/contabilidad/:productoId/analisis-canales — fugas por comisiones por institución
 router.get('/:productoId/analisis-canales', ah(async (req: AuthRequest, res: Response) => {
-  const movs = await repo()
-    .createQueryBuilder('m')
-    .where('m.usuario_id = :uid', { uid: req.userId! })
-    .andWhere('(m.producto_id = :productoId OR m.producto_id IS NULL)', { productoId: req.params.productoId })
-    .andWhere('m.tipo = :tipo', { tipo: 'ingreso' })
-    .andWhere('(m.comision_monto IS NOT NULL OR m.canal_cobro_id IS NOT NULL)')
-    .getMany();
-
-  const map: Record<
-    string,
-    {
-      institucion: string;
-      canal_nombre: string;
-      transacciones: number;
-      total_bruto: number;
-      total_comisiones: number;
-      total_comisiones_iva: number;
-      total_retenciones: number;
-      total_deducciones: number;
-      total_neto: number;
-    }
-  > = {};
-
-  let granTotalBruto = 0;
-  let granTotalComisiones = 0;
-
-  for (const m of movs) {
-    const key = m.institucion_snapshot || m.canal_nombre_snapshot || 'Otras Terminales';
-    if (!map[key]) {
-      map[key] = {
-        institucion: m.institucion_snapshot || key,
-        canal_nombre: m.canal_nombre_snapshot || key,
-        transacciones: 0,
-        total_bruto: 0,
-        total_comisiones: 0,
-        total_comisiones_iva: 0,
-        total_retenciones: 0,
-        total_deducciones: 0,
-        total_neto: 0,
-      };
-    }
-
-    const bruto = Number(m.monto_bruto ?? m.monto ?? 0);
-    const comision = Number(m.comision_monto ?? 0);
-    const comisionIva = Number(m.comision_iva ?? 0);
-    const retencion = Number(m.retencion_monto ?? 0);
-    const deducciones = comision + comisionIva + retencion;
-    const neto = Number(m.monto_neto ?? bruto - deducciones);
-
-    map[key].transacciones += 1;
-    map[key].total_bruto += bruto;
-    map[key].total_comisiones += comision;
-    map[key].total_comisiones_iva += comisionIva;
-    map[key].total_retenciones += retencion;
-    map[key].total_deducciones += deducciones;
-    map[key].total_neto += neto;
-
-    granTotalBruto += bruto;
-    granTotalComisiones += deducciones;
-  }
-
-  const canalesArray = Object.values(map).map((item) => ({
-    ...item,
-    porcentaje_fuga: item.total_bruto > 0 ? Math.round((item.total_deducciones / item.total_bruto) * 1000) / 10 : 0,
-  }));
-
-  res.json({
-    canales: canalesArray,
-    totales: {
-      gran_total_bruto: Math.round(granTotalBruto * 100) / 100,
-      gran_total_comisiones: Math.round(granTotalComisiones * 100) / 100,
-      porcentaje_fuga_global: granTotalBruto > 0 ? Math.round((granTotalComisiones / granTotalBruto) * 1000) / 10 : 0,
-    },
-  });
+  const filtros = leerFiltros(req, res);
+  if (!filtros) return;
+  res.json(await analisisCanales(filtros));
 }));
 
-// GET /api/contabilidad/:productoId/pnl — Estado de Resultados Financiero (P&L)
+// GET /api/contabilidad/:productoId/pnl — Estado de Resultados (P&L)
+// Query: `mes` (YYYY-MM) o `desde` + `hasta`; sin ellos, histórico acumulado.
 router.get('/:productoId/pnl', ah(async (req: AuthRequest, res: Response) => {
-  const { mes, desde, hasta } = req.query as { mes?: string; desde?: string; hasta?: string };
-
-  const qb = repo()
-    .createQueryBuilder('m')
-    .where('m.usuario_id = :uid', { uid: req.userId! })
-    .andWhere('(m.producto_id = :productoId OR m.producto_id IS NULL)', { productoId: req.params.productoId });
-
-  if (mes && /^\d{4}-\d{2}$/.test(mes)) {
-    const [y, mNum] = mes.split('-').map(Number);
-    const primerDia = `${mes}-01`;
-    const ultimoDia = new Date(Date.UTC(y, mNum, 0)).toISOString().slice(0, 10);
-    qb.andWhere("m.fecha BETWEEN :primerDia AND :ultimoDia", { primerDia, ultimoDia });
-  } else if (desde && hasta) {
-    qb.andWhere("m.fecha BETWEEN :desde AND :hasta", { desde, hasta });
-  }
-
-  const movs = await qb.getMany();
-
-  let ingresosBrutos = 0;
-  let comisionesPasarelas = 0;
-  let costoVentasCOGS = 0;
-  let gastosOperativosOPEX = 0;
-  let impuestosTotales = 0;
-
-  const CATEGORIAS_COGS = ['insumos', 'materiales', 'costo de venta', 'costo de ventas', 'mercancia', 'materia prima'];
-  const CATEGORIAS_COMISIONES = ['comisiones financieras / plataformas', 'comision', 'comisiones', 'comision clip', 'comision uber'];
-  const CATEGORIAS_IMPUESTOS = ['iva por pagar', 'isr provisional', 'imss', 'infonavit', 'retención iva', 'retención isr', 'impuestos', 'iva acreditable / comisiones'];
-
-  for (const m of movs) {
-    const monto = Number(m.monto ?? 0);
-    const cat = (m.categoria || '').trim().toLowerCase();
-
-    if (m.tipo === 'ingreso') {
-      ingresosBrutos += Number(m.monto_bruto ?? monto);
-      if (m.comision_monto) {
-        comisionesPasarelas += Number(m.comision_monto) + Number(m.comision_iva ?? 0) + Number(m.retencion_monto ?? 0);
-      }
-    } else {
-      // Es egreso
-      if (CATEGORIAS_COMISIONES.some((c) => cat.includes(c))) {
-        // Ya sumado si era auto-generado con comision_monto, pero si no tenía padre:
-        if (!m.parent_movimiento_id) {
-          comisionesPasarelas += monto;
-        }
-      } else if (CATEGORIAS_COGS.some((c) => cat.includes(c)) || m.fuente === 'inventario') {
-        costoVentasCOGS += monto;
-      } else if (CATEGORIAS_IMPUESTOS.some((c) => cat.includes(c))) {
-        impuestosTotales += monto;
-      } else {
-        gastosOperativosOPEX += monto;
-      }
+  const { mes, ...resto } = req.query as Record<string, string | undefined>;
+  let desde = resto.desde;
+  let hasta = resto.hasta;
+  if (mes !== undefined) {
+    const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(mes);
+    if (!m) {
+      res.status(400).json({ error: 'mes inválido (YYYY-MM)' });
+      return;
     }
+    desde = `${mes}-01`;
+    hasta = new Date(Date.UTC(Number(m[1]), Number(m[2]), 0)).toISOString().slice(0, 10);
   }
-
-  const ingresoNetoOperativo = Math.max(0, ingresosBrutos - comisionesPasarelas);
-  const utilidadBruta = ingresoNetoOperativo - costoVentasCOGS;
-  const ebitda = utilidadBruta - gastosOperativosOPEX;
-  const utilidadNeta = ebitda - impuestosTotales;
-
-  const r2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
-  const pct = (part: number, total: number) => (total > 0 ? r2((part / total) * 100) : 0);
-
+  const r = FiltrosQuerySchema.safeParse({ desde, hasta });
+  if (!r.success) {
+    res.status(400).json({ error: r.error.errors[0]?.message ?? 'Rango inválido' });
+    return;
+  }
+  const filtros: FiltrosMovimientos = { usuarioId: req.userId!, productoId: req.params.productoId, desde, hasta };
   res.json({
     periodo: mes || (desde && hasta ? `${desde} a ${hasta}` : 'Histórico acumulado'),
-    pnl: {
-      ingresos_brutos: r2(ingresosBrutos),
-      comisiones_pasarelas_delivery: r2(comisionesPasarelas),
-      ingreso_neto_operativo: r2(ingresoNetoOperativo),
-      costo_ventas_cogs: r2(costoVentasCOGS),
-      utilidad_bruta: r2(utilidadBruta),
-      margen_bruto_porcentaje: pct(utilidadBruta, ingresosBrutos),
-      gastos_operativos_opex: r2(gastosOperativosOPEX),
-      utilidad_operativa_ebitda: r2(ebitda),
-      margen_operativo_porcentaje: pct(ebitda, ingresosBrutos),
-      impuestos: r2(impuestosTotales),
-      utilidad_neta: r2(utilidadNeta),
-      margen_neto_porcentaje: pct(utilidadNeta, ingresosBrutos),
-    },
+    pnl: await pnl(filtros),
   });
 }));
 

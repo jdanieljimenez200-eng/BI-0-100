@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { ah } from '../utils/asyncHandler';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { invalidatePlanCache } from '../middleware/requirePlan';
 import { AppDataSource } from '../config/database';
 import { Usuario } from '../models/Usuario';
 import { AsignacionTrabajador, PermisosTrabajador } from '../models/AsignacionTrabajador';
@@ -206,6 +207,7 @@ router.post('/seleccionar', ah(async (req: AuthRequest, res: Response) => {
 
   // Auditoría
   await registrarCambioHerramienta(cuentaId, key, 'activada', plan, 'usuario_manual');
+  await invalidatePlanCache(cuentaId);
 
   res.status(201).json({ ok: true, herramienta_key: key });
 }));
@@ -270,6 +272,7 @@ router.delete('/deseleccionar', ah(async (req: AuthRequest, res: Response) => {
 
   // Auditoría
   await registrarCambioHerramienta(cuentaId, key, 'desactivada', plan, 'usuario_manual');
+  await invalidatePlanCache(cuentaId);
 
   res.json({ ok: true, herramienta_key: key });
 }));

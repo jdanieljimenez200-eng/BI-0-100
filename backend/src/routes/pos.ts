@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { In } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
-import { validateBody, exigirUuid, fechaISO } from '../middleware/validate';
+import { requireToolCapability, requireHerramientaAccess, permiteAccion } from '../middleware/requirePlan';
+import { validateBody, exigirUuid, esUuid, fechaISO } from '../middleware/validate';
 import { ItemPOS } from '../models/ItemPOS';
 import { Venta } from '../models/Venta';
 import { VentaItem } from '../models/VentaItem';
@@ -27,13 +27,19 @@ import {
 import { getTaxConfig } from '../utils/taxConfig';
 import { siguienteFolioVenta } from '../utils/folios';
 import { resolverClienteParaVenta } from '../services/crm/resolverCliente';
-import { descontarInventarioPorVenta, revertirInventarioPorVenta } from '../services/pos/inventarioVenta';
+import { descontarInventarioPorVenta, devolverInventarioPorCancelacion } from '../services/pos/inventarioVenta';
+import { auditarDinero } from '../services/auditoria/auditoriaDinero';
 import { ah } from '../utils/asyncHandler';
+import { hoyDePeticion } from '../utils/fechaLocal';
+import { idempotente } from '../middleware/idempotency';
+import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
+import { cantidad, dinero, MAX_DINERO } from '../utils/limitesNumericos';
+import { r2 } from '../utils/dinero';
 
 const CrearItemPOSSchema = z.object({
   nombre: z.string().trim().min(1, 'nombre es requerido'),
   descripcion: z.string().optional(),
-  precio: z.number({ invalid_type_error: 'precio debe ser un número' }).min(0, 'precio debe ser un número >= 0'),
+  precio: dinero('precio'),
   categoria: z.string().optional(),
   imagen_url: z.string().optional(),
   emoji: z.string().optional(),
@@ -44,8 +50,8 @@ const CrearItemPOSSchema = z.object({
 const LineaCarritoSchema = z.object({
   item_pos_id: z.string().uuid().nullable().optional(),
   nombre: z.string().min(1, 'nombre del item es requerido'),
-  precio_unitario: z.number().min(0, 'precio_unitario debe ser >= 0'),
-  cantidad: z.number().positive('cantidad debe ser > 0'),
+  precio_unitario: dinero('precio_unitario'),
+  cantidad: cantidad('cantidad').refine((c) => c > 0, 'cantidad debe ser > 0'),
 });
 
 const CrearVentaSchema = z.object({
@@ -92,8 +98,15 @@ router.use(requireHerramientaAccess('pos'));
 
 // Límite freemium de movimientos del POS: cada venta cuenta como un movimiento.
 // Se cuenta por la cuenta efectiva (owner) que requireToolCapability ya fijó en req.userId.
+// Una venta cancelada no ocupa cuota del plan: antes se borraba y dejaba el
+// hueco libre, y cancelar no debe costar más que equivocarse.
 const contarVentasPOS = (cuentaId: string) =>
-  AppDataSource.getRepository(Venta).count({ where: { usuario_id: cuentaId } });
+  AppDataSource.getRepository(Venta).count({ where: { usuario_id: cuentaId, estado: 'completada' } });
+
+
+
+/** Categoría de los asientos que revierten una venta cancelada. */
+const CATEGORIA_CANCELACION = 'Cancelaciones';
 
 const repoItems = () => AppDataSource.getRepository(ItemPOS);
 const repoVentas = () => AppDataSource.getRepository(Venta);
@@ -139,13 +152,17 @@ router.post('/catalogo', validateBody(CrearItemPOSSchema), ah(async (req: AuthRe
     res.status(400).json({ error: 'precio debe ser un número >= 0' });
     return;
   }
+  if (negocio_id && !(await repoNegocios().exists({ where: { id: negocio_id, usuario_id: req.userId! } }))) {
+    res.status(404).json({ error: 'Negocio no encontrado' });
+    return;
+  }
 
   const item = repoItems().create({
     usuario_id: req.userId!,
     negocio_id: negocio_id ?? null,
     nombre: nombre.trim(),
     descripcion: descripcion?.trim() ?? null,
-    precio: Math.round(precio * 100) / 100,
+    precio: r2(precio),
     categoria: categoria?.trim() ?? null,
     imagen_url: imagen_url ?? null,
     emoji: emoji ?? null,
@@ -158,7 +175,9 @@ router.post('/catalogo', validateBody(CrearItemPOSSchema), ah(async (req: AuthRe
 }));
 
 // PATCH /api/pos/catalogo/:id
-router.patch('/catalogo/:id', ah(async (req: AuthRequest, res: Response) => {
+const EditarItemPOSSchema = CrearItemPOSSchema.omit({ negocio_id: true }).partial().extend({ activo: z.boolean().optional() });
+
+router.patch('/catalogo/:id', validateBody(EditarItemPOSSchema), ah(async (req: AuthRequest, res: Response) => {
   const item = await repoItems().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!item) {
     res.status(404).json({ error: 'Item no encontrado' });
@@ -289,19 +308,37 @@ router.put('/catalogo/:id/receta', validateBody(RecetaSchema), ah(async (req: Au
 router.get('/ventas', ah(async (req: AuthRequest, res: Response) => {
   const { producto_id, desde, hasta } = req.query as Record<string, string | undefined>;
 
-  const qb = repoVentas()
-    .createQueryBuilder('v')
-    .leftJoinAndSelect('v.items', 'items')
-    .where('v.usuario_id = :uid', { uid: req.userId })
-    .orderBy('v.fecha', 'DESC')
-    .addOrderBy('v.fecha_creacion', 'DESC');
+  if (
+    (producto_id && !esUuid(producto_id)) ||
+    (desde && !fechaISO().safeParse(desde).success) ||
+    (hasta && !fechaISO().safeParse(hasta).success)
+  ) {
+    res.status(400).json({ error: 'Filtros inválidos (producto_id UUID, fechas YYYY-MM-DD)' });
+    return;
+  }
 
+  // Sin join en la consulta paginada: con `leftJoinAndSelect(items)` + LIMIT,
+  // TypeORM limitaba FILAS unidas y con 2 ítems por venta salían 100 ventas
+  // (y la última podía venir con ítems incompletos). Los ítems van aparte.
+  const qb = repoVentas().createQueryBuilder('v').where('v.usuario_id = :uid', { uid: req.userId });
   if (producto_id) qb.andWhere('v.producto_id = :pid', { pid: producto_id });
   if (desde)       qb.andWhere('v.fecha >= :desde', { desde });
   if (hasta)       qb.andWhere('v.fecha <= :hasta', { hasta });
 
-  const ventas = await qb.limit(200).getMany();
-  res.json(ventas);
+  const pagina = await paginar(
+    qb,
+    [{ expr: 'v.fecha', tipo: 'date' }, { expr: 'v.fecha_creacion', tipo: 'timestamp' }, { expr: 'v.id', tipo: 'uuid' }],
+    req.query.antes,
+    leerLimite(req.query.limite)
+  );
+  if (!pagina) { res.status(400).json({ error: 'Cursor de paginación inválido' }); return; }
+
+  const ids = pagina.filas.map((v) => v.id);
+  const items = ids.length ? await repoVentaItems().find({ where: { venta_id: In(ids) } }) : [];
+  const porVenta = new Map<string, VentaItem[]>();
+  for (const it of items) porVenta.set(it.venta_id, [...(porVenta.get(it.venta_id) ?? []), it]);
+  for (const v of pagina.filas) v.items = porVenta.get(v.id) ?? [];
+  responderPagina(res, pagina);
 }));
 
 // GET /api/pos/ventas/:id
@@ -318,7 +355,7 @@ router.get('/ventas/:id', ah(async (req: AuthRequest, res: Response) => {
 }));
 
 // POST /api/pos/ventas — crea venta + items + movimientos contables
-router.post('/ventas', requireHerramientaAccess('pos', contarVentasPOS), validateBody(CrearVentaSchema), ah(async (req: AuthRequest, res: Response) => {
+router.post('/ventas', idempotente('pos_venta'), requireHerramientaAccess('pos', contarVentasPOS), validateBody(CrearVentaSchema), ah(async (req: AuthRequest, res: Response) => {
   const {
     producto_id,
     negocio_id,
@@ -360,12 +397,54 @@ router.post('/ventas', requireHerramientaAccess('pos', contarVentasPOS), validat
   }
   const pais = (producto.pais || 'MX').toUpperCase();
 
+  // 1.b El precio lo manda el catálogo, no el cliente.
+  //
+  // Antes se cobraba el `precio_unitario` del cuerpo aunque la línea viniera de
+  // un item del catálogo, y el `item_pos_id` ni siquiera se comprobaba como
+  // propio: un cajero podía cobrar lo que quisiera (o enlazar un item ajeno,
+  // que además no descontaba inventario). Ahora el item tiene que ser de la
+  // cuenta, y cobrar otro precio exige el permiso `precio_libre`.
+  const idsCatalogo = [...new Set(
+    (lineas ?? []).map((l) => l.item_pos_id).filter((id): id is string => typeof id === 'string'),
+  )];
+  const precioCatalogoPorItem = new Map<string, number>();
+  if (idsCatalogo.length > 0) {
+    const itemsCatalogo = await repoItems().find({
+      where: { id: In(idsCatalogo), usuario_id: req.userId! },
+    });
+    if (itemsCatalogo.length !== idsCatalogo.length) {
+      res.status(404).json({ error: 'Algún producto del carrito no está en tu catálogo' });
+      return;
+    }
+    for (const item of itemsCatalogo) precioCatalogoPorItem.set(item.id, Number(item.precio));
+  }
+
+  const fueraDeCatalogo = (lineas ?? []).filter((l) => {
+    if (!l.item_pos_id) return false;
+    const precioLista = precioCatalogoPorItem.get(l.item_pos_id);
+    return precioLista !== undefined && Math.abs(Number(l.precio_unitario) - precioLista) >= 0.01;
+  });
+  if (fueraDeCatalogo.length > 0 && !(await permiteAccion(req, 'precio_libre'))) {
+    const ejemplo = fueraDeCatalogo[0];
+    res.status(403).json({
+      error: `El precio de "${ejemplo.nombre}" no coincide con el del catálogo (${precioCatalogoPorItem.get(ejemplo.item_pos_id!)}). Actualiza el catálogo o pide permiso para cobrar otro precio.`,
+      permiso: 'precio_libre',
+    });
+    return;
+  }
+
   // 2. Calcular totales — si aplicar_impuesto=false, forzamos tasa 0
   let totales;
   try {
     totales = calcularTotalesVenta(lineas, pais);
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : 'Carrito inválido' });
+    return;
+  }
+
+  // El total de un carrito de líneas válidas aún puede desbordar numeric(12,2).
+  if (totales.total > MAX_DINERO) {
+    res.status(400).json({ error: 'El total de la venta es demasiado grande' });
     return;
   }
 
@@ -379,7 +458,8 @@ router.post('/ventas', requireHerramientaAccess('pos', contarVentasPOS), validat
     };
   }
 
-  const fechaVenta = fecha || new Date().toISOString().slice(0, 10);
+  const hoy = await hoyDePeticion(req);
+  const fechaVenta = fecha || hoy;
 
   // 3+4. Generar folio y crear registros en una sola transacción atómica.
   // El advisory lock serializa la generación de número de ticket por usuario,
@@ -400,6 +480,7 @@ router.post('/ventas', requireHerramientaAccess('pos', contarVentasPOS), validat
         crearCliente:  crear_cliente ?? null,
         nombreLibre:   cliente_nombre ?? null,
         telefonoLibre: cliente_telefono ?? null,
+        hoy,
       });
       if (!resCliente.ok) throw new VentaError(resCliente.status, resCliente.error);
 
@@ -451,6 +532,7 @@ router.post('/ventas', requireHerramientaAccess('pos', contarVentasPOS), validat
           item_pos_id:     l.item_pos_id ?? null,
           nombre_snapshot: l.nombre,
           precio_unitario: l.precio_unitario,
+          precio_catalogo: l.item_pos_id ? precioCatalogoPorItem.get(l.item_pos_id) ?? null : null,
           cantidad:        l.cantidad,
           subtotal_linea:  l.subtotal_linea,
         })
@@ -561,6 +643,29 @@ router.post('/ventas', requireHerramientaAccess('pos', contarVentasPOS), validat
       v.movimiento_contable_id = movPadre.id;
       await manager.save(Venta, v);
 
+      // Un descuento del cajero deja de ser invisible.
+      if (fueraDeCatalogo.length > 0) {
+        await auditarDinero(manager, req, {
+          accion:     'precio_fuera_de_catalogo',
+          entidad:    'venta',
+          entidadId:  v.id,
+          productoId: producto_id,
+          montoAntes: r2(fueraDeCatalogo.reduce(
+            (suma, l) => suma + (precioCatalogoPorItem.get(l.item_pos_id!) ?? 0) * Number(l.cantidad), 0)),
+          montoDespues: r2(fueraDeCatalogo.reduce(
+            (suma, l) => suma + Number(l.precio_unitario) * Number(l.cantidad), 0)),
+          detalle: {
+            numero_ticket: numeroTicket,
+            lineas: fueraDeCatalogo.map((l) => ({
+              nombre: l.nombre,
+              precio_catalogo: precioCatalogoPorItem.get(l.item_pos_id!) ?? null,
+              precio_cobrado: Number(l.precio_unitario),
+              cantidad: Number(l.cantidad),
+            })),
+          },
+        });
+      }
+
       return { venta: v, movPadreId: movPadre.id, advertencias: inv.advertencias };
     });
   } catch (err) {
@@ -596,40 +701,142 @@ router.post('/ventas', requireHerramientaAccess('pos', contarVentasPOS), validat
   });
 }));
 
-// DELETE /api/pos/ventas/:id — cancela venta y borra movimientos asociados
-router.delete('/ventas/:id', ah(async (req: AuthRequest, res: Response) => {
-  const venta = await repoVentas().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
-  if (!venta) {
-    res.status(404).json({ error: 'Venta no encontrada' });
+// ═══════════════════════════════════════════════════════════════════════════
+// CANCELACIÓN — nunca se borra una venta
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CancelarVentaSchema = z.object({
+  motivo: z.string().trim().max(300).optional(),
+});
+
+/**
+ * Cancela una venta: la deja en `estado = 'cancelada'`, le genera asientos
+ * contables INVERSOS, devuelve la mercancía al almacén con movimientos de
+ * entrada y deja constancia en la auditoría de dinero.
+ *
+ * Antes esto era un DELETE: la venta, sus ítems y sus asientos desaparecían sin
+ * rastro, y cualquier trabajador con acceso al POS podía hacerlo. Ese es el
+ * fraude de caja de manual (cobrar, borrar la venta y quedarse el efectivo), y
+ * además descuadraba Contabilidad contra Reportes. Ahora hace falta el permiso
+ * `cancelar_ventas` y todo queda registrado.
+ *
+ * Los asientos inversos llevan la fecha de HOY, no la de la venta: un cierre de
+ * mes ya entregado no se toca hacia atrás.
+ */
+async function cancelarVenta(req: AuthRequest, res: Response): Promise<void> {
+  if (!(await permiteAccion(req, 'cancelar_ventas'))) {
+    res.status(403).json({
+      error: 'No tienes permiso para cancelar ventas. Pídeselo al dueño de la cuenta.',
+      permiso: 'cancelar_ventas',
+    });
     return;
   }
 
-  await AppDataSource.transaction(async manager => {
-    if (venta.movimiento_contable_id) {
-      await manager.delete(MovimientoContable, { parent_movimiento_id: venta.movimiento_contable_id, usuario_id: req.userId! });
-      await manager.delete(MovimientoContable, { id: venta.movimiento_contable_id, usuario_id: req.userId! });
+  const motivo = ((req.body as { motivo?: string } | undefined)?.motivo ?? '').trim() || null;
+  const hoy = await hoyDePeticion(req);
+
+  try {
+    const ventaCancelada = await AppDataSource.transaction(async manager => {
+      // El bloqueo de fila evita que dos cancelaciones simultáneas generen dos
+      // juegos de asientos inversos.
+      const venta = await manager.findOne(Venta, {
+        where: { id: req.params.id, usuario_id: req.userId! },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!venta) throw new VentaError(404, 'Venta no encontrada');
+      if (venta.estado === 'cancelada') throw new VentaError(409, 'La venta ya está cancelada');
+
+      // Asientos inversos: mismo importe, tipo contrario. Se excluyen los que ya
+      // son una cancelación para no invertir una inversión.
+      const asientos = await manager.find(MovimientoContable, {
+        where: { usuario_id: req.userId!, referencia_tipo: 'venta', referencia_id: venta.id },
+      });
+      const inversos = asientos
+        .filter((mov) => mov.categoria !== CATEGORIA_CANCELACION)
+        .map((mov) =>
+          manager.create(MovimientoContable, {
+            usuario_id:           req.userId!,
+            creado_por_id:        req.trabajadorRealId ?? null,
+            producto_id:          mov.producto_id,
+            tipo:                 mov.tipo === 'ingreso' ? 'egreso' : 'ingreso',
+            descripcion:          `Cancelación ${venta.numero_ticket} — ${mov.descripcion}`.slice(0, 255),
+            categoria:            CATEGORIA_CANCELACION,
+            monto:                mov.monto,
+            fecha:                hoy,
+            parent_movimiento_id: null,
+            es_auto_generado:     true,
+            tiene_cfdi:           false,
+            fuente:               mov.fuente,
+            batch_id:             null,
+            referencia_tipo:      'venta',
+            referencia_id:        venta.id,
+            canal_cobro_id:       mov.canal_cobro_id,
+            canal_nombre_snapshot: mov.canal_nombre_snapshot,
+            institucion_snapshot: mov.institucion_snapshot,
+            estado_liquidacion:   'liquidado',
+            fecha_liquidacion:    hoy,
+          }),
+        );
+      if (inversos.length > 0) await manager.save(MovimientoContable, inversos);
+
+      await devolverInventarioPorCancelacion(manager, {
+        usuarioId:    req.userId!,
+        trabajadorId: req.trabajadorRealId ?? null,
+        ventaId:      venta.id,
+        numeroTicket: venta.numero_ticket,
+        fecha:        hoy,
+      });
+
+      // La cotización de origen vuelve a estar pendiente: dejarla como
+      // 'aceptada' sin venta detrás inflaría la tasa de conversión.
+      if (venta.cotizacion_id) {
+        await manager.update(
+          Cotizacion,
+          { id: venta.cotizacion_id, usuario_id: req.userId! },
+          { estado: 'enviada' },
+        );
+      }
+
+      venta.estado = 'cancelada';
+      venta.cancelada_por_id = req.trabajadorRealId ?? req.userId!;
+      venta.motivo_cancelacion = motivo;
+      venta.fecha_cancelacion = new Date();
+      await manager.save(Venta, venta);
+
+      await auditarDinero(manager, req, {
+        accion:      'venta_cancelada',
+        entidad:     'venta',
+        entidadId:   venta.id,
+        productoId:  venta.producto_id,
+        montoAntes:  Number(venta.total),
+        montoDespues: 0,
+        motivo,
+        detalle: {
+          numero_ticket: venta.numero_ticket,
+          fecha_venta: venta.fecha,
+          asientos_inversos: inversos.length,
+        },
+      });
+
+      return venta;
+    });
+
+    res.json({ ok: true, venta: ventaCancelada });
+  } catch (err) {
+    if (err instanceof VentaError) {
+      res.status(err.status).json({ error: err.message });
+      return;
     }
-    // Devolver al almacen lo que consumio la venta. Sin esto el stock queda
-    // descontado para siempre y el movimiento sobrevive huerfano (la FK es ON
-    // DELETE SET NULL, asi que no se borraria solo).
-    await revertirInventarioPorVenta(manager, req.userId!, venta.id);
+    throw err;
+  }
+}
 
-    // Si la venta nacio de una cotizacion, esa cotizacion vuelve a estar
-    // pendiente: dejarla como 'aceptada' sin venta detras inflaria la tasa de
-    // conversion con un cierre que ya no existe.
-    if (venta.cotizacion_id) {
-      await manager.update(
-        Cotizacion,
-        { id: venta.cotizacion_id, usuario_id: req.userId! },
-        { estado: 'enviada' },
-      );
-    }
+// POST /api/pos/ventas/:id/cancelar — forma recomendada (admite motivo)
+router.post('/ventas/:id/cancelar', validateBody(CancelarVentaSchema), ah(cancelarVenta));
 
-    await manager.remove(Venta, venta); // cascade borra venta_items
-  });
-
-  res.json({ ok: true });
-}));
+// DELETE /api/pos/ventas/:id — alias histórico. Ya NO borra: cancela igual que
+// la ruta de arriba. Se mantiene para no romper clientes antiguos.
+router.delete('/ventas/:id', ah(cancelarVenta));
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TICKET — HTML compartible + WhatsApp link

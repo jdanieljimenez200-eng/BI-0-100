@@ -5,6 +5,7 @@ import * as request from 'supertest';
 import { app, initTestDb, closeTestDb } from '../helpers/testApp';
 import { describeWithDb } from '../helpers/dbGuard';
 import { AppDataSource } from '../../config/database';
+import { hoyEnZona } from '../../utils/fechaLocal';
 
 /**
  * Herramienta Mantenimientos de punta a punta.
@@ -141,7 +142,8 @@ describeWithDb('Herramienta de mantenimientos', () => {
   });
 
   it('el semáforo separa vencidos, próximos y al día', async () => {
-    const hoy = new Date();
+    // El servidor mide los días desde el "hoy" local (CDMX por defecto).
+    const hoy = new Date(`${hoyEnZona('America/Mexico_City')}T00:00:00Z`);
     const haceDias = (dias: number) =>
       new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate() - dias)).toISOString().slice(0, 10);
 
@@ -168,7 +170,7 @@ describeWithDb('Herramienta de mantenimientos', () => {
     expect(registro.status).toBe(201);
     expect(registro.body.movimiento_contable_id).toBeTruthy();
     expect(registro.body.equipo.estado).toBe('al_dia');
-    expect(registro.body.equipo.fecha_ultimo).toBe(new Date().toISOString().slice(0, 10));
+    expect(registro.body.equipo.fecha_ultimo).toBe(hoyEnZona('America/Mexico_City'));
 
     const [movimiento] = await q(
       `SELECT tipo, categoria, monto, fuente, referencia_tipo, referencia_id FROM movimientos_contables WHERE id = $1`,
@@ -198,7 +200,7 @@ describeWithDb('Herramienta de mantenimientos', () => {
 
   it('rechaza una fecha futura', async () => {
     const alta = await api().post('/', { nombre: 'Horno' });
-    const manana = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    const manana = new Date(Date.parse(`${hoyEnZona('America/Mexico_City')}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
     const res = await api().post(`/${alta.body.id}/registrar`, { fecha: manana });
     expect(res.status).toBe(400);
   });
