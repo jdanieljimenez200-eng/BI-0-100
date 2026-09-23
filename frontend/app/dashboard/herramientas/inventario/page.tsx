@@ -252,8 +252,21 @@ function InventarioInner({
 
   const eliminarInsumo = useCallback(async (id: string) => {
     if (!confirm('¿Eliminar este insumo? Si tiene movimientos se archivará para conservar su historial, y saldrá de las recetas.')) return;
-    await api.delete(`/inventario/insumos/${id}`).catch(() => {});
-    setInsumos((prev) => prev.filter((i) => i.id !== id));
+    try {
+      const { data } = await api.delete(`/inventario/insumos/${id}`);
+      // Con movimientos el servidor no lo borra: lo archiva. Desaparece de la
+      // lista igual que uno borrado, así que sin decirlo el usuario cree que
+      // se perdió su historial.
+      if (data?.archivado) {
+        alert(data.mensaje ?? 'El insumo tiene movimientos: se archivó y su historial se conserva.');
+      }
+      setInsumos((prev) => prev.filter((i) => i.id !== id));
+    } catch (err) {
+      // Antes el error se tragaba y la fila desaparecía igual, hasta que la
+      // recarga la devolvía a su sitio sin explicación.
+      const ax = err as { response?: { data?: { error?: string } } };
+      alert(`No se pudo eliminar: ${ax.response?.data?.error ?? 'inténtalo de nuevo.'}`);
+    }
     cargarDatos();
   }, [cargarDatos]);
 
