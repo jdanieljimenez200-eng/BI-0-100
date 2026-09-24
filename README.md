@@ -6,8 +6,8 @@ Plataforma SaaS B2B que valida la viabilidad comercial, financiera, técnica y l
 
 ## 🚀 Tech Stack
 
-- **Backend:** Node.js 20 (LTS) + Express + TypeORM + PostgreSQL 15 + Redis 7 + BullMQ 5 + Anthropic Claude 3 Haiku.
-- **Frontend:** Next.js 16 (App Router, Turbopack, standalone) + React 19 + Tailwind CSS + GSAP 3 + Zustand.
+- **Backend:** Node.js 20 (LTS) + Express + TypeORM + PostgreSQL 15 + Redis 7 + BullMQ 5 + Anthropic Claude (Haiku 4.5 / Sonnet 5 / Opus 5 según la tarea).
+- **Frontend:** Next.js 16 (App Router, Turbopack, standalone) + React 19 + Tailwind CSS + GSAP 3 + Framer Motion.
 - **DevOps & Contenedores:** Docker Compose v2, dumb-init, Prometheus + Alertmanager, Sentry.
 
 ---
@@ -100,7 +100,6 @@ Bi0a100/
 │   ├── components/             # Componentes React modulares (UI, Dashboard, Auth)
 │   ├── hooks/                  # Hooks personalizados (useAuth)
 │   ├── lib/                    # api.ts (Axios), config.ts, gating.ts
-│   ├── stores/                 # Zustand state stores
 │   ├── Dockerfile              # Imagen de desarrollo
 │   ├── Dockerfile.prod         # Imagen standalone de producción
 │   └── package.json

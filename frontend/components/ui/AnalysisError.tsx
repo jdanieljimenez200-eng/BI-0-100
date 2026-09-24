@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
+import { AlertTriangle } from 'lucide-react';
 
 interface AnalysisErrorProps {
   modulo?: string;
@@ -25,18 +26,10 @@ export function AnalysisError({ modulo, title, message, retryHref, retryLabel, o
       className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 backdrop-blur-md shadow-[0_0_20px_rgba(239,68,68,0.06)]"
     >
       <div className="flex items-start gap-3">
-        <svg
+        <AlertTriangle
           className="mt-0.5 h-5 w-5 shrink-0 text-red-400"
-          viewBox="0 0 20 20"
-          fill="currentColor"
           aria-hidden="true"
-        >
-          <path
-            fillRule="evenodd"
-            d="M18 10A8 8 0 11 2 10a8 8 0 0116 0zm-8-4a1 1 0 00-1 1v3a1 1 0 002 0V7a1 1 0 00-1-1zm0 8a1 1 0 100-2 1 1 0 000 2z"
-            clipRule="evenodd"
-          />
-        </svg>
+        />
         <div className="min-w-0">
           {title && <p className="font-medium text-red-300">{title}</p>}
           <p className="text-red-400">{message || 'No se pudo cargar el análisis'}</p>

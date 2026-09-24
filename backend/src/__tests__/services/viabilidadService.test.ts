@@ -13,6 +13,7 @@ function tendencias(over: Partial<TendenciasResult> = {}): TendenciasResult {
     picos_estacionales: {},
     tendencia: 'CRECIENTE',
     es_mock: false,
+    fuente_disponible: true,
     ...over,
   };
 }
@@ -24,6 +25,7 @@ function competencia(over: Partial<CompetenciaResult> = {}): CompetenciaResult {
     gap_detectado: null,
     precio_mercado_promedio: 100,
     es_mock: false,
+    fuente_disponible: true,
     ...over,
   };
 }
@@ -392,19 +394,44 @@ describe('viabilidadService.calcularViabilidad — narrativa y confianza', () =>
     expect(r.confianza).toBe('alta');
   });
 
-  it('confianza media si una de las dos fuentes es estimada', () => {
-    expect(calcularViabilidad(tendencias({ es_mock: true }), competencia({ es_mock: false }), 30).confianza).toBe('media');
-    expect(calcularViabilidad(tendencias({ es_mock: false }), competencia({ es_mock: true }), 30).confianza).toBe('media');
+  it('confianza media si falta una de las dos fuentes', () => {
+    expect(
+      calcularViabilidad(tendencias({ fuente_disponible: false }), competencia(), 30).confianza
+    ).toBe('media');
+    expect(
+      calcularViabilidad(tendencias(), competencia({ fuente_disponible: false }), 30).confianza
+    ).toBe('media');
   });
 
-  it('confianza baja si ambas fuentes son estimadas', () => {
-    const r = calcularViabilidad(tendencias({ es_mock: true }), competencia({ es_mock: true }), 30);
+  it('confianza baja si no hubo ninguna fuente', () => {
+    const r = calcularViabilidad(
+      tendencias({ fuente_disponible: false }),
+      competencia({ fuente_disponible: false }),
+      30
+    );
     expect(r.confianza).toBe('baja');
   });
 
-  it('la confianza no altera el score', () => {
-    const real = calcularViabilidad(tendencias({ es_mock: false }), competencia({ es_mock: false }), 30);
-    const mock = calcularViabilidad(tendencias({ es_mock: true }), competencia({ es_mock: true }), 30);
-    expect(mock.score).toBe(real.score);
+  it('sin competencia rastreada NO se premia como mercado libre', () => {
+    // scoreCompetencia(0) valía 100: un mercado que nadie pudo rastrear salía
+    // como el mejor hueco posible. Ahora ese factor simplemente no puntúa.
+    const conFuente = calcularViabilidad(tendencias(), competencia({ total_competidores: 12 }), 30);
+    const sinFuente = calcularViabilidad(
+      tendencias(),
+      competencia({ fuente_disponible: false, total_competidores: 0, precio_mercado_promedio: 0 }),
+      30
+    );
+
+    expect(sinFuente.factores.competencia).toBe(0);
+    expect(sinFuente.cobertura_datos).toBeLessThan(conFuente.cobertura_datos);
+    expect(sinFuente.factores_negativos.join(' ')).toMatch(/[Ss]in datos de competencia/);
+  });
+
+  it('la cobertura de datos baja cuando falta una fuente', () => {
+    const completo = calcularViabilidad(tendencias(), competencia(), 30);
+    const sinTendencias = calcularViabilidad(tendencias({ fuente_disponible: false }), competencia(), 30);
+
+    expect(completo.cobertura_datos).toBeGreaterThan(sinTendencias.cobertura_datos);
+    expect(sinTendencias.cobertura_datos).toBeGreaterThan(0);
   });
 });

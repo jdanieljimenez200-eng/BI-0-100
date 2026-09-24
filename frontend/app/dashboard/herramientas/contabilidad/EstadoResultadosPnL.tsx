@@ -1,18 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import {
-  TrendingUp,
-  TrendingDown,
-  DollarSign,
-  PieChart,
-  Calendar,
-  AlertTriangle,
-  ArrowDownRight,
-  ArrowUpRight,
-  ShieldAlert,
-  Sparkles,
-} from 'lucide-react';
+import { PieChart, ArrowDownRight, ShieldAlert } from 'lucide-react';
 import api from '@/lib/api';
 
 interface PnLData {
@@ -57,11 +46,9 @@ export default function EstadoResultadosPnL({
 }: Props) {
   const [data, setData] = useState<PnLData | null>(null);
   const [canalesAnalisis, setCanalesAnalisis] = useState<CanalAnalisis[]>([]);
-  const [fugaGlobal, setFugaGlobal] = useState<number>(0);
   const [cargando, setCargando] = useState(true);
 
-  // Selector de mes (default mes actual YYYY-MM)
-  const mesActual = new Date().toISOString().slice(0, 7);
+  // Selector de mes ('' = histórico acumulado)
   const [mesSeleccionado, setMesSeleccionado] = useState<string>('');
 
   const fmt = (v: number) =>
@@ -78,7 +65,6 @@ export default function EstadoResultadosPnL({
       ]);
       setData(resPnL.data);
       setCanalesAnalisis(resCanales.data.canales || []);
-      setFugaGlobal(resCanales.data.totales?.porcentaje_fuga_global || 0);
     } catch {
       setData(null);
     } finally {

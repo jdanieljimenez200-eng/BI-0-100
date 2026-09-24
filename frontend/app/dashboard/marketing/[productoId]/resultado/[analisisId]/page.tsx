@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Heart, MessageCircle, Send, Bookmark, Share2, ThumbsUp, Check, CheckCheck, Copy, Video, Zap, Eye, Mic, Star, Smartphone, ImageIcon as LucideImageIcon, Play, ThumbsDown } from 'lucide-react';
 import api from '@/lib/api';
 import AnalysisLoader from '@/components/ui/AnalysisLoader';
 import {
@@ -280,13 +281,13 @@ const TIPO_COLOR: Record<TipoEstrategia, {
 };
 
 const TIPO_ICON: Record<TipoEstrategia, string> = {
-  SEGUIDORES: '👥',
-  RECONOCIMIENTO: '👑',
-  VENTAS: '🎯',
-  VENTAS_PLUS: '🔥',
-  PREMIUM: '01',
-  VOLUMEN: '02',
-  ESPECIALIZADO: '03',
+  SEGUIDORES: '01',
+  RECONOCIMIENTO: '02',
+  VENTAS: '03',
+  VENTAS_PLUS: 'V+',
+  PREMIUM: 'PR',
+  VOLUMEN: 'VO',
+  ESPECIALIZADO: 'ES',
 };
 
 type SeccionMarketing = 'estrategia' | 'calendario' | 'inversion' | 'tendencias' | 'rendimiento' | 'todo';
@@ -640,16 +641,6 @@ const CONTENT_TYPE_BADGE: Record<string, string> = {
   Texto: 'bg-zinc-600/15 text-zinc-300 border border-zinc-500/20',
 };
 
-const CONTENT_TYPE_EMOJI: Record<string, string> = {
-  Reel: '',
-  Carrusel: '',
-  Imagen: '',
-  Historia: '',
-  Video: '',
-  Live: '',
-  Texto: '',
-};
-
 /**
  * Explica el formato de cada publicación para que el concepto no sea una sola
  * frase suelta. Es texto editorial fijo, no sale del análisis: describe cómo se
@@ -744,7 +735,7 @@ const DAY_PLATFORM_META: Record<string, DayPlatformMeta> = {
 
 const DAY_PLATFORM_FALLBACK: DayPlatformMeta = {
   label: 'Redes', color: '#8B5CF6', bg: '#0b1421', headerBg: '#141c2b',
-  username: 'Tu Negocio', handle: 'Publicación', logo: <span className="text-xs">📢</span>, avatar: <span className="text-sm">📢</span>, kind: 'feed',
+  username: 'Tu Negocio', handle: 'Publicación', logo: <Share2 className="w-3.5 h-3.5 text-white" />, avatar: <Share2 className="w-4 h-4 text-white" />, kind: 'feed',
 };
 
 /** Campo del copy global que le corresponde a cada plataforma del calendario. */
@@ -787,7 +778,7 @@ function DayPostMockup({ platform, copy, hashtags, copied, onCopy }: {
       <div className="flex items-center gap-2 mb-2">
         <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: pm.color }} />
         <p className="text-[11px] font-black text-white/60 uppercase tracking-widest flex items-center gap-1.5">
-          <span>📱</span>
+          <Smartphone className="w-3.5 h-3.5 text-white/40" />
           <span>Preview en {pm.label}</span>
         </p>
       </div>
@@ -822,7 +813,7 @@ function DayPostMockup({ platform, copy, hashtags, copied, onCopy }: {
             <div className="flex-1 min-w-0">
               <p className="text-[14px] font-bold text-white truncate flex items-center gap-1">
                 <span>{pm.username}</span>
-                <span className="text-[10px] text-blue-400 select-none">✓</span>
+                <Check className="w-3 h-3 text-blue-400 select-none inline" />
               </p>
               <p className="text-[11px] text-white/40 truncate">{pm.handle}</p>
             </div>
@@ -839,7 +830,7 @@ function DayPostMockup({ platform, copy, hashtags, copied, onCopy }: {
               className="mx-3 mb-3 rounded-xl overflow-hidden flex items-center justify-center flex-col gap-2 relative group"
               style={{ height: '160px', background: `linear-gradient(135deg, ${pm.color}25, #0d0d1a 50%, ${pm.color}15)` }}
             >
-              <span className="text-3xl select-none">🖼️</span>
+              <LucideImageIcon className="w-8 h-8 text-white/40" />
               <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Imagen de Campaña</p>
             </div>
           )}
@@ -849,8 +840,8 @@ function DayPostMockup({ platform, copy, hashtags, copied, onCopy }: {
               className="mx-3 mb-3 rounded-xl overflow-hidden relative flex items-center justify-center flex-col gap-2"
               style={{ height: '220px', background: `linear-gradient(160deg, ${pm.color}30, #0b0b14 55%, ${pm.color}15)` }}
             >
-              <div className="w-12 h-12 rounded-full bg-black/50 border border-white/20 flex items-center justify-center text-xl shadow-lg cursor-pointer">
-                ▶️
+              <div className="w-12 h-12 rounded-full bg-black/50 border border-white/20 flex items-center justify-center shadow-lg cursor-pointer">
+                <Play className="w-5 h-5 text-white ml-0.5 fill-white" />
               </div>
               <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
                 {platform === 'YouTube' ? 'YouTube Shorts' : 'Video Vertical'}
@@ -861,38 +852,38 @@ function DayPostMockup({ platform, copy, hashtags, copied, onCopy }: {
                 {platform === 'YouTube' ? (
                   <>
                     <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-sm">👍</span>
+                      <ThumbsUp className="w-3.5 h-3.5" />
                       <span className="text-[9px]">3.4k</span>
                     </div>
                     <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-sm">👎</span>
+                      <ThumbsDown className="w-3.5 h-3.5" />
                       <span className="text-[9px]">No</span>
                     </div>
                     <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-sm">💬</span>
+                      <MessageCircle className="w-3.5 h-3.5" />
                       <span className="text-[9px]">182</span>
                     </div>
                     <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-sm">↗️</span>
+                      <Share2 className="w-3.5 h-3.5" />
                       <span className="text-[9px]">Share</span>
                     </div>
                   </>
                 ) : (
                   <>
                     <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-sm">❤️</span>
+                      <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
                       <span className="text-[9px]">12.8k</span>
                     </div>
                     <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-sm">💬</span>
+                      <MessageCircle className="w-3.5 h-3.5" />
                       <span className="text-[9px]">342</span>
                     </div>
                     <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-sm">🔖</span>
+                      <Bookmark className="w-4 h-4" />
                       <span className="text-[9px]">Guardar</span>
                     </div>
                     <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-sm">↗️</span>
+                      <Share2 className="w-4 h-4" />
                       <span className="text-[9px]">Share</span>
                     </div>
                   </>
@@ -902,11 +893,11 @@ function DayPostMockup({ platform, copy, hashtags, copied, onCopy }: {
           )}
 
           {pm.kind === 'instagram' && (
-            <div className="flex items-center gap-3 px-4 mb-2 text-white/90 text-sm select-none" aria-hidden="true">
-              <span className="cursor-pointer hover:scale-110 transition-transform">❤️</span>
-              <span className="cursor-pointer hover:scale-110 transition-transform">💬</span>
-              <span className="cursor-pointer hover:scale-110 transition-transform">✈️</span>
-              <span className="ml-auto cursor-pointer hover:scale-110 transition-transform">🔖</span>
+            <div className="flex items-center gap-4 px-4 mb-2 text-white/90 text-sm select-none" aria-hidden="true">
+              <Heart className="w-4 h-4 cursor-pointer hover:text-rose-400 hover:scale-110 transition-transform" />
+              <MessageCircle className="w-4 h-4 cursor-pointer hover:text-white hover:scale-110 transition-transform" />
+              <Send className="w-4 h-4 cursor-pointer hover:text-white hover:scale-110 transition-transform" />
+              <Bookmark className="w-4 h-4 ml-auto cursor-pointer hover:text-white hover:scale-110 transition-transform" />
             </div>
           )}
 
@@ -924,7 +915,7 @@ function DayPostMockup({ platform, copy, hashtags, copied, onCopy }: {
                   )}
                   <div className="flex justify-end items-center gap-1.5 mt-1.5 select-none">
                     <span className="text-[10px] text-white/40">12:30 p.m.</span>
-                    <span className="text-[11px] text-cyan-300 font-bold" title="Entregado y leído">✓✓</span>
+                    <CheckCheck className="w-3.5 h-3.5 text-cyan-300 inline" aria-label="Entregado y leído" />
                   </div>
                 </div>
               </div>
@@ -965,7 +956,7 @@ function DayPostMockup({ platform, copy, hashtags, copied, onCopy }: {
               )}
               {pm.kind === 'instagram' && (
                 <p className="text-[12px] font-bold text-white mt-2 flex items-center gap-1.5 select-none">
-                  <span>❤️</span>
+                  <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
                   <span>247 Me gusta</span>
                 </p>
               )}
@@ -973,15 +964,28 @@ function DayPostMockup({ platform, copy, hashtags, copied, onCopy }: {
                 <>
                   <div className="flex items-center justify-between py-2 mt-3 border-t border-white/8">
                     <div className="flex items-center gap-1.5 text-xs text-white/60 select-none">
-                      <span>👍 ❤️ 😮</span>
-                      <span className="text-[11px] text-white/50 ml-1">247</span>
+                      <div className="flex -space-x-1">
+                        <span className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-[10px] text-white">
+                          <ThumbsUp className="w-2.5 h-2.5 fill-current" />
+                        </span>
+                        <span className="w-4 h-4 rounded-full bg-rose-500 flex items-center justify-center text-[10px] text-white">
+                          <Heart className="w-2.5 h-2.5 fill-current" />
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-white/50 ml-1 font-mono">247</span>
                     </div>
                     <span className="text-[11px] text-white/30">18 comentarios · 4 compartidos</span>
                   </div>
                   <div className="flex items-center justify-around pt-2 border-t border-white/5 text-xs select-none" aria-hidden="true">
-                    {['👍 Me gusta', '💬 Comentar', '↗️ Compartir'].map((a) => (
-                      <span key={a} className="font-semibold text-white/50 hover:text-white px-2 py-1.5 flex-1 text-center cursor-pointer transition-colors">{a}</span>
-                    ))}
+                    <span className="font-semibold text-white/50 hover:text-white px-2 py-1.5 flex-1 text-center cursor-pointer transition-colors inline-flex items-center justify-center gap-1.5">
+                      <ThumbsUp className="w-3.5 h-3.5" /> Me gusta
+                    </span>
+                    <span className="font-semibold text-white/50 hover:text-white px-2 py-1.5 flex-1 text-center cursor-pointer transition-colors inline-flex items-center justify-center gap-1.5">
+                      <MessageCircle className="w-3.5 h-3.5" /> Comentar
+                    </span>
+                    <span className="font-semibold text-white/50 hover:text-white px-2 py-1.5 flex-1 text-center cursor-pointer transition-colors inline-flex items-center justify-center gap-1.5">
+                      <Share2 className="w-3.5 h-3.5" /> Compartir
+                    </span>
                   </div>
                 </>
               )}
@@ -998,7 +1002,7 @@ function DayPostMockup({ platform, copy, hashtags, copied, onCopy }: {
           ? { backgroundColor: pm.color + '25', borderColor: pm.color + '60', color: '#fff' }
           : { backgroundColor: 'transparent', borderColor: pm.color + '40', color: pm.color }}
       >
-        <span>{copied ? '✅' : '📋'}</span>
+        {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
         <span>{copied ? '¡Copiado al portapapeles!' : `Copiar copy de ${pm.label}`}</span>
       </button>
     </div>
@@ -1023,7 +1027,6 @@ function DayCard({ dia, diaIndex, semanaIndex, isPublished, onTogglePublished, b
 
   const platformMeta = pub?.plataforma ? getPlatformMeta(pub.plataforma) : null;
   const contentBadgeClass = pub?.tipo_contenido ? (CONTENT_TYPE_BADGE[pub.tipo_contenido] ?? 'bg-white/10 text-white font-medium') : null;
-  const contentEmoji = pub?.tipo_contenido ? (CONTENT_TYPE_EMOJI[pub.tipo_contenido] ?? '📌') : null;
   const formatoExplicacion = pub?.tipo_contenido ? (FORMATO_EXPLICACION[pub.tipo_contenido] ?? null) : null;
 
   const handleCopy = (text: string, key: string) => {
@@ -1174,7 +1177,7 @@ function DayCard({ dia, diaIndex, semanaIndex, isPublished, onTogglePublished, b
             onClick={(e) => { e.stopPropagation(); onTogglePublished(); }}
             className={`text-[10px] font-mono px-2.5 py-1 rounded-lg transition-all uppercase tracking-wider ${isPublished ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300' : 'bg-white/[0.04] border border-white/10 text-white/60 hover:text-white hover:border-white/20'}`}
           >
-            {isPublished ? '✓ Publicado' : 'Marcar'}
+            {isPublished ? <span className="inline-flex items-center gap-1"><Check className="w-3 h-3" /> Publicado</span> : 'Marcar'}
           </button>
           <svg
             className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180 text-white' : 'text-white/30'}`}
@@ -1265,7 +1268,7 @@ function DayCard({ dia, diaIndex, semanaIndex, isPublished, onTogglePublished, b
             <div className="rounded-xl border border-amber-400/25 bg-gradient-to-b from-amber-500/5 to-transparent p-4 sm:p-5 space-y-4">
               <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-white/5">
                 <div className="flex items-center gap-2">
-                  <span className="text-base">🎬</span>
+                  <Video className="w-4 h-4 text-amber-300" />
                   <span className="text-xs font-semibold text-amber-300 tracking-tight">
                     Guión Técnico de Grabación / Producción
                   </span>
@@ -1285,23 +1288,30 @@ function DayCard({ dia, diaIndex, semanaIndex, isPublished, onTogglePublished, b
                 <div className="bg-black/40 rounded-xl p-3.5 border border-white/[0.08] space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
-                      <span>⚡</span> Gancho de Retención (Primeros 3s)
+                      <Zap className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Gancho de Retención (Primeros 3s)</span>
                     </span>
                     <button
                       type="button"
                       onClick={() => handleCopy(`[Visual]: ${pub.hook_3_segundos?.visual}\n[Locución]: "${pub.hook_3_segundos?.verbal}"`, `hook-${semanaIndex}-${diaIndex}-${activeIndex}`)}
                       className="text-[10px] font-mono text-amber-300 hover:text-amber-200 bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-400/20 transition-colors"
                     >
-                      {copied === `hook-${semanaIndex}-${diaIndex}-${activeIndex}` ? '✓ Copiado' : 'Copiar Gancho'}
+                      {copied === `hook-${semanaIndex}-${diaIndex}-${activeIndex}` ? <span className="inline-flex items-center gap-1"><Check className="w-3 h-3" /> Copiado</span> : 'Copiar Gancho'}
                     </button>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                     <div className="bg-white/[0.02] p-2.5 rounded-lg border border-white/[0.04]">
-                      <span className="text-[9px] font-mono text-white/40 uppercase block mb-1">👁️ Acción Visual</span>
+                      <span className="text-[9px] font-mono text-white/40 uppercase block mb-1">
+                        <Eye className="w-3 h-3 inline mr-1 text-white/50" />
+                        Acción Visual
+                      </span>
                       <p className="text-xs text-white/80 leading-relaxed font-normal">{pub.hook_3_segundos.visual}</p>
                     </div>
                     <div className="bg-white/[0.02] p-2.5 rounded-lg border border-white/[0.04]">
-                      <span className="text-[9px] font-mono text-white/40 uppercase block mb-1">🗣️ Locución / Texto en Pantalla</span>
+                      <span className="text-[9px] font-mono text-white/40 uppercase block mb-1">
+                        <Mic className="w-3 h-3 inline mr-1 text-white/50" />
+                        Locución / Texto en Pantalla
+                      </span>
                       <p className="text-xs text-amber-200/90 leading-relaxed font-medium">"{pub.hook_3_segundos.verbal}"</p>
                     </div>
                   </div>
@@ -1355,7 +1365,7 @@ function DayCard({ dia, diaIndex, semanaIndex, isPublished, onTogglePublished, b
                     onClick={() => handleCopy(pub.cta_cierre || '', `cta-${semanaIndex}-${diaIndex}-${activeIndex}`)}
                     className="text-[10px] font-mono text-emerald-300 hover:text-emerald-200 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 transition-colors whitespace-nowrap"
                   >
-                    {copied === `cta-${semanaIndex}-${diaIndex}-${activeIndex}` ? '✓ Copiado' : 'Copiar CTA'}
+                    {copied === `cta-${semanaIndex}-${diaIndex}-${activeIndex}` ? <span className="inline-flex items-center gap-1"><Check className="w-3 h-3" /> Copiado</span> : 'Copiar CTA'}
                   </button>
                 </div>
               )}
@@ -1660,9 +1670,9 @@ export default function MarketingResultadoPage() {
     });
   };
 
-  // Loader: para análisis ya completados en BD abre en ~1 s; para ejecuciones nuevas espera el ciclo completo
-  const minMs = isPreloaded.current ? 700 : 4500;
-  const handoffMs = isPreloaded.current ? 250 : 900;
+  // Loader: para análisis ya completados en BD abre de inmediato (0ms); para ejecuciones nuevas espera el ciclo completo
+  const minMs = isPreloaded.current ? 0 : 4500;
+  const handoffMs = isPreloaded.current ? 0 : 900;
   const { showLoader, loaderDone } = useAnalysisLoaderGate(
     !!analisis && analisis.estado_analisis !== 'procesando',
     minMs,
@@ -1899,7 +1909,7 @@ export default function MarketingResultadoPage() {
                 {estrategias.map((e) => {
                   const tipoKey = (e.tipo?.toUpperCase() as TipoEstrategia) || 'VENTAS_PLUS';
                   const c = TIPO_COLOR[tipoKey] ?? TIPO_COLOR.VENTAS_PLUS;
-                  const icon = TIPO_ICON[tipoKey] ?? '🎯';
+                  const icon = TIPO_ICON[tipoKey] ?? '01';
                   const invKey = (e.nivel_inversion?.toUpperCase() as keyof typeof INVERSION_COLOR) || 'MEDIO';
                   const invColor = INVERSION_COLOR[invKey] ?? 'text-white';
                   const active = e.tipo === estrategiaVista?.tipo;
@@ -1963,8 +1973,15 @@ export default function MarketingResultadoPage() {
                           {icon}
                         </div>
                         {isVentasPlus ? (
-                          <span className="text-[10px] bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-400/30 text-amber-300 px-2.5 py-0.5 rounded-full font-mono font-bold tracking-wide">
-                            {e.recomendada ? 'Flagship ★' : 'Ventas +'}
+                          <span className="text-[10px] bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-400/30 text-amber-300 px-2.5 py-0.5 rounded-full font-mono font-bold tracking-wide inline-flex items-center gap-1">
+                            {e.recomendada ? (
+                              <>
+                                <span>Flagship</span>
+                                <Star className="w-2.5 h-2.5 fill-amber-300" />
+                              </>
+                            ) : (
+                              'Ventas +'
+                            )}
                           </span>
                         ) : e.recomendada ? (
                           <span className="text-[10px] bg-amber-500/10 border border-amber-400/25 text-amber-300 px-2.5 py-0.5 rounded-full font-mono font-medium tracking-wide">
@@ -2208,7 +2225,7 @@ export default function MarketingResultadoPage() {
                     onClick={() => { const sem = calSemanas[0]; if (sem) handleCopy(buildWeekText(DIAS_ORDEN.map((d) => (sem.dias || []).find((dia) => dia.dia === d) ?? { dia: d, publicaciones: [], sugerencia_engagement: '' })), 'copy-week-0'); }}
                     className="text-xs font-medium border border-white/10 text-white/60 px-3 py-1.5 rounded-xl hover:border-white/25 hover:text-white transition flex items-center gap-1.5 bg-white/[0.02]"
                   >
-                    <span>{copied === 'copy-week-0' ? '✓ Copiado' : 'Copiar Semana'}</span>
+                    {copied === 'copy-week-0' ? <span className="inline-flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-400" /> Copiado</span> : <span>Copiar Semana</span>}
                   </button>
                 </div>
               </div>

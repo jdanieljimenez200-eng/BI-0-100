@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Star, ExternalLink } from 'lucide-react';
 import { resenasAdmin, moderarResena, errorLegible, type ResenaAdmin } from '@/lib/network';
 
 type ResenaModerable = ResenaAdmin & {
@@ -130,17 +131,26 @@ export default function ModeracionResenas() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-sm font-bold ${baja ? 'text-rose-300' : 'text-amber-400'}`}>
-                        {'★'.repeat(r.puntuacion)}
-                        <span className="text-white/15">{'★'.repeat(5 - r.puntuacion)}</span>
-                      </span>
+                      <div className="flex items-center gap-0.5">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star
+                            key={i}
+                            className={`w-3.5 h-3.5 ${
+                              i < r.puntuacion
+                                ? baja ? 'text-rose-400 fill-rose-400' : 'text-amber-400 fill-amber-400'
+                                : 'text-white/15'
+                            }`}
+                          />
+                        ))}
+                      </div>
                       <span className="text-white/30 text-xs">sobre</span>
                       <Link
                         href={`/network/${r.experto_id}`}
                         target="_blank"
-                        className="text-white/80 text-sm font-semibold hover:text-white"
+                        className="text-white/80 text-sm font-semibold hover:text-white inline-flex items-center gap-1"
                       >
-                        {r.experto_nombre} ↗
+                        <span>{r.experto_nombre}</span>
+                        <ExternalLink className="w-3 h-3 text-white/40" />
                       </Link>
                       {r.estado === 'oculta' && (
                         <span className="px-2 py-0.5 rounded-full border border-white/15 text-white/50 text-[10px] font-bold uppercase tracking-widest">

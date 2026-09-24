@@ -37,6 +37,12 @@ export interface RiesgosContexto {
   margen_neto_promedio: number;
   viabilidad: 'alta' | 'media' | 'baja';
   meses_para_recuperar_inversion: number | null;
+  /**
+   * Por qué no hay payback. Sin esto, un `null` por falta de inversión
+   * declarada llegaba al prompt como «no se recupera en 12 meses» y la IA
+   * razonaba sobre un negocio que nadie dijo que fuera malo.
+   */
+  payback_no_disponible?: 'sin_inversion_declarada' | 'no_se_recupera_en_12_meses' | null;
 }
 
 const MAX_TOKENS = 2000;
@@ -70,7 +76,12 @@ costo_variable_unitario: ${ctx.costo_variable_unitario}
 costos_fijos_mensuales: ${ctx.costos_fijos_mensuales}
 margen_neto_promedio: ${ctx.margen_neto_promedio}%
 viabilidad_calculada: ${ctx.viabilidad}
-meses_para_recuperar_inversion: ${ctx.meses_para_recuperar_inversion ?? 'no se recupera en 12 meses'}
+meses_para_recuperar_inversion: ${
+    ctx.meses_para_recuperar_inversion ??
+    (ctx.payback_no_disponible === 'sin_inversion_declarada'
+      ? 'el dueño no declaró cuánto invirtió: NO hables de recuperación de inversión'
+      : 'no se recupera en 12 meses')
+  }
 </negocio>`;
 }
 

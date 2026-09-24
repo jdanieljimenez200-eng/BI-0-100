@@ -9,6 +9,7 @@ import {
   List,
   Clock,
   User,
+  Users,
   Phone,
   MessageSquare,
   CheckCircle2,
@@ -31,6 +32,8 @@ import ProductoGate from '@/components/herramientas/ProductoGate';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
 import { ProductoActivo } from '@/lib/productoActivo';
 import GoogleCalendarCard from '@/components/herramientas/GoogleCalendarCard';
+import { Breadcrumbs, SearchInput, Toast } from '@/components/ui';
+import FilaHoy from './FilaHoy';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,16 +122,7 @@ function toIsoDate(year: number, month: number, day: number) {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
 
-function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
-  useEffect(() => { const t = setTimeout(onClose, 2800); return () => clearTimeout(t); }, [onClose]);
-  return (
-    <div className="fixed bottom-6 right-6 z-50 rounded-2xl border border-white/15 bg-[#0F1C2A]/95 backdrop-blur-xl px-5 py-3 shadow-2xl text-sm text-white/80">
-      {msg}
-    </div>
-  );
-}
 
 // ─── Modal: Crear / Editar ────────────────────────────────────────────────────
 
@@ -547,7 +541,7 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
   const [modalNuevo,  setModalNuevo]  = useState(false);
   const [editando,    setEditando]    = useState<Cita | null>(null);
   const [toast,       setToast]       = useState('');
-  const [viewMode,    setViewMode]    = useState<'mes' | 'agenda'>('mes');
+  const [viewMode,    setViewMode]    = useState<'mes' | 'agenda' | 'fila'>('mes');
   const [searchAgenda, setSearchAgenda] = useState('');
   const [filtroEstadoAgenda, setFiltroEstadoAgenda] = useState<string>('');
 
@@ -658,10 +652,13 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
       {/* Header */}
       <div className="border-b border-white/8 bg-[#060e18]/95 backdrop-blur-xl sticky top-0 z-30">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-4">
-          <button onClick={() => router.back()} className="text-white/40 hover:text-white/70 transition-colors text-sm flex items-center gap-2">
-            <ArrowLeft className="w-4 h-4" />
-            <span>Herramientas</span>
-          </button>
+          <Breadcrumbs
+            items={[
+              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'Herramientas', href: '/dashboard/herramientas' },
+              { label: 'Reservas & Citas' },
+            ]}
+          />
           <div className="flex-1" />
 
           {/* Dual-View Switcher Pills */}
@@ -690,10 +687,22 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
               <List className="w-3.5 h-3.5" />
               <span>Agenda</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('fila')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                viewMode === 'fila'
+                  ? 'bg-cyan-600/30 border border-cyan-500/50 text-cyan-200'
+                  : 'text-white/50 hover:text-white'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Fila de hoy</span>
+            </button>
           </div>
 
           <button onClick={() => { setSelectedDay(today); setModalNuevo(true); }}
-            className="flex items-center gap-2 px-4 h-9 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-sm font-medium transition-colors shadow-lg shadow-cyan-600/20">
+            className="flex items-center gap-2 px-4 h-9 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-sm font-medium transition-colors shadow-lg shadow-cyan-600/20 active:scale-[0.98]">
             <Plus className="w-4 h-4" />
             <span>Nueva cita</span>
           </button>
@@ -718,9 +727,15 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
           </div>
         </div>
 
-        <GoogleCalendarCard onAviso={setToast} onSincronizado={loadCitas} />
+        {/* La copia en Google y los KPIs del mes son de la agenda: en la fila
+            de hoy solo estorban. */}
+        {viewMode !== 'fila' && <GoogleCalendarCard onAviso={setToast} onSincronizado={loadCitas} />}
+
+        {/* ═══ VISTA 3: FILA DE HOY (quien llega sin cita) ═══ */}
+        {viewMode === 'fila' && <FilaHoy producto={producto} onAviso={setToast} />}
 
         {/* KPIs (Clickable to switch to agenda filtered) */}
+        {viewMode !== 'fila' && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { id: '', label: 'Citas del Mes', value: totalMes, icon: CalendarIcon, color: 'text-white' },
@@ -737,17 +752,18 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
                   setViewMode('agenda');
                   setFiltroEstadoAgenda(k.id);
                 }}
-                className="text-left bg-white/4 border border-white/8 hover:border-cyan-500/30 hover:bg-white/6 rounded-2xl p-4 transition-all"
+                className="text-left bg-white/4 border border-white/8 hover:border-cyan-500/30 hover:bg-white/6 rounded-2xl p-4 transition-all cursor-pointer"
               >
                 <div className="flex items-center justify-between mb-1">
                   <p className="text-xs text-white/40">{k.label}</p>
                   <Icon className={`w-4 h-4 ${k.color}`} />
                 </div>
-                <p className={`text-2xl font-bold ${k.color} tabular-nums`}>{k.value}</p>
+                <p className={`text-2xl font-bold ${k.color} font-mono tabular-nums`}>{k.value}</p>
               </button>
             );
           })}
         </div>
+        )}
 
         {/* ═══ VISTA 1: CALENDARIO MENSUAL ═══ */}
         {viewMode === 'mes' && (
@@ -938,23 +954,13 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
           <div className="space-y-4">
             {/* Search + Status Pills */}
             <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-white/30 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
+              <div className="flex-1">
+                <SearchInput
                   value={searchAgenda}
-                  onChange={e => setSearchAgenda(e.target.value)}
+                  onChange={setSearchAgenda}
                   placeholder="Buscar por título, cliente, teléfono o notas…"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-10 h-10 text-sm text-white placeholder-white/25 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                  shortcutKey="f"
                 />
-                {searchAgenda && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchAgenda('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-white/30 hover:text-white/70 transition-colors"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
               </div>
 
               <div className="flex flex-wrap gap-1.5 items-center">
@@ -972,7 +978,7 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
                       }`}
                     >
                       <span>{p.label}</span>
-                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold tabular-nums ${
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold tabular-nums ${
                         active ? 'bg-cyan-500/40 text-cyan-100' : 'bg-white/10 text-white/50'
                       }`}>
                         {p.count}

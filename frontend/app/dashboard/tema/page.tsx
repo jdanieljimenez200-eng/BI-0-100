@@ -239,7 +239,6 @@ export default function TemaPage() {
         <Section title="Widgets del dashboard" hint="Elige qué tarjetas de estadísticas se muestran. Si no seleccionas ninguna, se muestran todas.">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {WIDGETS.map((w) => {
-              const activo = ui.widgets_activos.length === 0 || ui.widgets_activos.includes(w.id);
               const seleccionado = ui.widgets_activos.includes(w.id);
               return (
                 <button

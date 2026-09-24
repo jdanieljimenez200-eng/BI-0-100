@@ -18,32 +18,32 @@ import { MOTION_SPRINGS } from '@/lib/motion/tokens';
 export const buttonVariants = cva(
   [
     'relative inline-flex items-center justify-center whitespace-nowrap select-none',
-    'font-semibold rounded-control',
-    'transition-[background-color,border-color,color,box-shadow] duration-200 ease-out',
+    'font-semibold rounded-control tracking-[-0.01em]',
+    'transition-[background-color,border-color,color,box-shadow,transform] duration-120 ease-out active:scale-[0.98]',
     'outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070E17]',
-    'disabled:opacity-45 disabled:pointer-events-none',
+    'disabled:opacity-40 disabled:pointer-events-none disabled:active:scale-100',
   ],
   {
     variants: {
       variant: {
         primary:
-          'bg-white text-[#070E17] border border-white/20 shadow-[0_0_20px_rgba(255,255,255,0.12)] hover:shadow-[0_0_30px_rgba(255,255,255,0.26)] hover:bg-white/95',
+          'bg-white text-[#070E17] border border-white/40 shadow-surface hover:bg-white/95 hover:border-white/60 active:bg-white/90',
         accent:
-          'bg-brand-accent text-white border border-brand-accent/30 shadow-[0_0_24px_rgba(231,76,60,0.28)] hover:shadow-[0_0_38px_rgba(231,76,60,0.45)]',
+          'bg-brand-accent text-white border border-white/15 shadow-surface hover:bg-[#d44335] active:bg-[#bf392c]',
         secondary:
-          'bg-white/[0.06] text-white border border-white/10 hover:bg-white/[0.1] hover:border-white/25',
+          'bg-white/[0.06] text-white border border-white/10 shadow-surface hover:bg-white/[0.1] hover:border-white/20 active:bg-white/[0.04]',
         outline:
-          'bg-transparent text-white/90 border border-white/15 hover:border-white/35 hover:bg-white/[0.04]',
+          'bg-transparent text-white/90 border border-white/15 hover:border-white/30 hover:bg-white/[0.04] active:bg-white/[0.02]',
         ghost:
-          'bg-transparent text-white/60 border border-transparent hover:text-white hover:bg-white/[0.06]',
+          'bg-transparent text-white/70 border border-transparent hover:text-white hover:bg-white/[0.06] active:bg-white/[0.03]',
         danger:
-          'bg-red-500/12 text-red-300 border border-red-500/25 hover:bg-red-500/20 hover:border-red-500/40',
+          'bg-red-500/15 text-red-300 border border-red-500/30 hover:bg-red-500/25 hover:border-red-500/45 active:bg-red-500/20',
       },
       size: {
-        sm: 'px-3 py-[var(--control-py-sm)] text-xs gap-1.5',
-        md: 'px-4 py-[var(--control-py)] text-sm gap-2',
-        lg: 'px-6 py-[calc(var(--control-py)+0.25rem)] text-base gap-2.5',
-        icon: 'p-[var(--control-py-sm)] text-sm',
+        sm: 'h-8 px-3 text-xs gap-1.5',
+        md: 'h-10 px-4 text-sm gap-2',
+        lg: 'h-11 px-6 text-sm gap-2.5',
+        icon: 'h-9 w-9 p-0 text-sm justify-center',
       },
       block: {
         true: 'w-full',
@@ -120,8 +120,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
     isDisabled || shouldReduce
       ? {}
       : {
-          whileHover: { y: -1, scale: 1.015 },
-          whileTap: { scale: 0.98 },
+          whileHover: { y: -0.5 },
           transition: MOTION_SPRINGS.snappy,
         };
 

@@ -1,6 +1,9 @@
 "use client";
+
+import { useState } from "react";
 import Link from "next/link";
-import { Reveal } from "@/components/ui";
+import { Check, ArrowRight, ShieldCheck } from "lucide-react";
+import { SectionReveal, SectionRevealItem } from "@/components/motion/SectionReveal";
 
 export interface PricingPlan {
   name: string;
@@ -14,80 +17,148 @@ export interface PricingPlan {
   stripePlan?: string;
 }
 
-export default function Pricing({ plans = [] }: { plans?: PricingPlan[] }) {
+interface PricingCardProps {
+  plan: PricingPlan;
+  annualBilling: boolean;
+}
+
+function PricingCard({ plan, annualBilling }: PricingCardProps) {
+  const displayPrice =
+    annualBilling && plan.price !== "$0"
+      ? plan.name === "Negocio"
+        ? "$479"
+        : "$959"
+      : plan.price;
+
   return (
-    <section className="py-32 px-6 bg-[#070E17] relative">
-      <div className="max-w-[1200px] mx-auto text-center mb-20">
-         <h2 className="text-4xl md:text-5xl font-extrabold mb-6 tracking-tight text-white">
-           El costo de NO saber.
-         </h2>
-         <p className="text-lg text-white/50 font-light leading-relaxed max-w-2xl mx-auto">
-           Un error de validación puede costarte todo tu capital. Un análisis de BI 0 A 100 vale lo que te podría ahorrar. Empieza gratis y sube cuando quieras.
-         </p>
+    <div
+      className={`relative rounded-[26px] p-6 sm:p-7 lg:p-8 flex flex-col justify-between overflow-hidden transition-colors duration-200 ${
+        plan.highlight
+          ? "bg-[#222329] border border-cyan-400/40 shadow-[0_8px_32px_rgba(0,0,0,0.45)] z-10"
+          : "bg-[#1C1C1E] border border-white/[0.08] shadow-[0_4px_20px_rgba(0,0,0,0.35)] hover:border-white/[0.14]"
+      }`}
+    >
+      {/* Contenido */}
+      <div className="relative z-10">
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-xs font-sans font-semibold uppercase tracking-wider text-slate-300">
+            {plan.name}
+          </span>
+          {plan.highlight && (
+            <span className="inline-flex items-center gap-1 bg-cyan-500/10 border border-cyan-400/25 text-cyan-300 text-[11px] font-sans font-semibold px-2.5 py-0.5 rounded-full">
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+              Más Recomendado
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-baseline gap-1.5 mb-2.5">
+          <span className="text-3xl sm:text-4xl lg:text-[42px] font-bold text-white font-sans tracking-tight tabular-nums">
+            {displayPrice}
+          </span>
+          {plan.period && (
+            <span className="text-sm font-sans font-normal text-slate-400">
+              {plan.period}
+            </span>
+          )}
+        </div>
+
+        <p className="text-xs sm:text-[13px] text-slate-300 leading-relaxed font-sans font-normal min-h-[40px] mb-6">
+          {plan.desc}
+        </p>
+
+        {/* Lista de Features */}
+        <ul className="space-y-3 mb-7 pt-5 border-t border-white/[0.06]">
+          {plan.features.map((f: string) => (
+            <li key={f} className="flex items-start gap-2.5 text-xs sm:text-[13px] text-slate-200 font-sans">
+              <div className="w-4 h-4 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center flex-shrink-0 mt-0.5 text-emerald-400">
+                <Check className="w-2.5 h-2.5 stroke-[3]" />
+              </div>
+              <span className="leading-tight">{f}</span>
+            </li>
+          ))}
+        </ul>
       </div>
 
-      <div className="max-w-[1200px] mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
-        {plans.map((p, i) => (
-          <Reveal
-            key={p.name}
-            index={i}
-            className={`relative rounded-surface p-8 lg:p-10 flex flex-col justify-between transition-all duration-500 overflow-hidden group ${
-              p.highlight
-                ? 'bg-gradient-to-b from-[#0A121D] to-[#070E17] border border-[#E74C3C]/40 shadow-[0_40px_80px_rgba(231,76,60,0.15)] z-10 scale-100 md:scale-105'
-                : 'bg-[#0A121D] border border-white/5 hover:bg-[#0C1623] hover:border-white/10'
-            }`}
+      {/* Botón CTA Apple Pill */}
+      <div className="relative z-10 pt-2">
+        <Link
+          href={plan.href}
+          className={`flex items-center justify-center gap-2 h-11 px-5 rounded-full font-sans font-semibold text-xs sm:text-[13px] transition-all duration-200 active:scale-[0.98] group/btn cursor-pointer ${
+            plan.highlight
+              ? "bg-gradient-to-b from-[#EF4444] via-[#DC2626] to-[#B91C1C] text-white hover:brightness-110 shadow-[0_4px_18px_rgba(239,68,68,0.38),inset_0_1px_0_rgba(255,255,255,0.3)] border border-white/20"
+              : "bg-white/[0.06] text-slate-200 hover:text-white hover:bg-white/[0.12] border border-white/[0.12] hover:border-white/[0.22]"
+          }`}
+        >
+          <span>{plan.cta}</span>
+          <ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover/btn:translate-x-1" />
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+export default function Pricing({ plans = [] }: { plans?: PricingPlan[] }) {
+  const [annualBilling, setAnnualBilling] = useState(false);
+
+  return (
+    <section id="precios" className="py-24 px-4 sm:px-6 bg-transparent relative overflow-hidden">
+      <div className="max-w-[1240px] mx-auto relative z-10">
+
+        {/* Encabezado Editorial Estilo Apple / Tesla */}
+        <SectionReveal className="text-center mb-12 lg:mb-16">
+          <SectionRevealItem
+            as="h2"
+            className="font-sans text-3xl sm:text-5xl lg:text-6xl font-bold mb-4 tracking-[-0.025em] text-white"
           >
-            {p.highlight && (
-              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-[#E74C3C] to-transparent opacity-80" />
-            )}
+            El costo de no validar a tiempo
+          </SectionRevealItem>
+          <SectionRevealItem
+            as="p"
+            className="font-sans text-base sm:text-lg max-w-xl mx-auto font-normal leading-relaxed text-slate-300"
+          >
+            Un error de validación cuesta meses de capital y desgaste. Empieza gratis sin tarjeta de crédito y escala a herramientas operativas cuando lo requieras.
+          </SectionRevealItem>
+        </SectionReveal>
 
-            <div>
-              {p.highlight && (
-                <span className="inline-block bg-[#E74C3C] text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-6 shadow-[0_0_15px_rgba(231,76,60,0.4)]">
-                  Más Popular
-                </span>
-              )}
-              {!p.highlight && (
-                <p className="text-sm font-bold uppercase tracking-widest mb-6 text-white/40">
-                  {p.name}
-                </p>
-              )}
-              {p.highlight && (
-                <p className="text-sm font-bold uppercase tracking-widest mb-2 text-[#E74C3C]">
-                  {p.name}
-                </p>
-              )}
-
-              <div className="flex items-baseline gap-1 mb-4">
-                <span className="text-5xl font-extrabold text-white tracking-tighter">{p.price}</span>
-                {p.period && <span className="text-sm font-medium text-white/40 uppercase tracking-widest">{p.period}</span>}
-              </div>
-              <p className="text-sm mb-10 text-white/50 font-light min-h-[50px] leading-relaxed">{p.desc}</p>
-
-              <ul className="space-y-5 mb-10">
-                {p.features.map((f: string) => (
-                  <li key={f} className="flex items-start gap-4 text-sm text-white/70">
-                    <svg className={`w-5 h-5 flex-shrink-0 ${p.highlight ? 'text-[#E74C3C]' : 'text-white/30'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                    </svg>
-                    {f}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <Link
-              href={p.href}
-              className={`block text-center py-4 rounded-control font-bold text-sm transition-all duration-300 ${
-                p.highlight
-                  ? 'bg-brand-accent text-white hover:bg-[#c0392b] hover:shadow-[0_0_30px_rgba(231,76,60,0.5)]'
-                  : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'
+        {/* Selector de Facturación (Mensual / Anual) */}
+        <div className="flex items-center justify-center gap-3 mb-12">
+          <div className="flex items-center p-1 rounded-full bg-[#1C1C1E] border border-white/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.3)]">
+            <button
+              type="button"
+              onClick={() => setAnnualBilling(false)}
+              className={`px-4 py-1.5 rounded-full text-xs font-sans font-medium transition-all cursor-pointer ${
+                !annualBilling
+                  ? "bg-white text-[#070E17] font-semibold shadow-sm"
+                  : "text-slate-400 hover:text-white"
               }`}
             >
-              {p.cta}
-            </Link>
-          </Reveal>
-        ))}
+              Facturación Mensual
+            </button>
+            <button
+              type="button"
+              onClick={() => setAnnualBilling(true)}
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-sans font-medium transition-all cursor-pointer ${
+                annualBilling
+                  ? "bg-white text-[#070E17] font-semibold shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <span>Pago Anual</span>
+              <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/15 border border-emerald-500/25 px-1.5 py-0.5 rounded-full">
+                -20%
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Rejilla de 3 Planes de Precios */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 items-stretch">
+          {plans.map((p) => (
+            <PricingCard key={p.name} plan={p} annualBilling={annualBilling} />
+          ))}
+        </div>
+
       </div>
     </section>
   );

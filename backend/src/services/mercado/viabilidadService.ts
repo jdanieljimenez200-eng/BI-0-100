@@ -215,21 +215,30 @@ export function calcularViabilidad(
       ? clamp(Math.round(densidad.score), 0, 100)
       : null;
 
-  const ft  = scoreTendencia(tendencias.crecimiento_porcentaje);
-  const fc  = scoreCompetencia(competencia.total_competidores);
+  // Sin fuente no se puntúa. «Cero competidores encontrados» no es «no hay
+  // competencia»: scoreCompetencia(0) daba 100 y un mercado sin rastrear salía
+  // como el mejor hueco del mundo. Igual con la demanda: sin datos de búsquedas
+  // no hay demanda que medir.
+  const hayCompetencia = competencia.fuente_disponible !== false;
+  const hayTendencias = tendencias.fuente_disponible !== false;
+
+  const ft  = hayTendencias ? scoreTendencia(tendencias.crecimiento_porcentaje) : null;
+  const fc  = hayCompetencia ? scoreCompetencia(competencia.total_competidores) : null;
   const fm  = scoreMargen(margenPct);
-  const fd  = scoreDemanda(tendencias.volumen_busquedas_mensual);
-  const fo  = scoreOportunidad(competencia.gap_detectado !== null, competencia.total_competidores);
+  const fd  = hayTendencias ? scoreDemanda(tendencias.volumen_busquedas_mensual) : null;
+  const fo  = hayCompetencia
+    ? scoreOportunidad(competencia.gap_detectado !== null, competencia.total_competidores)
+    : null;
   const fprEvaluado = scorePrecioRelativo(precioValido, competencia.precio_mercado_promedio);
   const fpr = fprEvaluado ?? PRECIO_RELATIVO_NEUTRO;
 
-  let suma =
-    ft * PESOS.tendencia +
-    fc * PESOS.competencia +
-    fm * PESOS.margen +
-    fd * PESOS.demanda +
-    fo * PESOS.oportunidad;
-  let pesoAplicado = PESO_BASE;
+  let suma = fm * PESOS.margen;
+  let pesoAplicado = PESOS.margen;
+
+  if (ft !== null) { suma += ft * PESOS.tendencia;   pesoAplicado += PESOS.tendencia; }
+  if (fc !== null) { suma += fc * PESOS.competencia; pesoAplicado += PESOS.competencia; }
+  if (fd !== null) { suma += fd * PESOS.demanda;     pesoAplicado += PESOS.demanda; }
+  if (fo !== null) { suma += fo * PESOS.oportunidad; pesoAplicado += PESOS.oportunidad; }
 
   if (fprEvaluado !== null) {
     suma += fprEvaluado * PESOS.precio_relativo;
@@ -250,12 +259,14 @@ export function calcularViabilidad(
     : score >= 20 ? 'POCO_VIABLE'
     : 'NO_RECOMENDADO';
 
+  // Los factores sin fuente van en 0 y la pantalla los distingue por
+  // `cobertura_datos`; no se inventa un 50 neutro que parecería una medición.
   const factores: ViabilidadFactores = {
-    tendencia:      ft,
-    competencia:    fc,
+    tendencia:      ft ?? 0,
+    competencia:    fc ?? 0,
     margen:         fm,
-    demanda:        fd,
-    oportunidad:    fo,
+    demanda:        fd ?? 0,
+    oportunidad:    fo ?? 0,
     precio_relativo: fpr,
   };
 
@@ -267,20 +278,28 @@ export function calcularViabilidad(
   const positivos: string[] = [];
   const negativos: string[] = [];
 
-  if (ft >= 75) positivos.push(`Mercado en crecimiento (+${tendencias.crecimiento_porcentaje}%)`);
-  else if (ft <= 40) negativos.push(`Tendencia débil o decreciente (${tendencias.crecimiento_porcentaje}%)`);
+  if (ft !== null && ft >= 75) positivos.push(`Mercado en crecimiento (+${tendencias.crecimiento_porcentaje}%)`);
+  else if (ft !== null && ft <= 40) negativos.push(`Tendencia débil o decreciente (${tendencias.crecimiento_porcentaje}%)`);
 
-  if (fc >= 85) positivos.push('Poca competencia directa');
-  else if (fc <= 40) negativos.push(`Alta competencia (${competencia.total_competidores} competidores)`);
+  if (fc !== null && fc >= 85) positivos.push('Poca competencia directa');
+  else if (fc !== null && fc <= 40) negativos.push(`Alta competencia (${competencia.total_competidores} competidores)`);
 
   if (fm >= 75) positivos.push(`Margen potencial excelente (${margenPct}%)`);
   else if (fm <= 40) negativos.push(`Margen ajustado (${margenPct}%), vigilar costos`);
 
-  if (fd >= 75) positivos.push(`Alta demanda (${tendencias.volumen_busquedas_mensual.toLocaleString()} búsquedas/mes)`);
-  else if (fd <= 40) negativos.push('Demanda baja — evaluar canales de venta alternativos');
+  if (fd !== null && fd >= 75) positivos.push(`Alta demanda (${tendencias.volumen_busquedas_mensual.toLocaleString()} búsquedas/mes)`);
+  else if (fd !== null && fd <= 40) negativos.push('Demanda baja — evaluar canales de venta alternativos');
 
-  if (fo >= 80) positivos.push(competencia.gap_detectado ?? 'Oportunidad de diferenciación detectada');
-  else negativos.push('Mercado genérico, requiere diferenciación clara');
+  if (fo !== null && fo >= 80) positivos.push(competencia.gap_detectado ?? 'Oportunidad de diferenciación detectada');
+  else if (fo !== null) negativos.push('Mercado genérico, requiere diferenciación clara');
+
+  // Huecos de datos: se dicen, no se disimulan.
+  if (!hayCompetencia) {
+    negativos.push('Sin datos de competencia para esta búsqueda: el score no la tomó en cuenta');
+  }
+  if (!hayTendencias) {
+    negativos.push('Sin datos de búsquedas para este mercado: la demanda no entró en el score');
+  }
 
   // Mensaje de precio relativo: distingue sobreprecio de infraprecio, porque la
   // acción correctiva es opuesta en cada caso.
@@ -312,8 +331,8 @@ export function calcularViabilidad(
   // ── Confianza del análisis ─────────────────────────────────────────────
   // Alta: ambas fuentes son reales. Media: una es real. Baja: ambas son mock.
   const confianzaFuentes: NivelConfianza =
-    (!tendencias.es_mock && !competencia.es_mock) ? 'alta' :
-    (!tendencias.es_mock || !competencia.es_mock) ? 'media' :
+    (hayTendencias && hayCompetencia) ? 'alta' :
+    (hayTendencias || hayCompetencia) ? 'media' :
     'baja';
 
   // Si la densidad entró en el score, su fiabilidad también limita la del total.
@@ -322,5 +341,17 @@ export function calcularViabilidad(
       ? combinarConfianza(confianzaFuentes, densidad.confianza)
       : confianzaFuentes;
 
-  return { score, estado, factores, factores_positivos: positivos, factores_negativos: negativos, confianza };
+  // Cuánto del modelo se pudo evaluar de verdad (1 = todas las señales).
+  const pesoTotalPosible = PESO_BASE + PESOS.precio_relativo + (densidad ? PESO_DENSIDAD : 0);
+  const cobertura_datos = Number((pesoAplicado / pesoTotalPosible).toFixed(2));
+
+  return {
+    score,
+    estado,
+    factores,
+    factores_positivos: positivos,
+    factores_negativos: negativos,
+    confianza,
+    cobertura_datos,
+  };
 }

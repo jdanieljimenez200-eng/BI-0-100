@@ -21,6 +21,40 @@ import type {
 import { logger } from '../../utils/logger';
 import { emitAnalysisUpdate } from '../../events/sse';
 import { huboFallbackIA } from '../../utils/seguimientoIA';
+import { hoyEnZona } from '../../utils/fechaLocal';
+import { obtenerTraccionReal } from './traccionReal';
+
+/**
+ * Contexto financiero del producto, SIN inventar nada.
+ *
+ * El producto ya guarda lo que el dueño declaró al darlo de alta
+ * (`inversion_inicial`, `costos_fijos`, `puv`, `estatus_proyecto`); si no lo
+ * declaró, la renta de la zona sirve de costo fijo y la inversión se queda en
+ * cero, que es lo que hace que el payback no se calcule en vez de salir con
+ * cifras de relleno.
+ */
+function contextoFinanciero(
+  producto: { inversion_inicial?: number | null; costos_fijos?: number | null; puv?: string | null; estatus_proyecto?: string | null } | null,
+  payload: MercadoAnalisisInput,
+  tipoActividad: 'Producto' | 'Servicio',
+  precioUsuario?: number
+): ProductoContextoMercado {
+  const rentaZona =
+    payload.renta_declarada ??
+    (payload.m2_declarados && payload.precio_m2_mes_declarado
+      ? payload.m2_declarados * payload.precio_m2_mes_declarado
+      : 0);
+
+  return {
+    estatus_proyecto:
+      producto?.estatus_proyecto || (payload.clientes_mes ? 'en_operacion' : 'planificacion'),
+    tipo_actividad: tipoActividad,
+    puv: producto?.puv ?? '',
+    inversion_inicial: Math.max(0, Number(producto?.inversion_inicial) || 0),
+    costos_fijos: Math.max(0, Number(producto?.costos_fijos) || rentaZona || 0),
+    precio_venta: precioUsuario ?? 0,
+  };
+}
 
 /**
  * Composición del análisis de Mercado.
@@ -57,6 +91,26 @@ export async function orquestarMercado(
 
     const usuario = analisis.usuario;
     const gate = getPlanGate(usuario?.plan, 'mercado');
+
+    // ── Tracción: lo que de verdad se vendió manda sobre lo declarado ─────────
+    // Si el negocio cobra con el POS, sus ventas describen su tracción mejor
+    // que un número tecleado en un formulario hace semanas. El dato declarado
+    // se conserva como respaldo cuando no hay historial.
+    const hoyLocal = hoyEnZona(usuario?.zona_horaria || 'America/Mexico_City');
+    const traccion = await obtenerTraccionReal(usuarioId, productoId, hoyLocal).catch((err) => {
+      logger.warn('[mercado] No se pudo leer la tracción real:', err instanceof Error ? err.message : err);
+      return null;
+    });
+    analisis.traccion_data = traccion;
+
+    const clientesMes = traccion?.clientes_mes ?? payload.clientes_mes;
+    const tasaRepeticion = traccion?.tasa_repeticion ?? payload.tasa_repeticion;
+    // Lo que ve el resto del pipeline (payback, estudio de área, prompts).
+    const payloadConTraccion: MercadoAnalisisInput = {
+      ...payload,
+      clientes_mes: clientesMes,
+      tasa_repeticion: tasaRepeticion ?? undefined,
+    };
 
     // ── Insumos de viabilidad (siempre necesarios para puntuar) ────────────────
     const competencia = await obtenerCompetencia(
@@ -110,7 +164,7 @@ export async function orquestarMercado(
           precio_m2_mes_declarado: payload.precio_m2_mes_declarado,
           personal: payload.personal,
           renta_declarada: payload.renta_declarada,
-          unidades_mes: payload.clientes_mes,
+          unidades_mes: clientesMes,
           precio_venta_m2_declarado: payload.precio_venta_m2_declarado,
         } as EstudioAreaInput);
         analisis.estudio_area_data = estudio as never;
@@ -171,40 +225,25 @@ export async function orquestarMercado(
       });
       analisis.tam_data = tam as never;
 
-      // Payback usa TAM + contexto financiero declarado
-      const rentaEstimada =
-        payload.renta_declarada ??
-        (payload.m2_declarados && payload.precio_m2_mes_declarado
-          ? payload.m2_declarados * payload.precio_m2_mes_declarado
-          : 0);
-      const ctx: ProductoContextoMercado = {
-        estatus_proyecto: payload.clientes_mes ? 'en_operacion' : 'planificacion',
-        tipo_actividad: tipoActividad,
-        puv: '',
-        inversion_inicial: rentaEstimada * 3 || 50000,
-        costos_fijos: rentaEstimada || 8000,
-        precio_venta: precioUsuario ?? 0,
-      };
-      analisis.payback_data = calcularPayback(
-        ctx,
-        payload,
-        tam.tam_escenarios.realista.mercado_mensual,
-        tam.tam_escenarios.optimista.mercado_mensual,
-        margenPct
-      ) as never;
+      // Payback con lo que el dueño declaró de verdad: la inversión y los
+      // costos fijos del producto, o la renta de la zona si es lo único que hay.
+      // Antes se inventaban 50 000 de inversión y 8 000 de costos fijos, así que
+      // el payback salía siempre y no describía ningún negocio real.
+      const ctx = contextoFinanciero(producto, payloadConTraccion, tipoActividad, precioUsuario);
+      analisis.payback_data = (ctx.inversion_inicial > 0
+        ? calcularPayback(
+            ctx,
+            payloadConTraccion,
+            tam.tam_escenarios.realista.mercado_mensual,
+            tam.tam_escenarios.optimista.mercado_mensual,
+            margenPct
+          )
+        : null) as never;
     }
     if (puede('mercado.reporte_bi')) {
-      const rentaCtx: ProductoContextoMercado = {
-        estatus_proyecto: payload.clientes_mes ? 'en_operacion' : 'planificacion',
-        tipo_actividad: tipoActividad,
-        puv: '',
-        inversion_inicial: 50000,
-        costos_fijos: payload.renta_declarada ?? 8000,
-        precio_venta: precioUsuario ?? 0,
-      };
       analisis.reporte_bi_data = (await generarReporteBi(
-        payload,
-        rentaCtx,
+        payloadConTraccion,
+        contextoFinanciero(producto, payloadConTraccion, tipoActividad, precioUsuario),
         { nombre, categoria },
         tendencias,
         competencia,

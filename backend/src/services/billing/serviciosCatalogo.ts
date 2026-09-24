@@ -1,4 +1,4 @@
-import { CAPABILITIES, CapabilityKey } from './planService';
+import { CAPABILITIES } from './planService';
 
 /**
  * Catálogo de herramientas contratables del "sistema computacional".
@@ -38,10 +38,6 @@ export const SERVICIOS_LISTA: ServicioMeta[] = Object.values(SERVICIOS_CATALOGO)
 
 export function esHerramientaContratable(key: string): key is HerramientaKey {
   return Object.prototype.hasOwnProperty.call(SERVICIOS_CATALOGO, key);
-}
-
-export function getPrecioServicio(key: HerramientaKey): number {
-  return SERVICIOS_CATALOGO[key].precio_mxn;
 }
 
 // Exhaustividad en compilación: si se añade una herramienta a CAPABILITIES y no

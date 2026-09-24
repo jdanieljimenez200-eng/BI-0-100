@@ -20,6 +20,8 @@ import { Articulo } from '../models/Articulo';
 import { Cliente } from '../models/Cliente';
 import { Cotizacion } from '../models/Cotizacion';
 import { Cita } from '../models/Cita';
+import { LugarAtencion } from '../models/LugarAtencion';
+import { TurnoEspera } from '../models/TurnoEspera';
 import { Empleado } from '../models/Empleado';
 import { PagoNomina } from '../models/PagoNomina';
 import { AsignacionTrabajador } from '../models/AsignacionTrabajador';
@@ -70,6 +72,8 @@ function buildDataSourceOptions() {
       Cliente,
       Cotizacion,
       Cita,
+      LugarAtencion,
+      TurnoEspera,
       Empleado,
       PagoNomina,
       AsignacionTrabajador,

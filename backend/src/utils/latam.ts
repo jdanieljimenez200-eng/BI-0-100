@@ -209,8 +209,3 @@ export const REGIONES_POR_PAIS: Record<string, string[]> = {
   PY: ['Alto Paraguay', 'Alto Paraná', 'Amambay', 'Asunción', 'Boquerón', 'Caaguazú', 'Caazapá', 'Canindeyú', 'Central', 'Concepción', 'Cordillera', 'Guairá', 'Itapúa', 'Misiones', 'Ñeembucú', 'Paraguarí', 'Presidente Hayes', 'San Pedro'],
   BR: ['Acre', 'Alagoas', 'Amapá', 'Amazonas', 'Bahia', 'Ceará', 'Distrito Federal', 'Espírito Santo', 'Goiás', 'Maranhão', 'Mato Grosso', 'Mato Grosso do Sul', 'Minas Gerais', 'Pará', 'Paraíba', 'Paraná', 'Pernambuco', 'Piauí', 'Rio de Janeiro', 'Rio Grande do Norte', 'Rio Grande do Sul', 'Rondônia', 'Roraima', 'Santa Catarina', 'São Paulo', 'Sergipe', 'Tocantins'],
 };
-
-// Sorted list of all LATAM countries for UI dropdowns
-export const PAISES_LATAM_LISTA = Object.entries(PAIS_LATAM)
-  .map(([codigo, info]) => ({ codigo, nombre: info.nombre }))
-  .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { backdropVariants, modalVariants } from '@/lib/motion/tokens';
 
@@ -23,23 +23,64 @@ export function MotionModal({
 }: MotionModalProps) {
   const shouldReduce = useReducedMotion();
 
+  const modalRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusable = modalRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            last.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === last) {
+            first.focus();
+            e.preventDefault();
+          }
+        }
+      }
     },
     [onClose]
   );
 
   useEffect(() => {
     if (!isOpen) return;
+
+    triggerRef.current = document.activeElement as HTMLElement | null;
     document.addEventListener('keydown', handleKeyDown);
-    // Bloquear scroll de fondo mientras el modal está abierto
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
+    // Foco automático en el primer elemento interactivo
+    const timer = setTimeout(() => {
+      if (modalRef.current) {
+        const first = modalRef.current.querySelector<HTMLElement>(
+          'button, input, [tabindex]:not([tabindex="-1"])'
+        );
+        first?.focus();
+      }
+    }, 50);
+
     return () => {
+      clearTimeout(timer);
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = prevOverflow;
+      triggerRef.current?.focus?.();
     };
   }, [isOpen, handleKeyDown]);
 
@@ -60,6 +101,7 @@ export function MotionModal({
 
           {/* Dialog Container */}
           <motion.div
+            ref={modalRef}
             role="dialog"
             aria-modal="true"
             variants={shouldReduce ? undefined : modalVariants}

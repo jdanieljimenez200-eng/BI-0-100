@@ -40,6 +40,44 @@ describe('breakevenService.calcularBreakeven', () => {
     );
   });
 
+  // ── Payback ────────────────────────────────────────────────────────────────
+  // Antes se devolvía el primer mes con utilidad acumulada ≥ 0 sin ningún dato
+  // de inversión: para cualquier negocio rentable eso es el mes 1, y la pantalla
+  // lo enseñaba como «recuperas tu inversión en 1 mes».
+
+  it('sin inversión declarada NO inventa un payback', () => {
+    const proy = generarProyeccion(inputBase);
+    const be = calcularBreakeven(inputBase, proy.meses);
+
+    expect(be.meses_para_recuperar_inversion).toBeNull();
+    expect(be.payback_no_disponible).toBe('sin_inversion_declarada');
+    expect(be.inversion_inicial).toBe(0);
+  });
+
+  it('con inversión declarada, el payback es el mes en que se recupera', () => {
+    // Utilidad del mes 1 ≈ 30 × 179 − 5 000 = 370; el acumulado tarda en llegar
+    // a 20 000, así que no puede ser el mes 1.
+    const input = { ...inputBase, inversion_inicial: 20_000 };
+    const proy = generarProyeccion(input);
+    const be = calcularBreakeven(input, proy.meses);
+
+    expect(be.payback_no_disponible).toBeNull();
+    expect(be.meses_para_recuperar_inversion).toBeGreaterThan(1);
+
+    const mes = be.meses_para_recuperar_inversion!;
+    expect(proy.meses[mes - 1].acumulado_neto).toBeGreaterThanOrEqual(20_000);
+    expect(proy.meses[mes - 2].acumulado_neto).toBeLessThan(20_000);
+  });
+
+  it('si la inversión no se recupera en 12 meses, lo dice', () => {
+    const input = { ...inputBase, inversion_inicial: 5_000_000 };
+    const proy = generarProyeccion(input);
+    const be = calcularBreakeven(input, proy.meses);
+
+    expect(be.meses_para_recuperar_inversion).toBeNull();
+    expect(be.payback_no_disponible).toBe('no_se_recupera_en_12_meses');
+  });
+
   it('detecta correctamente cuando se alcanza el equilibrio', () => {
     // Con 30 uds iniciales y punto de equilibrio en ~28, debería alcanzarse desde mes 1
     const proy = generarProyeccion(inputBase);

@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import DashboardShell from '@/components/DashboardShell';
 import { PageTransition } from '@/components/motion/PageTransition';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Dashboard',
   robots: { index: false, follow: false },

@@ -181,7 +181,8 @@ export async function orquestarMarketing(
       reporteAds,
       payload.canalCierre,
       payload.nivelTraccion,
-      payload.margenEstimado
+      payload.margenEstimado,
+      producto?.pais
     );
     analisis.estrategias_data = estrategias as never;
 

@@ -593,7 +593,7 @@ export default function AdminPage() {
       <div className="bg-sidebar border border-white/5 rounded-2xl p-5 space-y-2">
         <p className="text-white font-semibold text-sm">¿Cómo promover a admin?</p>
         <code className="text-xs text-white/60 bg-white/[.06] border border-white/5 px-4 py-3 rounded-xl block font-mono leading-relaxed">
-          {`UPDATE usuarios SET role = 'admin' WHERE email = 'tu@email.com';`}
+          {`UPDATE usuarios SET es_admin = true, account_role = 'owner' WHERE email = 'tu@email.com';`}
         </code>
         <p className="text-white/30 text-xs">Ejecuta en Railway → Data → PostgreSQL</p>
       </div>

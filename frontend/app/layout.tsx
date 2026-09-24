@@ -1,7 +1,14 @@
 import type { Metadata } from 'next';
-import { Plus_Jakarta_Sans, DM_Mono } from 'next/font/google';
+import { Plus_Jakarta_Sans, DM_Mono, Outfit, Playfair_Display, Montserrat } from 'next/font/google';
 import { Toaster } from 'sonner';
 import './globals.css';
+
+const tesla = Montserrat({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700', '800'],
+  variable: '--font-tesla',
+  display: 'swap',
+});
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -17,6 +24,21 @@ const dmMono = DM_Mono({
   display: 'swap',
 });
 
+const outfit = Outfit({
+  subsets: ['latin'],
+  weight: ['500', '600', '700', '800'],
+  variable: '--font-title',
+  display: 'swap',
+});
+
+const playfair = Playfair_Display({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  style: ['normal', 'italic'],
+  variable: '--font-serif',
+  display: 'swap',
+});
+
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://bi0a100.com';
 
 export const metadata: Metadata = {
@@ -26,8 +48,8 @@ export const metadata: Metadata = {
     template: '%s | BI 0 A 100',
   },
   description:
-    'Valida la viabilidad de tu negocio en 2-3 minutos. Análisis de marketing y mercado para emprendedores en México.',
-  keywords: ['validar negocio', 'análisis de mercado', 'plan de marketing', 'proyección financiera', 'emprendedores México'],
+    'Valida la viabilidad de tu negocio en 2-3 minutos. Análisis de marketing, finanzas y mercado para emprendedores en cualquier país.',
+  keywords: ['validar negocio', 'análisis de mercado', 'plan de marketing', 'proyección financiera', 'emprendedores', 'validación comercial'],
   authors: [{ name: 'BI 0 A 100' }],
   creator: 'BI 0 A 100',
   openGraph: {
@@ -68,7 +90,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" className="dark">
-      <body className={`${jakarta.variable} ${dmMono.variable} font-sans antialiased`}>
+      <body className={`${tesla.variable} ${jakarta.variable} ${dmMono.variable} ${outfit.variable} ${playfair.variable} font-sans antialiased`}>
         {children}
         <Toaster
           position="bottom-right"

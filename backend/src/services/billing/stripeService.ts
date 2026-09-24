@@ -27,10 +27,6 @@ export function isPurchasablePlan(value: unknown): value is PurchasablePlan {
   return typeof value === 'string' && PURCHASABLE_SET.has(value);
 }
 
-export function isBillingCycle(value: unknown): value is BillingCycle {
-  return value === 'monthly' || value === 'annual';
-}
-
 /**
  * plan + ciclo → Stripe Price ID. Se configuran en el Dashboard de Stripe.
  * Las variables STRIPE_PRICE_PRO y STRIPE_PRICE_BUSINESS se mantienen como

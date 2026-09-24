@@ -8,3 +8,14 @@
  * códigos TOTP) no dependen de esto y sus tests siguen comprobándolos.
  */
 process.env.RATE_LIMIT_DISABLED = 'true';
+
+/**
+ * La suite corre SIEMPRE contra el esquema de las migraciones, como en CI.
+ *
+ * `config/database.ts` activa synchronize fuera de producción salvo que llegue
+ * TYPEORM_SYNCHRONIZE=false. Un `npm test` local sin esa variable sincronizaba
+ * la base de test con las entidades: borraba las CHECK y rehacía las FK de las
+ * migraciones, y los tests que las comprueban (roles de admin, purga de la
+ * papelera) empezaban a fallar sin que el código hubiera cambiado.
+ */
+process.env.TYPEORM_SYNCHRONIZE = 'false';

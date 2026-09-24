@@ -43,6 +43,7 @@ export async function ejecutarAnalisisFinanzas(
       margen_neto_promedio: proyeccion.totales.margen_neto_promedio,
       viabilidad: resumenFinal.viabilidad,
       meses_para_recuperar_inversion: breakeven.meses_para_recuperar_inversion,
+      payback_no_disponible: breakeven.payback_no_disponible,
     });
 
     analisis.proyeccion_data = proyeccion;
@@ -56,6 +57,7 @@ export async function ejecutarAnalisisFinanzas(
       costos_fijos_mensuales: input.costos_fijos_mensuales,
       unidades_mes_inicial: input.unidades_mes_inicial,
       tasa_crecimiento_mensual: input.tasa_crecimiento_mensual,
+      inversion_inicial: input.inversion_inicial ?? null,
     };
     analisis.resultado_estimado = huboFallbackIA();
     analisis.estado_analisis = 'completado';

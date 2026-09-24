@@ -1,70 +1,283 @@
 "use client";
-import { motion, useReducedMotion } from "framer-motion";
 
-import { Reveal } from "@/components/ui";
-import { MOTION_EASINGS, REVEAL_VIEWPORT } from "@/lib/motion/tokens";
+import { useRef, useState } from "react";
+import { motion, useScroll, useSpring, useTransform, useMotionValueEvent, useReducedMotion } from "framer-motion";
+import { SectionReveal, SectionRevealItem } from "@/components/motion/SectionReveal";
+import { Upload, Sliders, Cpu, FileCheck2, ArrowRight, CheckCircle2 } from "lucide-react";
 
 export interface HowItWorksStep {
   n: string | number;
   title: string;
   desc: string;
+  badge?: string;
+  icon?: any;
+  detail?: string;
+  color?: string;
 }
 
-export default function HowItWorks({ steps = [] }: { steps?: HowItWorksStep[] }) {
-  const shouldReduce = useReducedMotion();
+const DEFAULT_STEPS: HowItWorksStep[] = [
+  {
+    n: "01",
+    title: "Sube tu producto o idea",
+    desc: "Ingresa el nombre, giro comercial o sube una fotografía. En 30 segundos el sistema clasifica tu oferta y prepara la matriz de análisis.",
+    badge: "30 segundos",
+    icon: Upload,
+    detail: "Clasificación automática",
+    color: "#F97316",
+  },
+  {
+    n: "02",
+    title: "Define tu contexto territorial",
+    desc: "Indica tu ubicación objetivo, presupuesto de arranque y canales previstos. El sistema calibra la auditoría para tu mercado real.",
+    badge: "1 minuto",
+    icon: Sliders,
+    detail: "Georreferenciación local",
+    color: "#60A5FA",
+  },
+  {
+    n: "03",
+    title: "Auditoría algorítmica 360°",
+    desc: "Cruce simultáneo de Google Maps, Marketplaces, normativas fiscales y proyecciones de flujo de caja en paralelo.",
+    badge: "Procesamiento",
+    icon: Cpu,
+    detail: "Saturación & equilibrio",
+    color: "#A78BFA",
+  },
+  {
+    n: "04",
+    title: "Expediente ejecutivo de decisión",
+    desc: "Recibe tu panel de control completo con informe descargable en PDF oficial A4, listo para socios, bancos e inversionistas.",
+    badge: "Listo en <3 min",
+    icon: FileCheck2,
+    detail: "Diagnóstico certificado",
+    color: "#34D399",
+  },
+];
+
+// ─── Tarjeta iPhone Sólida (Sin animación de mouse, fondo opaco #1C1C1E) ───────
+
+interface AppleStepCardProps {
+  step: HowItWorksStep;
+  isCurrent: boolean;
+  isPassed: boolean;
+  onClick: () => void;
+}
+
+function AppleStepCard({ step, isCurrent, isPassed, onClick }: AppleStepCardProps) {
+  const Icon = step.icon || Upload;
+  const accentColor = step.color || "#22D3EE";
 
   return (
-    <section className="py-32 px-6 bg-[#070E17] relative">
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/[0.01] to-transparent pointer-events-none" />
-      
-      <div className="max-w-[1000px] mx-auto relative z-10 flex flex-col items-center">
-        
-        <div className="text-center mb-20">
-          <h2 className="text-4xl md:text-5xl font-extrabold mb-6 tracking-tight text-white">
-            De idea a decisión<br/><span className="text-white/40">en menos de 3 minutos.</span>
-          </h2>
-          <p className="text-lg text-white/50 max-w-xl mx-auto font-light leading-relaxed">
-            Automatizamos lo que las consultoras tradicionales tardan semanas en hacer. Sin juntas, sin esperas, sin facturas de miles de pesos.
-          </p>
+    <div
+      onClick={onClick}
+      className={`relative rounded-[26px] p-6 sm:p-7 flex flex-col justify-between overflow-hidden cursor-pointer transition-colors duration-200 ${
+        isCurrent
+          ? "bg-[#181D27] border border-orange-500/40 border-t-orange-400/60 shadow-[0_10px_30px_rgba(249,115,22,0.15)]"
+          : "bg-[#1C1C1E] border border-white/[0.08] shadow-[0_4px_20px_rgba(0,0,0,0.35)] hover:border-white/[0.14]"
+      }`}
+    >
+      {/* Contenido Editorial */}
+      <div>
+        {/* Fila Superior: Icono Minimalista + Badges iPhone */}
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-2xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0"
+              style={{ color: accentColor }}
+            >
+              <Icon className="w-5 h-5 stroke-[1.75]" />
+            </div>
+
+            <span
+              className="h-[28px] px-3 rounded-full text-xs font-sans font-semibold flex items-center tracking-normal"
+              style={{
+                backgroundColor: `${accentColor}18`,
+                color: accentColor,
+                border: `1px solid ${accentColor}35`,
+              }}
+            >
+              {step.badge}
+            </span>
+          </div>
+
+          <span className="text-xs font-sans font-medium text-slate-400 hidden sm:inline-block">
+            {step.detail}
+          </span>
         </div>
 
-        {/* Elegant Timeline */}
-        <div className="relative w-full max-w-2xl">
-          <div className="flex flex-col">
-            {steps.map((s, i) => (
-              <div key={s.n} className="flex gap-8 items-stretch relative group">
-                
-                {/* Visual Line Col */}
-                <div className="flex flex-col items-center w-12 flex-shrink-0 relative">
-                  <div className="w-10 h-10 bg-[#0A121D] border border-white/10 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-[0_0_20px_rgba(255,255,255,0.05)] mt-1 group-hover:border-[#E74C3C] group-hover:text-[#E74C3C] group-hover:shadow-[0_0_20px_rgba(231,76,60,0.2)] transition-all duration-500 z-10">
-                    {s.n}
+        {/* Título & Descripción */}
+        <h3
+          className={`font-sans text-xl sm:text-2xl font-bold mb-2 tracking-[-0.025em] transition-colors ${
+            isCurrent ? "text-white" : "text-slate-100"
+          }`}
+        >
+          {step.title}
+        </h3>
+
+        <p className="text-sm text-slate-300 leading-relaxed font-normal max-w-2xl font-sans">
+          {step.desc}
+        </p>
+      </div>
+
+      {/* Footer Estilo iOS */}
+      <div className="mt-5 pt-3.5 border-t border-white/[0.07] flex items-center justify-between text-xs text-slate-400 font-sans">
+        <span className="flex items-center gap-2">
+          <CheckCircle2
+            className={`w-4 h-4 ${
+              isCurrent
+                ? "text-orange-400"
+                : isPassed
+                ? "text-orange-400"
+                : "text-slate-500"
+            }`}
+          />
+          <span className="text-slate-300 font-sans text-xs">
+            Etapa <span className="font-bold text-white font-sans">{step.n}</span> de 04
+          </span>
+        </span>
+
+        <ArrowRight
+          className={`w-4 h-4 ${
+            isCurrent ? "text-orange-400" : "text-slate-500"
+          }`}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Componente Principal HowItWorks ──────────────────────────────────────────
+
+export default function HowItWorks({ steps = DEFAULT_STEPS }: { steps?: HowItWorksStep[] }) {
+  const [activeStep, setActiveStep] = useState(0);
+  const sectionRef = useRef<HTMLElement>(null);
+  const shouldReduce = useReducedMotion();
+
+  const displaySteps = steps.length > 0 ? steps : DEFAULT_STEPS;
+
+  // Seguimiento continuo del scroll dentro de la sección
+  const { scrollYProgress } = useScroll({
+    target: sectionRef,
+    offset: ["start 65%", "end 45%"],
+  });
+
+  // Física de resorte suave para el avance vertical
+  const smoothProgress = useSpring(scrollYProgress, {
+    stiffness: 260,
+    damping: 28,
+    restDelta: 0.001,
+  });
+
+  // Progreso individual para cada uno de los 3 segmentos entre los 4 nodos
+  const seg0 = useTransform(smoothProgress, [0.04, 0.35], [0, 1]);
+  const seg1 = useTransform(smoothProgress, [0.35, 0.68], [0, 1]);
+  const seg2 = useTransform(smoothProgress, [0.68, 0.96], [0, 1]);
+  const segmentScales = [seg0, seg1, seg2];
+
+  // Sincronización del paso activo según la posición de la línea
+  useMotionValueEvent(scrollYProgress, "change", (latest) => {
+    if (latest < 0.28) {
+      setActiveStep(0);
+    } else if (latest < 0.58) {
+      setActiveStep(1);
+    } else if (latest < 0.84) {
+      setActiveStep(2);
+    } else {
+      setActiveStep(3);
+    }
+  });
+
+  return (
+    <section
+      ref={sectionRef}
+      id="como-funciona"
+      className="py-24 md:py-32 px-4 sm:px-6 bg-transparent relative overflow-hidden"
+    >
+      <div className="max-w-[940px] mx-auto relative z-10">
+
+        {/* Encabezado Editorial Estilo Tesla */}
+        <SectionReveal className="text-center mb-14 lg:mb-18">
+          <SectionRevealItem
+            as="h2"
+            className="font-sans text-3xl sm:text-5xl lg:text-6xl font-bold mb-4 tracking-[-0.025em] text-white"
+          >
+            De idea a certeza en menos de 3 minutos
+          </SectionRevealItem>
+          <SectionRevealItem
+            as="p"
+            className="font-sans text-base sm:text-lg max-w-xl mx-auto font-normal leading-relaxed text-slate-300"
+          >
+            Automatizamos lo que las consultoras tardan semanas en estructurar. Sin juntas, sin estimaciones al aire y con datos duros de tu mercado local.
+          </SectionRevealItem>
+        </SectionReveal>
+
+        {/* ── PIPELINE VERTICAL ESTILO IPHONE (FONDO SÓLIDO, TIPOGRAFÍA GEOMÉTRICA) ── */}
+        <div className="relative flex flex-col">
+          {displaySteps.map((step, idx) => {
+            const isLast = idx === displaySteps.length - 1;
+            const isCurrent = activeStep === idx;
+            const isPassed = activeStep >= idx;
+
+            // Enriquecer step con defaults si viene de prop externa
+            const fullStep: HowItWorksStep = {
+              ...DEFAULT_STEPS[idx % DEFAULT_STEPS.length],
+              ...step,
+            };
+
+            return (
+              <div
+                key={fullStep.n}
+                className="flex items-start gap-4 sm:gap-6 relative group"
+              >
+                {/* ── COLUMNA IZQUIERDA: Nodo Circular iPhone & Línea Conectora ── */}
+                <div className="flex flex-col items-center flex-shrink-0 relative self-stretch">
+
+                  {/* Nodo Numérico Circular iPhone (Tipografía Sans Geométrica, Cero Monospace) */}
+                  <div className="relative z-10">
+                    <button
+                      type="button"
+                      onClick={() => setActiveStep(idx)}
+                      className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-sans text-sm sm:text-base font-bold tabular-nums transition-all duration-200 cursor-pointer ${
+                        isCurrent
+                          ? "bg-orange-500 text-white shadow-[0_0_24px_rgba(249,115,22,0.55)] ring-4 ring-orange-500/25 scale-105"
+                          : isPassed
+                          ? "bg-orange-500 text-white shadow-[0_0_14px_rgba(249,115,22,0.3)] border border-orange-400/40"
+                          : "bg-[#1C1C1E] border border-white/[0.08] text-slate-400 hover:text-orange-300 hover:border-orange-500/30"
+                      }`}
+                      aria-label={`Paso ${fullStep.n}: ${fullStep.title}`}
+                    >
+                      {fullStep.n}
+                    </button>
                   </div>
-                  
-                  {i !== steps.length - 1 && (
-                    <div className="w-[2px] bg-white/[0.05] flex-1 relative my-2">
-                      {/* La línea se llena al entrar el paso en pantalla: marca
-                          el avance del recorrido sin depender del scroll exacto. */}
+
+                  {/* LÍNEA CONECTORA ENTRE NODOS */}
+                  {!isLast && (
+                    <div className="w-[2px] flex-1 bg-white/[0.08] my-2 relative overflow-hidden rounded-full min-h-[64px]">
                       <motion.div
-                        initial={shouldReduce ? false : { height: 0 }}
-                        whileInView={{ height: '100%' }}
-                        viewport={REVEAL_VIEWPORT}
-                        transition={{ duration: 0.7, ease: MOTION_EASINGS.easeOutCubic }}
-                        className="absolute top-0 left-0 w-full bg-gradient-to-b from-[#E74C3C] to-[#E74C3C]/50 rounded-full"
+                        className="w-full bg-gradient-to-b from-orange-400 via-amber-400 to-orange-500 origin-top shadow-[0_0_10px_rgba(249,115,22,0.5)]"
+                        style={{
+                          scaleY: shouldReduce ? (isPassed ? 1 : 0) : segmentScales[idx],
+                          height: "100%",
+                        }}
                       />
                     </div>
                   )}
                 </div>
 
-                {/* Text Col */}
-                <Reveal index={0} className="pt-2 pb-16">
-                  <h4 className="text-2xl font-bold text-white mb-3 tracking-tight group-hover:text-brand-accent transition-colors duration-300">{s.title}</h4>
-                  <p className="text-base text-white/50 font-light leading-relaxed">{s.desc}</p>
-                </Reveal>
+                {/* ── COLUMNA DERECHA: Tarjeta Sólida iPhone (Sin animación de mouse) ── */}
+                <div className={`flex-1 ${isLast ? "pb-0" : "pb-5 sm:pb-6"} pt-0.5`}>
+                  <AppleStepCard
+                    step={fullStep}
+                    isCurrent={isCurrent}
+                    isPassed={isPassed}
+                    onClick={() => setActiveStep(idx)}
+                  />
+                </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
-        
+
       </div>
     </section>
   );

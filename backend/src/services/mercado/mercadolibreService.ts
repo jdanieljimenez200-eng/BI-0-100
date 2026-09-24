@@ -11,6 +11,7 @@
  */
 
 import { CompetenciaResult, Competidor } from './types';
+import { competenciaNoDisponible } from './fuentesCompetencia';
 import { getPaisInfo } from '../../utils/latam';
 
 // ─── País ISO → site_id de MercadoLibre (solo marketplaces activos) ──────────
@@ -138,7 +139,10 @@ export async function obtenerCompetenciaMercadoLibre(
     const items = data.results ?? [];
 
     if (items.length === 0) {
-      return { total_competidores: 0, competidores: [], gap_detectado: 'Sin resultados en MercadoLibre para esta búsqueda — mercado por explorar', precio_mercado_promedio: precio, es_mock: false };
+      // Cero resultados no es «mercado por explorar»: es que esta fuente no
+      // encontró nada. Además se devolvía el precio del propio usuario como
+      // «precio de mercado», con lo que su precio siempre parecía el correcto.
+      return competenciaNoDisponible('sin_resultados');
     }
 
     // Construir competidores
@@ -184,6 +188,7 @@ export async function obtenerCompetenciaMercadoLibre(
       gap_detectado: gap,
       precio_mercado_promedio: precioPromedio,
       es_mock: false,
+      fuente_disponible: true,
     };
   } catch (err) {
     console.warn('MercadoLibre API falló:', (err as Error).message);

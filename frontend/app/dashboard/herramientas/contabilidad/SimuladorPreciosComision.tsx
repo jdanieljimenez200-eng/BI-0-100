@@ -91,8 +91,8 @@ export default function SimuladorPreciosComision({
             Si cobras en terminales o apps de delivery tu precio habitual de mostrador, las comisiones se comen tu utilidad. Esta herramienta te dice el precio exacto al público para que recibas en tu banco tu ganancia íntegra.
           </p>
 
-          <div className="mt-5 flex flex-wrap items-center gap-4">
-            <div className="bg-[#09131F] border border-white/15 rounded-2xl p-3 flex items-center gap-3">
+          <div className="mt-5 flex flex-wrap items-center gap-3 sm:gap-4">
+            <div className="bg-[#09131F] border border-white/15 rounded-2xl p-3 flex items-center justify-between sm:justify-start gap-3 w-full sm:w-auto">
               <span className="text-xs text-white/50 font-bold uppercase tracking-wider">
                 Ganancia Neta Deseada:
               </span>
@@ -110,10 +110,11 @@ export default function SimuladorPreciosComision({
             </div>
 
             {/* Quick chips */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {['100', '250', '500', '1000'].map((chip) => (
                 <button
                   key={chip}
+                  type="button"
                   onClick={() => setMontoDeseado(chip)}
                   className={`text-xs px-2.5 py-1.5 rounded-xl border transition-all ${
                     montoDeseado === chip

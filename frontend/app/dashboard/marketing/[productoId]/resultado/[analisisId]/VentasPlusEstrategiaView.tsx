@@ -1,39 +1,50 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Flame, BarChart3, ShieldCheck, Package, MessageSquare, Search, Target, ShieldAlert, RefreshCw, Check } from 'lucide-react';
 
+/**
+ * Espejo de backend/src/services/marketing/types.ts.
+ *
+ * Esta vista pedía otros nombres (`roas_proyectado`, `clics_proyectados`,
+ * `paso_1_filtro`, `dia_1_caso_exito`) que el backend NUNCA ha emitido: todo el
+ * tablero de unit economics salía en 0 y el guion de WhatsApp, vacío. Si
+ * cambias un campo en el backend, cámbialo aquí.
+ */
 export interface UnitEconomicsVentasPlus {
-  presupuesto_mensual: number;
-  cpc_estimado: number;
-  clics_proyectados: number;
-  tasa_conversion_lead_pct: number;
-  leads_proyectados: number;
-  cpl_estimado: number;
-  tasa_cierre_ventas_pct: number;
-  ventas_proyectadas: number;
-  ticket_promedio: number;
-  ingresos_proyectados: number;
-  ganancia_bruta_estimada: number;
-  roas_proyectado: number;
+  presupuesto_simulado: number;
+  clics_estimados: number;
+  cpc_promedio: number;
+  leads_o_conversaciones: number;
+  tasa_conversion_prospecto: number;
+  ventas_cerradas: number;
+  tasa_cierre: number;
+  ingreso_proyectado: number;
+  roas_estimado: number;
+  /** false = con estos supuestos la campaña pierde dinero. */
+  rentable?: boolean;
+  /** De dónde salen CPC y tasas. */
+  origen_supuestos?: 'tus_datos' | 'benchmark';
   cac_maximo_tolerable: number;
+  ticket_promedio_con_bump: number;
   punto_equilibrio_unidades: number;
 }
 
 export interface ScriptWhatsAppVentasPlus {
-  paso_1_filtro: { objetivo: string; mensaje_exacto: string };
-  paso_2_diagnostico: { objetivo: string; preguntas_clave: string[] };
-  paso_3_presentacion: { objetivo: string; pitch_solucion: string };
-  paso_4_objeciones: {
+  paso1_filtro: { objetivo: string; pregunta: string };
+  paso2_diagnostico: { objetivo: string; mensaje: string };
+  paso3_presentacion: { objetivo: string; audio_o_texto: string };
+  paso4_cierre_objeciones: {
     objecion_precio: string;
     objecion_pensarlo: string;
-    objecion_competencia: string;
+    objecion_consultarlo: string;
   };
 }
 
 export interface SecuenciaSeguimientoVentasPlus {
-  dia_1_caso_exito: string;
-  dia_3_contenido_valor: string;
-  dia_5_ultima_llamada: string;
+  dia1_caso_exito: string;
+  dia3_beneficio_clave: string;
+  dia5_despedida_urgencia: string;
 }
 
 export interface VentasPlusProps {
@@ -83,7 +94,7 @@ export default function VentasPlusEstrategiaView({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-transparent border border-amber-400/30">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-lg shadow-lg shadow-amber-500/20 flex-shrink-0">
-            🔥
+            <Flame className="w-5 h-5 text-black" />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -107,14 +118,15 @@ export default function VentasPlusEstrategiaView({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/5">
             <div>
               <p className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-semibold flex items-center gap-1.5">
-                <span>📊</span> Modelo Financiero y Unit Economics
+                <BarChart3 className="w-3.5 h-3.5 text-amber-400" />
+                <span>Modelo Financiero y Unit Economics</span>
               </p>
               <h5 className="text-sm font-semibold text-white mt-0.5">
                 Embudo Matemático de Adquisición Proyectado
               </h5>
             </div>
             <span className="text-[11px] font-mono text-white/50 bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
-              Presupuesto Base: ${unit_economics.presupuesto_mensual.toLocaleString()}
+              Presupuesto Base: ${unit_economics.presupuesto_simulado?.toLocaleString() ?? "—"}
             </span>
           </div>
 
@@ -123,35 +135,67 @@ export default function VentasPlusEstrategiaView({
             <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-3.5 flex flex-col justify-between">
               <span className="text-[10px] font-mono text-white/40 uppercase tracking-wider">Tráfico / Clics</span>
               <div className="mt-2">
-                <p className="text-base font-bold font-mono text-white">{unit_economics.clics_proyectados.toLocaleString()}</p>
-                <p className="text-[11px] font-mono text-white/40 mt-0.5">CPC est: ${unit_economics.cpc_estimado}</p>
+                <p className="text-base font-bold font-mono text-white">{(unit_economics.clics_estimados ?? 0).toLocaleString()}</p>
+                <p className="text-[11px] font-mono text-white/40 mt-0.5">CPC est: ${unit_economics.cpc_promedio ?? "—"}</p>
               </div>
             </div>
 
             <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-3.5 flex flex-col justify-between">
               <span className="text-[10px] font-mono text-white/40 uppercase tracking-wider">Leads Cualificados</span>
               <div className="mt-2">
-                <p className="text-base font-bold font-mono text-sky-400">{unit_economics.leads_proyectados.toLocaleString()}</p>
-                <p className="text-[11px] font-mono text-white/40 mt-0.5">CPL est: ${unit_economics.cpl_estimado} ({unit_economics.tasa_conversion_lead_pct}%)</p>
+                <p className="text-base font-bold font-mono text-sky-400">{(unit_economics.leads_o_conversaciones ?? 0).toLocaleString()}</p>
+                {/* El CPL sale del presupuesto entre los leads: el backend no
+                    lo manda aparte y antes salía siempre «—». */}
+                <p className="text-[11px] font-mono text-white/40 mt-0.5">
+                  CPL est: ${unit_economics.leads_o_conversaciones > 0
+                    ? Math.round(unit_economics.presupuesto_simulado / unit_economics.leads_o_conversaciones).toLocaleString()
+                    : '—'} ({unit_economics.tasa_conversion_prospecto ?? 0}%)
+                </p>
               </div>
             </div>
 
             <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-3.5 flex flex-col justify-between">
               <span className="text-[10px] font-mono text-white/40 uppercase tracking-wider">Clientes / Ventas</span>
               <div className="mt-2">
-                <p className="text-base font-bold font-mono text-emerald-400">{unit_economics.ventas_proyectadas}</p>
-                <p className="text-[11px] font-mono text-white/40 mt-0.5">Cierre: {unit_economics.tasa_cierre_ventas_pct}% en WhatsApp</p>
+                <p className="text-base font-bold font-mono text-emerald-400">{unit_economics.ventas_cerradas ?? "—"}</p>
+                <p className="text-[11px] font-mono text-white/40 mt-0.5">Cierre: {unit_economics.tasa_cierre ?? 0}% en WhatsApp</p>
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-amber-400/30 rounded-xl p-3.5 flex flex-col justify-between">
-              <span className="text-[10px] font-mono text-amber-300 uppercase tracking-wider font-semibold">ROAS Proyectado</span>
+            {/* Un ROAS bajo 1 significa perder dinero, y hasta ahora no podía
+                mostrarse: el backend lo forzaba a un mínimo de 1.2. */}
+            <div className={`bg-gradient-to-br rounded-xl p-3.5 flex flex-col justify-between ${
+              unit_economics.rentable === false
+                ? 'from-red-500/10 to-rose-500/10 border border-red-400/40'
+                : 'from-amber-500/10 to-orange-500/10 border border-amber-400/30'
+            }`}>
+              <span className={`text-[10px] font-mono uppercase tracking-wider font-semibold ${
+                unit_economics.rentable === false ? 'text-red-300' : 'text-amber-300'
+              }`}>ROAS Simulado</span>
               <div className="mt-2">
-                <p className="text-xl font-bold font-mono text-amber-300">{unit_economics.roas_proyectado}x</p>
-                <p className="text-[11px] font-mono text-white/60 mt-0.5">Ingreso: ${unit_economics.ingresos_proyectados.toLocaleString()}</p>
+                <p className={`text-xl font-bold font-mono ${
+                  unit_economics.rentable === false ? 'text-red-300' : 'text-amber-300'
+                }`}>{unit_economics.roas_estimado ?? 0}x</p>
+                <p className="text-[11px] font-mono text-white/60 mt-0.5">Ingreso: ${(unit_economics.ingreso_proyectado ?? 0).toLocaleString()}</p>
               </div>
             </div>
           </div>
+
+          {unit_economics.rentable === false && (
+            <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3">
+              <p className="text-xs text-red-200 leading-relaxed">
+                <span className="font-semibold">Con estos supuestos la campaña pierde dinero.</span>{' '}
+                Por cada peso de pauta vuelven ${unit_economics.roas_estimado}. Sube el ticket, mejora el cierre
+                o baja el presupuesto antes de invertir.
+              </p>
+            </div>
+          )}
+
+          <p className="text-[10px] text-white/35 leading-relaxed">
+            {unit_economics.origen_supuestos === 'tus_datos'
+              ? 'Simulación con el CPC real de tu reporte de anuncios.'
+              : 'Simulación con supuestos de referencia de tu país (CPC, conversión y cierre). Sube tu reporte de anuncios para usar tus números reales.'}
+          </p>
 
           {/* Parámetros de seguridad financiera */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
@@ -160,7 +204,7 @@ export default function VentasPlusEstrategiaView({
                 CAC Máximo Tolerable
               </span>
               <p className="text-xs font-semibold text-rose-300 font-mono">
-                ${unit_economics.cac_maximo_tolerable.toLocaleString()}
+                ${(unit_economics.cac_maximo_tolerable ?? 0).toLocaleString()}
               </p>
               <p className="text-[10px] text-white/40 mt-1 leading-tight">
                 Límite de costo por cliente antes de comprometer el margen neto.
@@ -183,11 +227,15 @@ export default function VentasPlusEstrategiaView({
               <span className="text-[10px] font-mono text-white/40 uppercase tracking-wider block mb-1">
                 Ganancia Bruta Proyectada
               </span>
-              <p className="text-xs font-semibold text-emerald-400 font-mono">
-                ${unit_economics.ganancia_bruta_estimada.toLocaleString()}
+              {/* Ingreso menos la pauta simulada: el backend no manda una
+                  «ganancia bruta» y este bloque reventaba con undefined. */}
+              <p className={`text-xs font-semibold font-mono ${
+                unit_economics.ingreso_proyectado - unit_economics.presupuesto_simulado >= 0 ? 'text-emerald-400' : 'text-red-400'
+              }`}>
+                ${(unit_economics.ingreso_proyectado - unit_economics.presupuesto_simulado).toLocaleString()}
               </p>
               <p className="text-[10px] text-white/40 mt-1 leading-tight">
-                Excedente operativo descontando costos directos y pauta.
+                Ingreso proyectado menos la inversión en pauta (sin descontar costo del producto).
               </p>
             </div>
           </div>
@@ -200,7 +248,7 @@ export default function VentasPlusEstrategiaView({
           {garantia_irresistible && (
             <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/10 p-5 space-y-3 relative overflow-hidden">
               <div className="flex items-center gap-2">
-                <span className="text-lg">🛡️</span>
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
                 <span className="text-xs font-bold font-mono uppercase tracking-wider text-emerald-400">
                   Garantía Irresistible (Riesgo Cero)
                 </span>
@@ -217,7 +265,7 @@ export default function VentasPlusEstrategiaView({
                   onClick={() => handleCopy(garantia_irresistible, 'garantia')}
                   className="text-[10px] font-mono text-emerald-300 hover:text-emerald-200 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 transition-colors"
                 >
-                  {copiedKey === 'garantia' ? '✓ Copiado' : 'Copiar Garantía'}
+                  {copiedKey === 'garantia' ? <span className="inline-flex items-center gap-1"><Check className="w-3 h-3" /> Copiado</span> : 'Copiar Garantía'}
                 </button>
               </div>
             </div>
@@ -226,7 +274,7 @@ export default function VentasPlusEstrategiaView({
           {order_bump_sugerido && (
             <div className="rounded-2xl border border-amber-400/30 bg-amber-950/10 p-5 space-y-3 relative overflow-hidden">
               <div className="flex items-center gap-2">
-                <span className="text-lg">📦</span>
+                <Package className="w-4 h-4 text-amber-300" />
                 <span className="text-xs font-bold font-mono uppercase tracking-wider text-amber-300">
                   Order Bump / Acelerador de Ticket
                 </span>
@@ -243,7 +291,7 @@ export default function VentasPlusEstrategiaView({
                   onClick={() => handleCopy(order_bump_sugerido, 'orderbump')}
                   className="text-[10px] font-mono text-amber-300 hover:text-amber-200 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-400/20 transition-colors"
                 >
-                  {copiedKey === 'orderbump' ? '✓ Copiado' : 'Copiar Oferta'}
+                  {copiedKey === 'orderbump' ? <span className="inline-flex items-center gap-1"><Check className="w-3 h-3" /> Copiado</span> : 'Copiar Oferta'}
                 </button>
               </div>
             </div>
@@ -257,7 +305,8 @@ export default function VentasPlusEstrategiaView({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/5">
             <div>
               <p className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-semibold flex items-center gap-1.5">
-                <span>💬</span> Protocolo Quirúrgico de Cierre
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Protocolo Quirúrgico de Cierre</span>
               </p>
               <h5 className="text-sm font-semibold text-white mt-0.5">
                 Guiones para WhatsApp y Mensajes Directos (4 Pasos)
@@ -278,19 +327,19 @@ export default function VentasPlusEstrategiaView({
                   </span>
                   <span className="text-xs">⏱️ &lt;5 min</span>
                 </div>
-                <p className="text-[11px] text-white/50 mb-2">{script_cierre.paso_1_filtro.objetivo}</p>
+                <p className="text-[11px] text-white/50 mb-2">{script_cierre.paso1_filtro.objetivo}</p>
                 <div className="bg-black/40 p-3 rounded-lg border border-white/[0.06]">
                   <p className="text-xs text-emerald-200/90 leading-relaxed italic">
-                    "{script_cierre.paso_1_filtro.mensaje_exacto}"
+                    "{script_cierre.paso1_filtro.pregunta}"
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => handleCopy(script_cierre.paso_1_filtro.mensaje_exacto, 'script-p1')}
-                className="w-full text-center text-xs font-medium py-1.5 rounded-lg border border-white/10 hover:border-white/20 bg-white/[0.02] text-white/70 hover:text-white transition-all"
+                onClick={() => handleCopy(script_cierre.paso1_filtro.pregunta, 'script-p1')}
+                className="w-full text-center text-xs font-medium py-1.5 rounded-lg border border-white/10 hover:border-white/20 bg-white/[0.02] text-white/70 hover:text-white transition-all flex items-center justify-center gap-1.5"
               >
-                {copiedKey === 'script-p1' ? '✓ Mensaje Copiado' : 'Copiar Mensaje'}
+                {copiedKey === 'script-p1' ? <><Check className="w-3.5 h-3.5 text-emerald-400" /> Mensaje Copiado</> : 'Copiar Mensaje'}
               </button>
             </div>
 
@@ -301,23 +350,24 @@ export default function VentasPlusEstrategiaView({
                   <span className="text-[10px] font-mono text-sky-400 uppercase tracking-wider font-semibold">
                     Paso 2: Diagnóstico
                   </span>
-                  <span className="text-xs">🔍 Preguntas</span>
+                  <span className="text-xs flex items-center gap-1 text-sky-300">
+                    <Search className="w-3 h-3 text-sky-400" />
+                    Preguntas
+                  </span>
                 </div>
-                <p className="text-[11px] text-white/50 mb-2">{script_cierre.paso_2_diagnostico.objetivo}</p>
-                <div className="bg-black/40 p-3 rounded-lg border border-white/[0.06] space-y-1.5">
-                  {script_cierre.paso_2_diagnostico.preguntas_clave.map((q, i) => (
-                    <p key={i} className="text-xs text-sky-200/90 leading-relaxed">
-                      • {q}
-                    </p>
-                  ))}
+                <p className="text-[11px] text-white/50 mb-2">{script_cierre.paso2_diagnostico.objetivo}</p>
+                <div className="bg-black/40 p-3 rounded-lg border border-white/[0.06]">
+                  <p className="text-xs text-sky-200/90 leading-relaxed italic">
+                    &quot;{script_cierre.paso2_diagnostico.mensaje}&quot;
+                  </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => handleCopy(script_cierre.paso_2_diagnostico.preguntas_clave.join('\n'), 'script-p2')}
-                className="w-full text-center text-xs font-medium py-1.5 rounded-lg border border-white/10 hover:border-white/20 bg-white/[0.02] text-white/70 hover:text-white transition-all"
+                onClick={() => handleCopy(script_cierre.paso2_diagnostico.mensaje, 'script-p2')}
+                className="w-full text-center text-xs font-medium py-1.5 rounded-lg border border-white/10 hover:border-white/20 bg-white/[0.02] text-white/70 hover:text-white transition-all flex items-center justify-center gap-1.5"
               >
-                {copiedKey === 'script-p2' ? '✓ Preguntas Copiadas' : 'Copiar Preguntas'}
+                {copiedKey === 'script-p2' ? <><Check className="w-3.5 h-3.5 text-emerald-400" /> Preguntas Copiadas</> : 'Copiar Preguntas'}
               </button>
             </div>
 
@@ -328,21 +378,24 @@ export default function VentasPlusEstrategiaView({
                   <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider font-semibold">
                     Paso 3: Presentación
                   </span>
-                  <span className="text-xs">🎯 Solución</span>
+                  <span className="text-xs flex items-center gap-1 text-amber-300">
+                    <Target className="w-3 h-3 text-amber-400" />
+                    Solución
+                  </span>
                 </div>
-                <p className="text-[11px] text-white/50 mb-2">{script_cierre.paso_3_presentacion.objetivo}</p>
+                <p className="text-[11px] text-white/50 mb-2">{script_cierre.paso3_presentacion.objetivo}</p>
                 <div className="bg-black/40 p-3 rounded-lg border border-white/[0.06]">
                   <p className="text-xs text-amber-200/90 leading-relaxed italic">
-                    "{script_cierre.paso_3_presentacion.pitch_solucion}"
+                    "{script_cierre.paso3_presentacion.audio_o_texto}"
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => handleCopy(script_cierre.paso_3_presentacion.pitch_solucion, 'script-p3')}
-                className="w-full text-center text-xs font-medium py-1.5 rounded-lg border border-white/10 hover:border-white/20 bg-white/[0.02] text-white/70 hover:text-white transition-all"
+                onClick={() => handleCopy(script_cierre.paso3_presentacion.audio_o_texto, 'script-p3')}
+                className="w-full text-center text-xs font-medium py-1.5 rounded-lg border border-white/10 hover:border-white/20 bg-white/[0.02] text-white/70 hover:text-white transition-all flex items-center justify-center gap-1.5"
               >
-                {copiedKey === 'script-p3' ? '✓ Pitch Copiado' : 'Copiar Pitch'}
+                {copiedKey === 'script-p3' ? <><Check className="w-3.5 h-3.5 text-emerald-400" /> Pitch Copiado</> : 'Copiar Pitch'}
               </button>
             </div>
           </div>
@@ -351,7 +404,8 @@ export default function VentasPlusEstrategiaView({
           <div className="rounded-xl border border-white/[0.06] bg-black/30 p-4 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <span className="text-[10px] font-mono uppercase tracking-wider text-rose-300 font-semibold flex items-center gap-1.5">
-                <span>🛡️</span> Paso 4: Respuestas a Objeciones Clave
+                <ShieldAlert className="w-3.5 h-3.5 text-rose-300" />
+                <span>Paso 4: Respuestas a Objeciones Clave</span>
               </span>
               <div className="flex gap-1.5">
                 {(['precio', 'pensarlo', 'competencia'] as const).map((tab) => (
@@ -376,15 +430,15 @@ export default function VentasPlusEstrategiaView({
                 <div className="flex-1">
                   <span className="text-[10px] font-mono text-white/40 uppercase block mb-1">Respuesta exacta a objeción de precio:</span>
                   <p className="text-xs text-white/90 leading-relaxed italic">
-                    "{script_cierre.paso_4_objeciones.objecion_precio}"
+                    "{script_cierre.paso4_cierre_objeciones.objecion_precio}"
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => handleCopy(script_cierre.paso_4_objeciones.objecion_precio, 'obj-precio')}
+                  onClick={() => handleCopy(script_cierre.paso4_cierre_objeciones.objecion_precio, 'obj-precio')}
                   className="text-xs font-mono text-rose-300 bg-rose-500/10 border border-rose-500/20 px-3 py-1.5 rounded-lg hover:bg-rose-500/20 transition-colors whitespace-nowrap"
                 >
-                  {copiedKey === 'obj-precio' ? '✓ Copiado' : 'Copiar Respuesta'}
+                  {copiedKey === 'obj-precio' ? <span className="inline-flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Copiado</span> : 'Copiar Respuesta'}
                 </button>
               </div>
             )}
@@ -394,15 +448,15 @@ export default function VentasPlusEstrategiaView({
                 <div className="flex-1">
                   <span className="text-[10px] font-mono text-white/40 uppercase block mb-1">Respuesta a "Déjame pensarlo / consultarlo":</span>
                   <p className="text-xs text-white/90 leading-relaxed italic">
-                    "{script_cierre.paso_4_objeciones.objecion_pensarlo}"
+                    "{script_cierre.paso4_cierre_objeciones.objecion_pensarlo}"
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => handleCopy(script_cierre.paso_4_objeciones.objecion_pensarlo, 'obj-pensarlo')}
+                  onClick={() => handleCopy(script_cierre.paso4_cierre_objeciones.objecion_pensarlo, 'obj-pensarlo')}
                   className="text-xs font-mono text-rose-300 bg-rose-500/10 border border-rose-500/20 px-3 py-1.5 rounded-lg hover:bg-rose-500/20 transition-colors whitespace-nowrap"
                 >
-                  {copiedKey === 'obj-pensarlo' ? '✓ Copiado' : 'Copiar Respuesta'}
+                  {copiedKey === 'obj-pensarlo' ? <span className="inline-flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Copiado</span> : 'Copiar Respuesta'}
                 </button>
               </div>
             )}
@@ -412,15 +466,15 @@ export default function VentasPlusEstrategiaView({
                 <div className="flex-1">
                   <span className="text-[10px] font-mono text-white/40 uppercase block mb-1">Respuesta a comparación con la competencia:</span>
                   <p className="text-xs text-white/90 leading-relaxed italic">
-                    "{script_cierre.paso_4_objeciones.objecion_competencia}"
+                    "{script_cierre.paso4_cierre_objeciones.objecion_consultarlo}"
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => handleCopy(script_cierre.paso_4_objeciones.objecion_competencia, 'obj-competencia')}
+                  onClick={() => handleCopy(script_cierre.paso4_cierre_objeciones.objecion_consultarlo, 'obj-competencia')}
                   className="text-xs font-mono text-rose-300 bg-rose-500/10 border border-rose-500/20 px-3 py-1.5 rounded-lg hover:bg-rose-500/20 transition-colors whitespace-nowrap"
                 >
-                  {copiedKey === 'obj-competencia' ? '✓ Copiado' : 'Copiar Respuesta'}
+                  {copiedKey === 'obj-competencia' ? <span className="inline-flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Copiado</span> : 'Copiar Respuesta'}
                 </button>
               </div>
             )}
@@ -434,7 +488,8 @@ export default function VentasPlusEstrategiaView({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/5">
             <div>
               <p className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-semibold flex items-center gap-1.5">
-                <span>🔄</span> Recuperación de Prospectos Indecisos
+                <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
+                <span>Recuperación de Prospectos Indecisos</span>
               </p>
               <h5 className="text-sm font-semibold text-white mt-0.5">
                 Protocolo de Seguimiento sin Presión (Día 1, 3 y 5)
@@ -455,15 +510,15 @@ export default function VentasPlusEstrategiaView({
                   <span className="text-xs font-semibold text-white">Caso de Éxito / Prueba Social</span>
                 </div>
                 <p className="text-xs text-white/80 leading-relaxed italic">
-                  "{secuencia_seguimiento.dia_1_caso_exito}"
+                  "{secuencia_seguimiento.dia1_caso_exito}"
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => handleCopy(secuencia_seguimiento.dia_1_caso_exito, 'seg-d1')}
+                onClick={() => handleCopy(secuencia_seguimiento.dia1_caso_exito, 'seg-d1')}
                 className="text-xs font-mono text-white/70 hover:text-white bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
               >
-                {copiedKey === 'seg-d1' ? '✓ Copiado' : 'Copiar Día 1'}
+                {copiedKey === 'seg-d1' ? <span className="inline-flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Copiado</span> : 'Copiar Día 1'}
               </button>
             </div>
 
@@ -476,15 +531,15 @@ export default function VentasPlusEstrategiaView({
                   <span className="text-xs font-semibold text-white">Micro-Victoria / Contenido de Alto Valor</span>
                 </div>
                 <p className="text-xs text-white/80 leading-relaxed italic">
-                  "{secuencia_seguimiento.dia_3_contenido_valor}"
+                  "{secuencia_seguimiento.dia3_beneficio_clave}"
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => handleCopy(secuencia_seguimiento.dia_3_contenido_valor, 'seg-d3')}
+                onClick={() => handleCopy(secuencia_seguimiento.dia3_beneficio_clave, 'seg-d3')}
                 className="text-xs font-mono text-white/70 hover:text-white bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
               >
-                {copiedKey === 'seg-d3' ? '✓ Copiado' : 'Copiar Día 3'}
+                {copiedKey === 'seg-d3' ? <span className="inline-flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Copiado</span> : 'Copiar Día 3'}
               </button>
             </div>
 
@@ -497,15 +552,15 @@ export default function VentasPlusEstrategiaView({
                   <span className="text-xs font-semibold text-white">Última Llamada / Cierre Amable</span>
                 </div>
                 <p className="text-xs text-white/80 leading-relaxed italic">
-                  "{secuencia_seguimiento.dia_5_ultima_llamada}"
+                  "{secuencia_seguimiento.dia5_despedida_urgencia}"
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => handleCopy(secuencia_seguimiento.dia_5_ultima_llamada, 'seg-d5')}
+                onClick={() => handleCopy(secuencia_seguimiento.dia5_despedida_urgencia, 'seg-d5')}
                 className="text-xs font-mono text-white/70 hover:text-white bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
               >
-                {copiedKey === 'seg-d5' ? '✓ Copiado' : 'Copiar Día 5'}
+                {copiedKey === 'seg-d5' ? <span className="inline-flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Copiado</span> : 'Copiar Día 5'}
               </button>
             </div>
           </div>

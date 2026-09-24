@@ -33,12 +33,27 @@ export function calcularBreakeven(
   }
   const punto_equilibrio_alcanzado = mes_equilibrio !== null;
 
-  // Mes en que el acumulado neto se vuelve positivo (recuperación de inversión)
+  // Payback real: mes en que la utilidad acumulada alcanza la inversión inicial.
+  //
+  // Antes esto buscaba el primer mes con acumulado >= 0 y sin ningún dato de
+  // inversión: para cualquier negocio rentable daba el mes 1, y la pantalla lo
+  // presentaba como «recuperas tu inversión en 1 mes». Sin inversión declarada
+  // no hay payback que calcular, y se dice por qué.
+  const inversion_inicial = Math.max(0, Number(input.inversion_inicial) || 0);
   let meses_para_recuperar_inversion: number | null = null;
-  for (const m of meses) {
-    if (m.acumulado_neto >= 0) {
-      meses_para_recuperar_inversion = m.mes;
-      break;
+  let payback_no_disponible: BreakevenData['payback_no_disponible'] = null;
+
+  if (inversion_inicial <= 0) {
+    payback_no_disponible = 'sin_inversion_declarada';
+  } else {
+    for (const m of meses) {
+      if (m.acumulado_neto >= inversion_inicial) {
+        meses_para_recuperar_inversion = m.mes;
+        break;
+      }
+    }
+    if (meses_para_recuperar_inversion === null) {
+      payback_no_disponible = 'no_se_recupera_en_12_meses';
     }
   }
 
@@ -82,6 +97,8 @@ export function calcularBreakeven(
     punto_equilibrio_alcanzado,
     mes_equilibrio,
     meses_para_recuperar_inversion,
+    payback_no_disponible,
+    inversion_inicial,
     escenarios,
   };
 }

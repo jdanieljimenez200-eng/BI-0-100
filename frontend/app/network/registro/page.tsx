@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
+import { Sparkles, Check } from 'lucide-react';
 import FormularioFicha, { type FicherosFicha } from '@/components/network/FormularioFicha';
 import EditorContenido from '@/components/network/EditorContenido';
 import { crearFicha, subirAvatar, subirDocumento, type DatosFicha, type FichaPropia } from '@/lib/network';
@@ -95,7 +96,7 @@ export default function RegistroExpertoPage() {
                   }`}
                   aria-current={i === paso ? 'step' : undefined}
                 >
-                  {i < paso ? '✓' : i + 1}
+                  {i < paso ? <Check className="w-3.5 h-3.5" /> : i + 1}
                 </span>
                 <span className={`text-xs font-semibold truncate ${i === paso ? 'text-white' : 'text-white/40'}`}>{nombre}</span>
                 {i < PASOS.length - 1 && <span className="hidden sm:block flex-1 h-px bg-white/10" />}
@@ -169,7 +170,9 @@ export default function RegistroExpertoPage() {
             </div>
           ) : (
             <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] p-8 text-center">
-              <p className="text-3xl mb-3" aria-hidden="true">🎉</p>
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-3 text-emerald-400">
+                <Sparkles className="w-6 h-6" />
+              </div>
               <p className="text-white font-extrabold text-xl">Perfil enviado a revisión</p>
               <p className="text-white/50 text-sm max-w-md mx-auto mt-2 leading-relaxed">
                 Te avisamos por correo cuando esté publicado. Desde tu panel puedes seguir editándolo, ver cuántas personas

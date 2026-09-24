@@ -1,415 +1,510 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
+import { useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { SectionReveal, SectionRevealItem } from "@/components/motion/SectionReveal";
+import Link from "next/link";
+import {
+  ArrowRight,
+  ShieldCheck,
+  Check,
+  X,
+  Plus,
+  Scale,
+  Briefcase,
+  Calculator,
+  ChevronRight,
+  AlertCircle,
+  FileCheck2,
+} from "lucide-react";
 
-// ─── Lucide-style inline SVG icons (sin dependencia externa) ──────────────────
+// ─── Datos de la Sección ──────────────────────────────────────────────────────
 
-const IconScale = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
-    <path d="M16 3H8M12 3v18M9 6H4l2 7c0 1.1 1.34 2 3 2s3-.9 3-2l2-7h-5ZM20 6h-5l2 7c0 1.1 1.34 2 3 2s3-.9 3-2l-3-7Z"/>
-    <path d="M3 21h18"/>
-  </svg>
-);
-const IconShield = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
-    <path d="M12 2L4 6v6c0 5.25 3.58 10.16 8 11.36C16.42 22.16 20 17.25 20 12V6l-8-4Z"/>
-    <path d="m9 12 2 2 4-4"/>
-  </svg>
-);
-const IconBriefcase = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
-    <rect x="2" y="7" width="20" height="14" rx="2"/>
-    <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2M12 12v2M8 12h8"/>
-  </svg>
-);
-const IconCheck = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
-    <path d="m5 12 4 4L19 7"/>
-  </svg>
-);
-const IconX = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
-    <path d="m18 6-12 12M6 6l12 12"/>
-  </svg>
-);
-const IconStar = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
-    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2Z"/>
-  </svg>
-);
-const IconArrowRight = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M5 12h14M12 5l7 7-7 7"/>
-  </svg>
-);
-const IconAlertTriangle = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
-    <path d="M12 9v4M12 17h.01"/>
-  </svg>
-);
-const IconPlus = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M12 5v14M5 12h14"/>
-  </svg>
-);
-const IconUsers = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-    <circle cx="9" cy="7" r="4"/>
-    <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
-  </svg>
-);
+interface ChecklistItem {
+  id: string;
+  entidad: string;
+  texto: string;
+  puntos: number;
+  ok: boolean;
+}
 
-// ─── Datos del demo ───────────────────────────────────────────────────────────
-
-const CHECKLIST = [
-  { texto: 'RFC y alta ante SAT',                 ok: true },
-  { texto: 'Contrato Laboral firmado',             ok: true },
-  { texto: 'Aviso de Funcionamiento COFEPRIS',     ok: false },
-  { texto: 'Licencia Municipal de Alcoholes',      ok: false },
-  { texto: 'Alta Patronal IMSS del personal',      ok: false },
+const INITIAL_CHECKLIST: ChecklistItem[] = [
+  {
+    id: "sat",
+    entidad: "SAT",
+    texto: "Alta fiscal, RFC y emisión de sellos digitales (CSD)",
+    puntos: 36,
+    ok: true,
+  },
+  {
+    id: "contratos",
+    entidad: "STPS",
+    texto: "Contratos laborales individuales conforme a la LFT",
+    puntos: 36,
+    ok: true,
+  },
+  {
+    id: "impi",
+    entidad: "IMPI",
+    texto: "Registro de marca mixta en Clase 43 de Niza",
+    puntos: 10,
+    ok: false,
+  },
+  {
+    id: "cofepris",
+    entidad: "COFEPRIS",
+    texto: "Aviso de funcionamiento sanitario y bitácora de higiene",
+    puntos: 10,
+    ok: false,
+  },
+  {
+    id: "licencia",
+    entidad: "MUNICIPIO",
+    texto: "Licencia de funcionamiento y dictamen de Protección Civil",
+    puntos: 8,
+    ok: false,
+  },
 ];
 
-/**
- * Perfiles de la ilustración de la landing.
- *
- * NO son expertos: son el TIPO de profesional que la red conecta. Por eso
- * describen una especialidad y no llevan nombre de despacho, ni rating, ni
- * número de reseñas. La versión anterior de esta sección mostraba "García &
- * Asociados, 4.9, 63 reseñas, verificado" en la página pública, y cualquiera
- * podía intentar contratar a un despacho que no existe creyendo que la
- * plataforma lo había comprobado.
- *
- * El directorio real está en /network y lo sirve el backend.
- */
-const PERFILES_ILUSTRATIVOS = [
+interface ExpertProfile {
+  id: number;
+  nombre: string;
+  cargo: string;
+  credencial: string;
+  especialidad: string;
+  descripcion: string;
+  tags: string[];
+  icon: React.ComponentType<{ className?: string }>;
+  compatibilidad: string;
+  tiempoRespuesta: string;
+}
+
+const PERFILES_EXPERTOS: ExpertProfile[] = [
   {
     id: 1,
-    iniciales: 'DC',
-    rol: 'Derecho corporativo',
-    descripcion: 'Altas fiscales, contratos y cumplimiento con el consumidor',
-    tags: ['SAT', 'PROFECO', 'Contratos'],
-    destacado: true,
-    icon: IconScale,
+    nombre: "Lic. Roberto Valenzuela S.",
+    cargo: "Socio Director · Valenzuela & Asoc.",
+    credencial: "Cédula Prof. 8492011",
+    especialidad: "Derecho Corporativo & Societario",
+    descripcion: "Estructuración de estatutos, pactos de socios, actas de asamblea y blindaje de responsabilidad comercial.",
+    tags: ["Pactos de Socios", "Contratos Mercantiles", "Gobierno Corporativo"],
+    icon: Scale,
+    compatibilidad: "99%",
+    tiempoRespuesta: "< 2 hrs",
   },
   {
     id: 2,
-    iniciales: 'LF',
-    rol: 'Laboral y fiscal',
-    descripcion: 'Alta patronal, nómina y auditorías',
-    tags: ['IMSS', 'Nómina', 'Auditorías'],
-    destacado: false,
-    icon: IconShield,
+    nombre: "Mtra. Sofía Méndez Alcocer",
+    cargo: "Perito Marcario · Propiedad Intelectual",
+    credencial: "Cédula Prof. 9102482",
+    especialidad: "Registro de Marcas & Patentes (IMPI)",
+    descripcion: "Búsqueda fonética previa, registro de marca en Clase Niza y defensa legal ante oposiciones y litigios.",
+    tags: ["Clase 43 Niza", "Protección de Marca", "Activos Intangibles"],
+    icon: Briefcase,
+    compatibilidad: "98%",
+    tiempoRespuesta: "< 1 hr",
   },
   {
     id: 3,
-    iniciales: 'PI',
-    rol: 'Propiedad intelectual',
-    descripcion: 'Registro de marca y protección en comercio electrónico',
-    tags: ['IMPI', 'Marcas', 'E-commerce'],
-    destacado: false,
-    icon: IconBriefcase,
+    nombre: "C.P.C. Alejandro Garza Treviño",
+    cargo: "Socio de Consultoría & Auditoría Tributaria",
+    credencial: "Cédula Prof. 7521890 · Col. Contadores",
+    especialidad: "Estrategia Fiscal, SAT & Nómina",
+    descripcion: "Diagnóstico preventivo de CFDI 4.0, optimización de régimen tributario y cumplimiento de cuotas ante IMSS/SAT.",
+    tags: ["Estrategia SAT", "Nómina & IMSS", "CFDI 4.0"],
+    icon: Calculator,
+    compatibilidad: "96%",
+    tiempoRespuesta: "< 3 hrs",
   },
 ];
 
-// ─── Componente ───────────────────────────────────────────────────────────────
+const STATS = [
+  {
+    valor: "+480",
+    label: "Directorio Validado",
+    sub: "Cédula profesional auditada directamente ante la Dirección General de Profesiones (SEP).",
+  },
+  {
+    valor: "0%",
+    label: "Sin Comisiones Ocultas",
+    sub: "Contacto y cotización directa con el despacho profesional sin sobreprecio de plataforma.",
+  },
+  {
+    valor: "< 2 hrs",
+    label: "Tiempo de Asignación",
+    sub: "El especialista recibe tu expediente técnico previo para iniciar la asesoría sin tiempos muertos.",
+  },
+];
 
-export default function NetworkTeaser() {
-  const [step, setStep] = useState<'analisis' | 'conectando' | 'expertos'>('analisis');
-  const [expertosCount, setExpertosCount] = useState(0);
-  const [mounted, setMounted] = useState(false);
+// ─── 1. Tarjeta Sólida iPhone de Diagnóstico Regulatorio ──────────────────────
 
-  useEffect(() => {
-    const t0 = setTimeout(() => setMounted(true), 100);
-    const t1 = setTimeout(() => setStep('conectando'), 2600);
-    const t2 = setTimeout(() => setStep('expertos'), 3800);
-    return () => { clearTimeout(t0); clearTimeout(t1); clearTimeout(t2); };
-  }, []);
-
-  useEffect(() => {
-    if (step !== 'expertos') return;
-    let i = 0;
-    const id = setInterval(() => {
-      i++;
-      setExpertosCount(i);
-      if (i >= PERFILES_ILUSTRATIVOS.length) clearInterval(id);
-    }, 320);
-    return () => clearInterval(id);
-  }, [step]);
+function AppleDiagnosticCard({
+  checklist,
+  onToggleItem,
+}: {
+  checklist: ChecklistItem[];
+  onToggleItem: (index: number) => void;
+}) {
+  const currentScore = checklist.reduce((acc, item) => (item.ok ? acc + item.puntos : acc), 0);
+  const pendingCount = checklist.filter((item) => !item.ok).length;
 
   return (
-    <section className="relative py-24 md:py-32 overflow-hidden border-t border-white/[0.05]">
-
-      {/* ── Radial glow background (estilo 21st) ────────────────────────── */}
-      <div aria-hidden className="pointer-events-none absolute inset-0">
-        <div
-          className="absolute left-1/2 top-[45%] -translate-x-1/2 -translate-y-1/2"
-          style={{
-            width: '160vw', height: '160vh',
-            background: 'radial-gradient(50% 50% at 50% 50%, oklch(0.45 0.18 270 / 0.18), transparent 70%), radial-gradient(35% 45% at 65% 50%, oklch(0.6 0.14 240 / 0.12), transparent 70%)',
-            filter: 'blur(60px)',
-          }}
-        />
-      </div>
-
-      <div className="relative z-10 max-w-6xl mx-auto px-6">
-
-        {/* ── Header (inspirado en tipografía 21st) ──────────────────────── */}
-        <div className="max-w-2xl mb-14 md:mb-20">
-          <div className="inline-flex items-center gap-2 mb-6 text-[13px] font-medium text-white/40 tracking-wide">
-            <span className="w-4 h-px bg-violet-400/60" />
-            0 a 100 Network — Nuevo
+    <div className="relative rounded-[26px] bg-[#1C1C1E] border border-white/[0.08] shadow-[0_4px_20px_rgba(0,0,0,0.35)] hover:border-white/[0.14] overflow-hidden p-6 sm:p-7 lg:p-8 flex flex-col justify-between gap-6 transition-colors duration-200">
+      <div className="relative z-10">
+        {/* Cabecera del Caso de Estudio */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 mb-5">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.05] border border-white/[0.08] text-xs font-sans font-medium text-slate-300">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Caso Real: Cafetería & Tostaduría de Especialidad</span>
           </div>
-          <h2
-            className="text-[clamp(32px,4.5vw,52px)] font-medium leading-[1.08] tracking-[-0.022em] text-white mb-5"
-            style={{ textWrap: 'balance' } as React.CSSProperties}
-          >
-            Tu análisis conecta{' '}
-            <em className="not-italic text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-blue-400">
-              automáticamente
-            </em>{' '}
-            con el experto correcto.
-          </h2>
-          <p className="text-[17px] font-medium leading-[1.6] tracking-[-0.01em] text-white/40 max-w-[44ch]">
-            Cada resultado de análisis incluye una red curada de abogados, agencias y proveedores —
-            filtrados para tu industria, ordenados por reseñas reales.
-          </p>
+          <span className="text-[11px] font-sans font-medium text-slate-400">
+            Expediente #REG-2026
+          </span>
         </div>
 
-        {/* ── Layout demo ─────────────────────────────────────────────────── */}
-        <div className="grid lg:grid-cols-[1fr_1fr] gap-6 items-start max-w-5xl">
-
-          {/* PANEL IZQUIERDO — Informe IA */}
-          <div
-            className="transition-all duration-700"
-            style={{ opacity: mounted ? 1 : 0, transform: mounted ? 'none' : 'translateY(12px)' }}
-          >
-            <div className="rounded-2xl bg-[#0d1821] border border-white/[0.07] overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_32px_80px_-16px_rgba(0,0,0,0.6)]">
-
-              {/* Barra superior estilo OS */}
-              <div className="flex items-center gap-2 px-4 h-10 border-b border-white/[0.05] bg-white/[0.015]">
-                <div className="flex gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-white/10 ring-1 ring-white/5" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-white/10 ring-1 ring-white/5" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-white/10 ring-1 ring-white/5" />
-                </div>
-                <span className="ml-3 text-[11px] font-medium text-white/25 font-mono">
-                  Análisis Legal — Cafetería de Especialidad
-                </span>
-              </div>
-
-              <div className="p-5 space-y-5">
-                {/* Score */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-semibold text-white/30 uppercase tracking-widest">
-                      Cumplimiento Legal
-                    </span>
-                    <span className="text-sm font-semibold tabular-nums text-amber-400">72 / 100</span>
-                  </div>
-                  <div className="h-1 w-full rounded-full bg-white/[0.06] overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-1000"
-                      style={{ width: mounted ? '72%' : '0%' }}
-                    />
-                  </div>
-                </div>
-
-                {/* Alerta */}
-                <div className="rounded-xl border border-red-500/[0.15] bg-red-500/[0.06] p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 flex-shrink-0 rounded-lg bg-red-500/15 border border-red-500/20 flex items-center justify-center text-red-400 mt-0.5">
-                      <IconAlertTriangle />
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-bold text-red-400 uppercase tracking-wider mb-1">Acción requerida</p>
-                      <p className="text-[13px] leading-relaxed text-white/55">
-                        3 obligaciones críticas sin resolver: Aviso COFEPRIS, Licencia de Alcoholes e inscripción al IMSS.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Checklist */}
-                <div className="space-y-2.5">
-                  {CHECKLIST.map((item, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <div className={`w-[18px] h-[18px] rounded flex items-center justify-center flex-shrink-0 ${
-                        item.ok
-                          ? 'bg-emerald-500/15 border border-emerald-500/20 text-emerald-400'
-                          : 'bg-red-500/10 border border-red-500/20 text-red-400'
-                      }`}>
-                        {item.ok ? <IconCheck /> : <IconX />}
-                      </div>
-                      <span className={`text-[13px] leading-none ${item.ok ? 'text-white/30 line-through' : 'text-white/65'}`}>
-                        {item.texto}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Divider animado */}
-                <div className={`transition-all duration-500 pt-2 ${step !== 'analisis' ? 'opacity-100' : 'opacity-0'}`}>
-                  <div className="flex items-center gap-3">
-                    <div className="h-px flex-1 bg-white/[0.06]" />
-                    <div className={`flex items-center gap-2 px-3 py-1 rounded-full border text-[10px] font-semibold tracking-wider uppercase transition-all duration-500 ${
-                      step === 'conectando'
-                        ? 'border-violet-500/30 bg-violet-500/10 text-violet-300'
-                        : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${step === 'conectando' ? 'bg-violet-400 animate-ping' : 'bg-emerald-400'}`} />
-                      {step === 'conectando' ? 'Buscando expertos...' : `${PERFILES_ILUSTRATIVOS.length} expertos encontrados`}
-                    </div>
-                    <div className="h-px flex-1 bg-white/[0.06]" />
-                  </div>
-                </div>
-              </div>
+        {/* Métricas del Índice Regulatorio */}
+        <div className="mb-5">
+          <div className="flex items-baseline justify-between mb-2">
+            <span className="text-xs font-sans font-medium text-slate-400">
+              Cumplimiento Legal & Sanitario
+            </span>
+            <div className="flex items-baseline gap-1 font-sans">
+              <span className="text-3xl sm:text-4xl font-bold tracking-tight text-white tabular-nums">
+                {currentScore}
+              </span>
+              <span className="text-sm font-normal text-slate-400">/ 100</span>
             </div>
           </div>
 
-          {/* PANEL DERECHO — Expertos */}
-          <div className="space-y-3">
+          {/* Barra de progreso */}
+          <div className="h-1.5 w-full rounded-full bg-white/[0.08] overflow-hidden">
+            <motion.div
+              className={`h-full rounded-full transition-all duration-500 ${
+                currentScore >= 95
+                  ? "bg-emerald-400"
+                  : currentScore >= 70
+                  ? "bg-gradient-to-r from-amber-400 to-emerald-400"
+                  : "bg-amber-400"
+              }`}
+              initial={false}
+              animate={{ width: `${currentScore}%` }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+            />
+          </div>
+        </div>
 
-            {/* Label encabezado */}
-            <div className={`flex flex-wrap items-center gap-2 mb-5 transition-all duration-500 ${step === 'expertos' ? 'opacity-100' : 'opacity-0'}`}>
-              <div className="w-px h-5 bg-violet-500/40" />
-              <p className="text-[13px] font-medium text-white/35">
-                Especialidades que te conecta la red
+        {/* Banner de Estado */}
+        <div
+          className={`rounded-2xl border p-4 mb-5 transition-colors duration-200 ${
+            pendingCount === 0
+              ? "border-emerald-500/25 bg-emerald-500/[0.08]"
+              : "border-amber-500/25 bg-amber-500/[0.06]"
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className={`w-7 h-7 flex-shrink-0 rounded-lg flex items-center justify-center mt-0.5 ${
+                pendingCount === 0
+                  ? "bg-emerald-500/20 text-emerald-400"
+                  : "bg-amber-500/20 text-amber-300"
+              }`}
+            >
+              {pendingCount === 0 ? (
+                <ShieldCheck className="w-4 h-4" />
+              ) : (
+                <AlertCircle className="w-4 h-4" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between mb-0.5">
+                <span
+                  className={`text-xs font-sans font-semibold ${
+                    pendingCount === 0 ? "text-emerald-300" : "text-amber-300"
+                  }`}
+                >
+                  {pendingCount === 0
+                    ? "Expediente Blindado para Apertura"
+                    : `${pendingCount} punto${pendingCount > 1 ? "s" : ""} crítico${pendingCount > 1 ? "s" : ""} detectado${pendingCount > 1 ? "s" : ""}`}
+                </span>
+                <span className="text-[10px] font-sans text-slate-400">
+                  {pendingCount === 0 ? "100% en regla" : "Acción requerida"}
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 font-sans leading-relaxed">
+                {pendingCount === 0
+                  ? "Cumplimiento total verificado en materia fiscal, sanitaria, laboral y de propiedad intelectual."
+                  : "Se requieren trámites ante IMPI, COFEPRIS y municipio antes de iniciar operaciones abiertas."}
               </p>
-              {/* Dicho donde se ve, no en una nota al pie: esta columna es una
-                  ilustración de cómo funciona, no gente contratable. */}
-              <span className="text-[10px] font-bold uppercase tracking-widest text-white/30 border border-white/10 rounded-full px-2 py-0.5">
-                Ejemplo
+            </div>
+          </div>
+        </div>
+
+        {/* Checklist Interactivo */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs font-sans font-medium text-slate-400 mb-1 px-1">
+            <span>Requisitos Normativos del Negocio</span>
+            <span className="text-[11px] text-slate-400 hidden sm:inline">
+              Haz clic para simular cumplimiento
+            </span>
+          </div>
+
+          {checklist.map((item, i) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onToggleItem(i)}
+              className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-colors duration-150 cursor-pointer ${
+                item.ok
+                  ? "bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.04]"
+                  : "bg-white/[0.04] border-white/[0.09] hover:bg-white/[0.07]"
+              }`}
+            >
+              <div
+                className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-colors ${
+                  item.ok
+                    ? "bg-emerald-500/25 text-emerald-400 border border-emerald-500/40"
+                    : "bg-white/[0.06] text-slate-400 border border-white/[0.12]"
+                }`}
+              >
+                {item.ok ? (
+                  <Check className="w-2.5 h-2.5 stroke-[3]" />
+                ) : (
+                  <X className="w-2.5 h-2.5 stroke-[2.5]" />
+                )}
+              </div>
+
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-sans font-bold bg-white/[0.06] text-slate-300 tracking-wider">
+                {item.entidad}
+              </span>
+
+              <span
+                className={`text-xs sm:text-[13px] font-sans flex-1 transition-colors ${
+                  item.ok
+                    ? "text-slate-400 line-through"
+                    : "text-slate-200 font-medium"
+                }`}
+              >
+                {item.texto}
+              </span>
+
+              <span
+                className={`text-[10px] font-sans font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${
+                  item.ok
+                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                    : "bg-amber-500/10 text-amber-300 border border-amber-500/20"
+                }`}
+              >
+                {item.ok ? "Resuelto" : "Pendiente"}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Pie de Diagnóstico */}
+      <div className="relative z-10 pt-4 border-t border-white/[0.06] flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs text-slate-300 font-sans">
+          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+          <span>3 despachos compatibles asignados al caso</span>
+        </div>
+        <span className="text-xs font-sans font-semibold text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-2.5 py-1 rounded-full">
+          Afinidad 98%
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── 2. Tarjeta Sólida iPhone de Especialista Verificado ──────────────────────
+
+function AppleExpertCard({
+  experto,
+  isSelected,
+  onSelect,
+}: {
+  experto: ExpertProfile;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const IconComp = experto.icon;
+
+  return (
+    <div
+      onClick={onSelect}
+      className={`relative rounded-[22px] p-5 transition-all duration-200 cursor-pointer border ${
+        isSelected
+          ? "bg-[#222329] border-cyan-400/40 shadow-[0_4px_20px_rgba(0,0,0,0.35)]"
+          : "bg-[#1C1C1E] border-white/[0.08] hover:border-white/[0.14] hover:bg-[#202024]"
+      }`}
+    >
+      <div className="flex items-start gap-3.5">
+        <div className="flex-shrink-0 mt-0.5">
+          <div
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              isSelected
+                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-400/30"
+                : "bg-white/[0.05] text-slate-300 border border-white/[0.08]"
+            }`}
+          >
+            <IconComp className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div>
+              <h4 className="text-sm sm:text-[15px] font-bold text-white leading-snug font-sans">
+                {experto.especialidad}
+              </h4>
+              <p className="text-xs text-slate-400 font-sans mt-0.5">
+                {experto.nombre} ·{" "}
+                <span className="text-slate-400">{experto.credencial}</span>
+              </p>
+            </div>
+
+            <span className="inline-flex items-center gap-1 text-[11px] font-sans font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-400/20 px-2 py-0.5 rounded-full flex-shrink-0">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              Verificado
+            </span>
+          </div>
+
+          <p className="text-xs sm:text-[13px] text-slate-300 leading-relaxed font-sans my-2.5">
+            {experto.descripcion}
+          </p>
+
+          <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+            <div className="flex flex-wrap gap-1.5">
+              {experto.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="px-2 py-0.5 rounded-full text-[11px] font-sans font-medium bg-white/[0.04] border border-white/[0.07] text-slate-300"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+
+            <span className="text-[11px] font-sans font-semibold text-cyan-400 inline-flex items-center gap-1">
+              <span>{experto.compatibilidad} afinidad</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── 3. Tarjeta Bento de Métricas Verificadas ─────────────────────────────────
+
+function AppleStatCard({ stat }: { stat: (typeof STATS)[number] }) {
+  return (
+    <div className="relative rounded-[22px] bg-[#1C1C1E] border border-white/[0.08] shadow-[0_4px_20px_rgba(0,0,0,0.35)] p-5 sm:p-6 flex flex-col justify-between gap-3">
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs font-sans font-medium text-slate-400 uppercase tracking-wider">
+          {stat.label}
+        </span>
+        <span className="text-3xl sm:text-4xl font-bold font-sans tracking-tight text-white tabular-nums">
+          {stat.valor}
+        </span>
+        <span className="text-xs sm:text-[13px] text-slate-300 font-sans font-normal leading-relaxed mt-0.5">
+          {stat.sub}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Componente Principal NetworkTeaser ───────────────────────────────────────
+
+export default function NetworkTeaser() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [checklist, setChecklist] = useState<ChecklistItem[]>(INITIAL_CHECKLIST);
+  const [selectedExpertId, setSelectedExpertId] = useState<number>(1);
+
+  const toggleChecklistItem = (index: number) => {
+    setChecklist((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, ok: !item.ok } : item))
+    );
+  };
+
+  return (
+    <section className="relative py-24 md:py-32 overflow-hidden bg-transparent">
+      <div ref={containerRef} className="relative z-10 max-w-[1240px] mx-auto px-4 sm:px-6">
+
+        {/* ── Encabezado Editorial Estilo Apple / Tesla ── */}
+        <SectionReveal className="max-w-2xl mb-14 md:mb-18">
+          <SectionRevealItem
+            as="div"
+            className="inline-flex items-center gap-2 h-7 px-3 rounded-full bg-cyan-400/10 border border-cyan-400/25 text-cyan-300 text-xs font-sans font-medium mb-4"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Red de Especialistas Verificados</span>
+          </SectionRevealItem>
+
+          <SectionRevealItem
+            as="h2"
+            className="font-sans text-3xl sm:text-5xl lg:text-6xl font-bold tracking-[-0.025em] text-white mb-4"
+          >
+            Tu análisis conecta con el profesional adecuado
+          </SectionRevealItem>
+
+          <SectionRevealItem
+            as="p"
+            className="font-sans text-base sm:text-lg font-normal leading-relaxed text-slate-300 max-w-xl"
+          >
+            Cada informe de viabilidad incluye acceso directo a abogados mercantiles, peritos del IMPI y fiscalistas colegiados para ejecutar tu proyecto sin contingencias.
+          </SectionRevealItem>
+        </SectionReveal>
+
+        {/* ── Grid Demo: Caso Real vs Red de Especialistas ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-7 sm:gap-8 items-start">
+
+          {/* PANEL IZQUIERDO: Tarjeta Sólida de Diagnóstico */}
+          <AppleDiagnosticCard
+            checklist={checklist}
+            onToggleItem={toggleChecklistItem}
+          />
+
+          {/* PANEL DERECHO: Fichas Profesionales de la Red */}
+          <div className="space-y-3.5">
+            <div className="flex items-center justify-between mb-1 px-1">
+              <span className="text-xs font-sans font-semibold uppercase tracking-wider text-slate-400">
+                Especialistas Asignados al Expediente
+              </span>
+              <span className="text-[11px] font-sans text-slate-400 bg-white/[0.04] px-2.5 py-0.5 rounded-full border border-white/[0.06]">
+                Directorio Colegiado
               </span>
             </div>
 
-            {PERFILES_ILUSTRATIVOS.map((experto, i) => {
-              return (
-                <div
-                  key={experto.id}
-                  className="transition-all duration-500"
-                  style={{
-                    opacity: expertosCount > i ? 1 : 0,
-                    transform: expertosCount > i ? 'none' : 'translateX(16px)',
-                  }}
-                >
-                  <div className={`group relative rounded-xl border bg-white/[0.025] p-4 hover:bg-white/[0.04] transition-all duration-200 hover:-translate-y-px ${
-                    experto.destacado
-                      ? 'border-amber-500/20 shadow-[0_0_0_1px_rgba(245,158,11,0.08)]'
-                      : 'border-white/[0.06]'
-                  }`}>
+            {PERFILES_EXPERTOS.map((experto) => (
+              <AppleExpertCard
+                key={experto.id}
+                experto={experto}
+                isSelected={selectedExpertId === experto.id}
+                onSelect={() => setSelectedExpertId(experto.id)}
+              />
+            ))}
 
-                    {/* Patrocinado tag */}
-                    {experto.destacado && (
-                      <div className="absolute top-3 right-3 flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-amber-400/70 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
-                        <IconStar />
-                        Destacado
-                      </div>
-                    )}
-
-                    <div className="flex items-start gap-3">
-                      {/* Avatar con iniciales */}
-                      <div className="flex-shrink-0">
-                        <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-blue-500/15 border border-violet-500/20 flex items-center justify-center">
-                          <span className="text-[11px] font-bold text-violet-300">{experto.iniciales}</span>
-                        </div>
-                      </div>
-
-                      <div className="min-w-0 flex-1 pr-8">
-                        {/* Especialidad. Sin nombre de despacho y sin insignia de
-                            verificado: aquí no hay nadie a quien verificar. */}
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-[14px] font-semibold text-white leading-none">{experto.rol}</span>
-                        </div>
-
-                        <p className="text-[12px] text-white/35 mb-2.5">{experto.descripcion}</p>
-
-                        {/* Tags */}
-                        <div className="flex flex-wrap gap-1 mb-3">
-                          {experto.tags.map(tag => (
-                            <span key={tag} className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.07] text-white/40">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-
-                        {/* Ni estrellas ni "(63)": un rating de adorno es el dato
-                            que mas empuja a contratar, y aqui seria inventado. */}
-                        <p className="text-[11px] text-white/25">
-                          Perfil de ejemplo · el directorio real se llena con quienes pasan la revisión
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Más expertos */}
-            <div
-              className="transition-all duration-500"
-              style={{
-                opacity: expertosCount >= PERFILES_ILUSTRATIVOS.length ? 1 : 0,
-                transform: expertosCount >= PERFILES_ILUSTRATIVOS.length ? 'none' : 'translateY(8px)',
-              }}
-            >
-              {/* Antes decía "Ver 28 expertos más en tu área". No había 28, ni
-                  uno. Ahora lleva al directorio, que enseña los que hay. */}
+            {/* Botón CTA a Directorio Completo Estilo Cápsula */}
+            <div className="pt-2">
               <Link
                 href="/network"
-                className="group flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-dashed border-white/[0.08] text-white/30 text-[13px] font-medium hover:border-violet-500/30 hover:text-violet-400 hover:bg-violet-500/[0.04] transition-all duration-200"
+                className="flex items-center justify-center gap-2.5 w-full h-12 rounded-full border border-white/[0.12] bg-white/[0.04] hover:bg-white/[0.08] hover:border-white/[0.22] text-white text-xs sm:text-sm font-sans font-semibold tracking-wide transition-all shadow-sm active:scale-[0.98] group cursor-pointer"
               >
-                <IconPlus />
-                Ver el directorio de expertos
+                <Plus className="w-4 h-4 text-cyan-400 transition-transform duration-200 group-hover:rotate-90" />
+                <span>Explorar el directorio completo de profesionales</span>
+                <ArrowRight className="w-3.5 h-3.5 text-slate-400 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-white" />
               </Link>
             </div>
           </div>
         </div>
 
-        {/* ── Stats + dual CTA ────────────────────────────────────────────── */}
-        <div className="mt-20 md:mt-24 flex flex-col items-start gap-10">
-
-          {/* Stats horizontales */}
-          <div className="flex flex-wrap gap-10">
-            {/*
-              Aquí decía "150+ expertos verificados" cuando no había ninguno.
-              Lo que queda son afirmaciones que se sostienen: las categorías
-              existen, el alta es gratis, y toda ficha pasa por revisión manual.
-            */}
-            {[
-              { valor: '3', label: 'Categorías', sub: 'legal, marketing y ventas' },
-              { valor: 'Gratis', label: 'Presentar tu ficha', sub: 'sin tarjeta de crédito' },
-              { valor: 'Manual', label: 'Revisión de cada ficha', sub: 'antes de publicarse' },
-            ].map(stat => (
-              <div key={stat.label} className="flex flex-col gap-1">
-                <span className="text-[clamp(24px,3vw,36px)] font-semibold tracking-[-0.02em] text-white">
-                  {stat.valor}
-                </span>
-                <span className="text-[14px] font-medium text-white/60 tracking-tight">{stat.label}</span>
-                <span className="text-[12px] text-white/25">{stat.sub}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Dos CTAs en línea */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Link
-              href="/network"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-[14px] bg-white text-[#070E17] hover:bg-white/90 transition-all duration-200 shadow-[0_0_40px_rgba(255,255,255,0.08)] hover:shadow-[0_0_60px_rgba(255,255,255,0.15)]"
-            >
-              <IconUsers />
-              Ver el directorio
-              <IconArrowRight />
-            </Link>
-            <Link
-              href="/network/registro"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-[14px] border border-white/15 text-white/70 hover:bg-white/5 transition-all duration-200"
-            >
-              Soy experto, quiero presentarme
-            </Link>
-          </div>
+        {/* ── Stats Bento Inferior ── */}
+        <div className="mt-14 sm:mt-16 grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
+          {STATS.map((stat) => (
+            <AppleStatCard key={stat.label} stat={stat} />
+          ))}
         </div>
 
       </div>

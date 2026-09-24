@@ -1,10 +1,14 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { Not } from 'typeorm';
 import { z } from 'zod';
 import { AppDataSource } from '../config/database';
 import { AnalisisFinanzas } from '../models/AnalisisFinanzas';
 import { Producto } from '../models/Producto';
-import { authenticate } from '../middleware/auth';
+import { authenticate, AuthRequest } from '../middleware/auth';
+import { ah } from '../utils/asyncHandler';
+import { esUuid } from '../middleware/validate';
+import { calcularCalibracionMensual } from '../services/contabilidad/calibracionService';
+import { agregadoMensual } from '../services/contabilidad/consultasContables';
 import { requireCanRunAnalisis, getPlanFromDB } from '../middleware/requirePlan';
 import { requirePlanFeature } from '../middleware/requirePlan';
 import { respuestaAnalisis } from '../services/billing/redactAnalisis';
@@ -29,7 +33,11 @@ const AnalizarFinanzasSchema = z
     costo_variable_unitario: z.number().finite().nonnegative(),
     costos_fijos_mensuales: z.number().finite().nonnegative(),
     unidades_mes_inicial: z.number().finite().nonnegative(),
-    tasa_crecimiento_mensual: z.number().finite().nonnegative(),
+    // Tope al crecimiento: un 50 % mensual ya proyecta ×86 en 12 meses. Más
+    // arriba no es una proyección, es un dedazo, y salía sin una sola señal.
+    tasa_crecimiento_mensual: z.number().finite().nonnegative().max(50, 'Un crecimiento mayor al 50% mensual no es proyectable: revisa el dato'),
+    // Opcional: sin ella no se calcula payback (ver breakevenService).
+    inversion_inicial: z.number().finite().nonnegative().nullable().optional(),
   })
   .refine((d) => Boolean(d.producto_id ?? d.productoId), {
     message: 'producto_id es requerido',
@@ -186,6 +194,36 @@ router.patch(
     }
   }
 );
+
+/**
+ * GET /api/finanzas/calibracion/:productoId — los números REALES del negocio.
+ *
+ * El formulario pedía a mano precio, costos fijos, unidades y crecimiento
+ * mientras la plataforma ya tenía esos datos en contabilidad (POS incluido).
+ * Aquí se agregan por mes en SQL y se devuelven como sugerencia: el usuario
+ * decide si los usa. Va ANTES de `/:id` o `exigirUuid` responde 400 al ver la
+ * palabra «calibracion» donde espera un UUID.
+ */
+router.get('/calibracion/:productoId', authenticate, ah(async (req: AuthRequest, res: Response) => {
+  const productoId = req.params.productoId;
+  if (!esUuid(productoId)) {
+    res.status(400).json({ error: 'El parámetro productoId no es un identificador válido' });
+    return;
+  }
+
+  const existe = await AppDataSource.manager.exists(Producto, {
+    where: { id: productoId, usuario_id: req.userId! },
+  });
+  if (!existe) {
+    res.status(404).json({ error: 'Producto no encontrado' });
+    return;
+  }
+
+  const calibracion = calcularCalibracionMensual(
+    await agregadoMensual({ usuarioId: req.userId!, productoId })
+  );
+  res.json(calibracion);
+}));
 
 // GET /api/finanzas/:id — detalle completo (recortado por plan server-side)
 router.get('/:id', authenticate, async (req: any, res: Response) => {

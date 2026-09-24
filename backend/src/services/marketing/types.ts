@@ -88,6 +88,10 @@ export interface UnitEconomicsVentasPlus {
   tasa_cierre: number; // Porcentaje ej. 20
   ingreso_proyectado: number;
   roas_estimado: number;
+  /** false = con estos supuestos la campaña pierde dinero (ROAS < 1). */
+  rentable: boolean;
+  /** De dónde salen CPC y tasas: del reporte de ads del usuario o de benchmark. */
+  origen_supuestos: 'tus_datos' | 'benchmark';
   cac_maximo_tolerable: number;
   ticket_promedio_con_bump: number;
   punto_equilibrio_unidades: number;

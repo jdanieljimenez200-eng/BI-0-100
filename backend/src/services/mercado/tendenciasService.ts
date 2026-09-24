@@ -1,13 +1,6 @@
-import { TendenciasResult, DatoMensual } from './types';
+import { TendenciasResult, DatoMensual, MotivoSinFuente } from './types';
 import { getPaisInfo } from '../../utils/latam';
-
-// ─── Utilidad: hash determinista ─────────────────────────────────────────────
-
-function hashStr(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
+import { logger } from '../../utils/logger';
 
 // ─── Helpers de localización ─────────────────────────────────────────────────
 
@@ -32,48 +25,36 @@ function localeMeses(pais?: string | null): string {
   return codigoPais(pais) === 'BR' ? 'pt-BR' : 'es-MX';
 }
 
-// ─── Mock determinista por palabra clave ─────────────────────────────────────
+// ─── Sin fuente de tendencias ────────────────────────────────────────────────
 
-function mockTendencias(
+/**
+ * Hueco declarado, no relleno.
+ *
+ * Antes esta función devolvía una serie de 12 meses, una proyección a 6, un
+ * crecimiento y un volumen de búsquedas («1 847 búsquedas/mes») derivados de un
+ * hash del nombre del producto. La pantalla lo pintaba como una gráfica de
+ * demanda real y el score de viabilidad lo puntuaba.
+ */
+function tendenciasNoDisponibles(
   palabraClave: string,
   scope: string,
   pais?: string | null,
-  region?: string | null
+  region?: string | null,
+  motivo: MotivoSinFuente = 'sin_configurar'
 ): TendenciasResult {
-  const seed = hashStr(palabraClave);
-  const base = 500 + (seed % 3000);
-  const crecimiento = -5 + (seed % 40); // -5% a +35%
-  const ubicacion = etiquetaUbicacion(scope, pais, region);
-  const locale = localeMeses(pais);
-
-  const ahora = new Date();
-  const datos12: DatoMensual[] = [];
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
-    const nombre = d.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
-    const variacion = 1 + (((seed + i * 7) % 30) - 15) / 100;
-    datos12.push({ mes: nombre, volumen: Math.round(base * variacion) });
-  }
-
-  const proyeccion6 = Array.from({ length: 6 }, (_, i) =>
-    Math.round(base * (1 + (crecimiento / 100) * ((i + 1) / 6)))
-  );
-
-  const picos: Record<string, string> = {};
-  if ((seed % 3) === 0) picos['Diciembre'] = '+35%';
-  if ((seed % 5) === 0) picos['Enero'] = '-20%';
-
   return {
     palabra_clave: palabraClave,
-    ubicacion,
-    volumen_busquedas_mensual: base,
-    datos_12_meses: datos12,
-    proyeccion_6_meses: proyeccion6,
-    crecimiento_porcentaje: crecimiento,
-    crecimiento_descripcion: `${crecimiento > 0 ? '+' : ''}${crecimiento}% vs hace 1 año`,
-    picos_estacionales: picos,
-    tendencia: crecimiento >= 5 ? 'CRECIENTE' : crecimiento >= -5 ? 'ESTABLE' : 'DECRECIENTE',
+    ubicacion: etiquetaUbicacion(scope, pais, region),
+    volumen_busquedas_mensual: 0,
+    datos_12_meses: [],
+    proyeccion_6_meses: [],
+    crecimiento_porcentaje: 0,
+    crecimiento_descripcion: 'Sin datos de búsquedas para este mercado',
+    picos_estacionales: {},
+    tendencia: 'ESTABLE',
     es_mock: true,
+    fuente_disponible: false,
+    motivo_sin_fuente: motivo,
   };
 }
 
@@ -125,6 +106,7 @@ async function serpApiTendencias(
     picos_estacionales: {},
     tendencia: crecimiento >= 5 ? 'CRECIENTE' : crecimiento >= -5 ? 'ESTABLE' : 'DECRECIENTE',
     es_mock: false,
+    fuente_disponible: true,
   };
 }
 
@@ -137,12 +119,12 @@ export async function obtenerTendencias(
   region?: string | null
 ): Promise<TendenciasResult> {
   if (!process.env.SERPAPI_KEY) {
-    return mockTendencias(palabraClave, scope, pais, region);
+    return tendenciasNoDisponibles(palabraClave, scope, pais, region, 'sin_configurar');
   }
   try {
     return await serpApiTendencias(palabraClave, scope, pais, region);
   } catch (err) {
-    console.warn('SerpAPI trends falló, usando mock:', err);
-    return mockTendencias(palabraClave, scope, pais, region);
+    logger.warn('[mercado] SerpAPI trends falló:', err);
+    return tendenciasNoDisponibles(palabraClave, scope, pais, region, 'fuente_fallo');
   }
 }

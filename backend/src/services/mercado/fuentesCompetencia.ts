@@ -5,7 +5,31 @@
 // que hacía que el LLM calibrara mal la certeza. Derivamos la atribución de la
 // fuente real de cada competidor.
 //
-// Módulo compartido: lo consumen reporteBiService y dafoService.
+// Módulo compartido: lo consumen reporteBiService, dafoService y los dos
+// servicios de competencia (aquí vive el resultado «sin fuente» para que no se
+// importen entre ellos en círculo).
+
+import type { CompetenciaResult, MotivoSinFuente } from './types';
+
+/**
+ * Lo que se devuelve cuando ninguna fuente contestó.
+ *
+ * Antes cada servicio rellenaba el hueco con competidores fabricados
+ * («TiendaOnline1», «ConsultoraMX 2») con precio, rating, reseñas y años en el
+ * mercado. Se marcaban como estimados, pero fijaban el precio de mercado y
+ * puntuaban la viabilidad, y quien buscara esos negocios no encontraba nada.
+ */
+export function competenciaNoDisponible(motivo: MotivoSinFuente): CompetenciaResult {
+  return {
+    total_competidores: 0,
+    competidores: [],
+    gap_detectado: null,
+    precio_mercado_promedio: 0,
+    es_mock: true,
+    fuente_disponible: false,
+    motivo_sin_fuente: motivo,
+  };
+}
 
 const ETIQUETA_FUENTE: Record<string, string> = {
   mercadolibre:     'MercadoLibre_verificado',

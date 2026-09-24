@@ -39,29 +39,25 @@ function respuestaOk(body: unknown): Response {
 }
 
 describe('mercado/tendenciasService.obtenerTendencias (sin SERPAPI_KEY)', () => {
-  it('marca es_mock y devuelve 12 meses y 6 de proyección', async () => {
+  it('no inventa demanda: declara el hueco y deja los números en cero', async () => {
     const t = await obtenerTendencias('pizzería artesanal', 'local', 'MX', 'Nuevo León');
 
-    expect(t.es_mock).toBe(true);
-    expect(t.datos_12_meses).toHaveLength(12);
-    expect(t.proyeccion_6_meses).toHaveLength(6);
+    expect(t.fuente_disponible).toBe(false);
+    expect(t.motivo_sin_fuente).toBe('sin_configurar');
+    // Antes esto devolvía una serie de 12 meses y un volumen sacados de un hash
+    // del nombre del producto, y la pantalla lo pintaba como demanda real.
+    expect(t.volumen_busquedas_mensual).toBe(0);
+    expect(t.datos_12_meses).toHaveLength(0);
+    expect(t.proyeccion_6_meses).toHaveLength(0);
+    expect(t.crecimiento_porcentaje).toBe(0);
     expect(t.palabra_clave).toBe('pizzería artesanal');
   });
 
-  it('es determinista: la misma palabra clave da el mismo volumen y crecimiento', async () => {
-    const a = await obtenerTendencias('pizzería artesanal', 'nacional', 'MX');
-    const b = await obtenerTendencias('pizzería artesanal', 'nacional', 'MX');
-
-    expect(b.volumen_busquedas_mensual).toBe(a.volumen_busquedas_mensual);
-    expect(b.crecimiento_porcentaje).toBe(a.crecimiento_porcentaje);
-    expect(b.proyeccion_6_meses).toEqual(a.proyeccion_6_meses);
-  });
-
-  it('el volumen base cae en el rango declarado del mock (500–3499)', async () => {
+  it('ninguna palabra clave produce volumen inventado', async () => {
     for (const kw of ['pizza', 'software contable', 'clases de yoga', 'x']) {
       const t = await obtenerTendencias(kw, 'nacional', 'MX');
-      expect(t.volumen_busquedas_mensual).toBeGreaterThanOrEqual(500);
-      expect(t.volumen_busquedas_mensual).toBeLessThan(3500);
+      expect(t.volumen_busquedas_mensual).toBe(0);
+      expect(t.fuente_disponible).toBe(false);
     }
   });
 
@@ -88,38 +84,23 @@ describe('mercado/tendenciasService.obtenerTendencias (sin SERPAPI_KEY)', () => 
     expect(vacio.ubicacion).toBe(conDefault.ubicacion);
   });
 
-  it('la tendencia es coherente con el crecimiento en los tres umbrales', async () => {
-    for (const kw of ['pizza', 'taquería', 'consultoría fiscal', 'gimnasio', 'veterinaria', 'zapatos']) {
-      const t = await obtenerTendencias(kw, 'nacional', 'MX');
-      const esperado =
-        t.crecimiento_porcentaje >= 5 ? 'CRECIENTE' : t.crecimiento_porcentaje >= -5 ? 'ESTABLE' : 'DECRECIENTE';
-
-      expect(t.tendencia).toBe(esperado);
-      expect(t.crecimiento_descripcion).toContain(`${t.crecimiento_porcentaje}`);
-      expect(t.crecimiento_descripcion).toContain('vs hace 1 año');
-      if (t.crecimiento_porcentaje > 0) expect(t.crecimiento_descripcion.startsWith('+')).toBe(true);
-    }
-  });
-
-  it('la serie de 12 meses tiene meses únicos y volúmenes positivos', async () => {
+  it('sin datos, el texto explica el hueco y la tendencia queda neutra', async () => {
     const t = await obtenerTendencias('pizzería artesanal', 'nacional', 'MX');
 
-    expect(new Set(t.datos_12_meses.map((d) => d.mes)).size).toBe(12);
-    for (const d of t.datos_12_meses) {
-      expect(d.volumen).toBeGreaterThan(0);
-      expect(d.mes.trim().length).toBeGreaterThan(0);
-    }
+    expect(t.tendencia).toBe('ESTABLE');
+    expect(t.crecimiento_descripcion).toMatch(/sin datos/i);
   });
 
-  it('cae al mock cuando SerpAPI responde con error HTTP', async () => {
+  it('si SerpAPI responde con error tampoco se inventa nada', async () => {
     process.env.SERPAPI_KEY = 'clave-de-prueba';
     (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 429 } as Response);
 
     const t = await obtenerTendencias('pizzería artesanal', 'nacional', 'MX');
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect(t.es_mock).toBe(true);
-    expect(t.datos_12_meses).toHaveLength(12);
+    expect(t.fuente_disponible).toBe(false);
+    expect(t.motivo_sin_fuente).toBe('fuente_fallo');
+    expect(t.datos_12_meses).toHaveLength(0);
   });
 
   it('usa la respuesta real de SerpAPI cuando llega bien formada', async () => {
@@ -189,28 +170,17 @@ describe('mercado/competenciaService.obtenerCompetencia — ruta PRODUCTO', () =
     expect(c.competidores[1].fortalezas).toEqual(['Logística establecida', 'Vendedor activo']);
   });
 
-  it('cae al mock determinista cuando ML falla y no hay SERPAPI_KEY', async () => {
+  it('si ML falla y no hay SERPAPI_KEY no se fabrican competidores', async () => {
     const c = await obtenerCompetencia('horno pizza', 'local', 6000, 'MX', 'Producto', 'Alimentos y bebidas');
 
-    expect(c.es_mock).toBe(true);
-    expect(c.competidores.length).toBeGreaterThanOrEqual(2);
-    expect(c.competidores.length).toBeLessThanOrEqual(7);
-    expect(c.competidores.map((x) => x.ranking)).toEqual(c.competidores.map((_, i) => i + 1));
-    for (const comp of c.competidores) {
-      expect(comp.fuente).toBe('mock');
-      expect(comp.precio_minimo).toBeLessThanOrEqual(comp.precio_promedio);
-      expect(comp.precio_maximo).toBeGreaterThanOrEqual(comp.precio_promedio);
-      expect(comp.rating).toBeGreaterThanOrEqual(3.5);
-      expect(comp.rating).toBeLessThanOrEqual(5);
-      expect(comp.fortalezas.length).toBeGreaterThan(0);
-    }
-  });
-
-  it('el mock de producto es determinista para la misma palabra clave', async () => {
-    const a = await obtenerCompetencia('horno pizza', 'local', 6000, 'MX', 'Producto', 'Alimentos y bebidas');
-    const b = await obtenerCompetencia('horno pizza', 'local', 6000, 'MX', 'Producto', 'Alimentos y bebidas');
-
-    expect(b).toEqual(a);
+    // Antes esto devolvía entre 2 y 7 competidores inventados («TiendaOnline1»)
+    // con precio, rating, reseñas y años en el mercado.
+    expect(c.fuente_disponible).toBe(false);
+    expect(c.competidores).toHaveLength(0);
+    expect(c.total_competidores).toBe(0);
+    expect(c.precio_mercado_promedio).toBe(0);
+    expect(c.gap_detectado).toBeNull();
+    expect(c.motivo_sin_fuente).toBe('fuente_fallo');
   });
 
   it('con ML sin resultados usa Google Shopping y excluye del promedio los precios no parseables', async () => {
@@ -251,12 +221,13 @@ describe('mercado/competenciaService.obtenerCompetencia — ruta PRODUCTO', () =
     expect(c.gap_detectado).toContain('Poca oferta en Google Shopping');
   });
 
-  it('con un país sin marketplace de ML no se consulta ML y se cae al mock', async () => {
+  it('con un país sin marketplace de ML no se consulta ML ni se inventa nada', async () => {
     // Panamá no está en ML_SITE_POR_PAIS: el servicio lanza ANTES del fetch.
     const c = await obtenerCompetencia('horno pizza', 'nacional', 6000, 'PA', 'Producto', 'Alimentos y bebidas');
 
     expect(global.fetch).not.toHaveBeenCalled();
-    expect(c.es_mock).toBe(true);
+    expect(c.fuente_disponible).toBe(false);
+    expect(c.competidores).toHaveLength(0);
   });
 });
 
@@ -266,51 +237,24 @@ describe('mercado/competenciaService.obtenerCompetencia — ruta SERVICIO', () =
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it('sin SERPAPI_KEY usa el benchmark de sector y marca es_mock', async () => {
+  it('sin SERPAPI_KEY no hay competencia de servicio inventada', async () => {
     const c = await obtenerCompetencia('corte de cabello', 'local', 300, 'MX', 'Servicio', 'salud y belleza', 'Jalisco');
 
-    expect(c.es_mock).toBe(true);
-    expect(c.competidores.every((x) => x.fuente === 'benchmark_sector')).toBe(true);
-    expect(c.competidores.every((x) => x.ubicacion === 'Jalisco')).toBe(true);
-    expect(c.competidores.every((x) => x.distancia_km !== null)).toBe(true);
-    expect(c.gap_detectado).toContain('reserva digital');
+    // Antes se rellenaba con nombres de benchmark por sector («EstéticaLocal 2»)
+    // que parecían negocios reales del barrio del usuario.
+    expect(c.fuente_disponible).toBe(false);
+    expect(c.motivo_sin_fuente).toBe('sin_configurar');
+    expect(c.competidores).toHaveLength(0);
+    expect(c.total_competidores).toBe(0);
+    expect(c.precio_mercado_promedio).toBe(0);
   });
 
-  it('la muestra de competidores se corta en 8 aunque el sector estime más', async () => {
-    const c = await obtenerCompetenciaServicio('corte de cabello', 'salud y belleza', 'nacional', 300, undefined, 'MX');
-
-    expect(c.total_competidores).toBeGreaterThanOrEqual(30);
-    expect(c.competidores.length).toBeLessThanOrEqual(8);
-    // total_competidores es la estimación del sector, no el tamaño de la muestra.
-    expect(c.competidores.length).toBeLessThan(c.total_competidores);
-    expect(c.competidores.every((x) => x.distancia_km === null)).toBe(true);
-  });
-
-  it('una categoría desconocida usa el benchmark "otro" sin gap', async () => {
-    const c = await obtenerCompetenciaServicio('servicio raro', 'categoría inexistente', 'local', 500, 'Puebla', 'MX');
-
-    expect(c.gap_detectado).toBeNull();
-    expect(c.competidores.length).toBeGreaterThanOrEqual(3);
-    expect(c.competidores.every((x) => x.fortalezas.length > 0)).toBe(true);
-  });
-
-  it('la categoría se resuelve sin distinguir mayúsculas', async () => {
-    const minus = await obtenerCompetenciaServicio('clases', 'educación y cursos', 'local', 800, 'Puebla', 'MX');
-    const mixta = await obtenerCompetenciaServicio('clases', 'Educación y Cursos', 'local', 800, 'Puebla', 'MX');
-
-    expect(mixta).toEqual(minus);
-    expect(minus.gap_detectado).toContain('mentoría 1:1');
-  });
-
-  it('el rango de precios del benchmark respeta el multiplicador del sector', async () => {
-    const precio = 1000;
-    const c = await obtenerCompetenciaServicio('consultoría', 'servicios profesionales', 'local', precio, 'CDMX', 'MX');
-
-    for (const comp of c.competidores) {
-      expect(comp.precio_promedio).toBeGreaterThanOrEqual(Math.round(precio * 0.65));
-      expect(comp.precio_promedio).toBeLessThanOrEqual(Math.round(precio * 1.35));
+  it('ninguna categoría de servicio produce competidores de relleno', async () => {
+    for (const cat of ['salud y belleza', 'servicios profesionales', 'educación y cursos', 'categoría inexistente']) {
+      const c = await obtenerCompetenciaServicio('servicio', cat, 'local', 500, 'Puebla', 'MX');
+      expect(c.competidores).toHaveLength(0);
+      expect(c.gap_detectado).toBeNull();
     }
-    expect(c.precio_mercado_promedio).toBeGreaterThan(0);
   });
 
   it('usa Google Maps cuando SerpAPI responde, y deja en 0 los precios ausentes', async () => {
@@ -335,14 +279,15 @@ describe('mercado/competenciaService.obtenerCompetencia — ruta SERVICIO', () =
     expect(c.gap_detectado).toContain('alta oportunidad de posicionamiento local');
   });
 
-  it('Google Maps sin resultados cae al benchmark de sector', async () => {
+  it('Google Maps sin resultados declara el hueco en vez de rellenarlo', async () => {
     process.env.SERPAPI_KEY = 'clave-de-prueba';
     (global.fetch as jest.Mock).mockResolvedValue(respuestaOk({ local_results: [] }));
 
     const c = await obtenerCompetenciaServicio('corte de cabello', 'salud y belleza', 'local', 300, 'Jalisco', 'MX');
 
-    expect(c.es_mock).toBe(true);
-    expect(c.competidores.every((x) => x.fuente === 'benchmark_sector')).toBe(true);
+    expect(c.fuente_disponible).toBe(false);
+    expect(c.motivo_sin_fuente).toBe('sin_resultados');
+    expect(c.competidores).toHaveLength(0);
   });
 });
 
@@ -387,16 +332,18 @@ describe('mercado/mercadolibreService.obtenerCompetenciaMercadoLibre', () => {
     expect(url).toContain(encodeURIComponent('horno pizza Antioquia'));
   });
 
-  it('sin resultados devuelve el gap de "mercado por explorar" y conserva el precio del usuario', async () => {
+  it('sin resultados no llama "mercado por explorar" a un hueco de datos', async () => {
     (global.fetch as jest.Mock).mockResolvedValue(respuestaOk({ paging: { total: 0 }, results: [] }));
 
     const c = await obtenerCompetenciaMercadoLibre('producto inexistente', 'nacional', undefined, 1234, 'MX');
 
     expect(c.total_competidores).toBe(0);
     expect(c.competidores).toEqual([]);
-    expect(c.es_mock).toBe(false);
-    expect(c.gap_detectado).toContain('mercado por explorar');
-    expect(c.precio_mercado_promedio).toBe(1234);
+    expect(c.fuente_disponible).toBe(false);
+    expect(c.gap_detectado).toBeNull();
+    // Antes devolvía el precio del propio usuario como «precio de mercado», con
+    // lo que su precio siempre parecía estar en la media.
+    expect(c.precio_mercado_promedio).toBe(0);
   });
 
   it('detecta ventaja de precio cuando el usuario está 20%+ por debajo del mercado', async () => {

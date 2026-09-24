@@ -36,7 +36,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Inp
       {label && (
         <label
           htmlFor={inputId}
-          className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45"
+          className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-white/65"
         >
           {label}
         </label>
@@ -46,7 +46,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Inp
         {icon && (
           <span
             aria-hidden
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40"
           >
             {icon}
           </span>
@@ -59,29 +59,29 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Inp
           aria-describedby={describedById}
           className={cn(
             'w-full rounded-control border bg-[#0A121D] px-4 py-[var(--field-py)] text-sm text-white',
-            'placeholder-white/25 transition-all duration-200 ease-out',
+            'placeholder-white/35 transition-all duration-150 ease-out',
             'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070E17]',
             icon && 'pl-10',
             trailing && 'pr-11',
             error
               ? 'border-red-500/40 focus:border-red-500/60 focus-visible:ring-red-500/30'
-              : 'border-white/[0.07] focus:border-white/25 focus:bg-[#0C1623] focus-visible:ring-white/20',
+              : 'border-white/10 focus:border-white/30 focus:bg-[#0C1623] focus-visible:ring-white/20',
             className
           )}
           {...rest}
         />
 
         {trailing && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40">{trailing}</span>
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60">{trailing}</span>
         )}
       </div>
 
       {error ? (
-        <p id={`${inputId}-error`} role="alert" className="mt-2 text-xs text-red-400">
+        <p id={`${inputId}-error`} role="alert" className="mt-2 text-xs text-red-400 font-medium">
           {error}
         </p>
       ) : hint ? (
-        <p id={`${inputId}-hint`} className="mt-2 text-xs font-light text-white/35">
+        <p id={`${inputId}-hint`} className="mt-2 text-xs font-normal text-white/55">
           {hint}
         </p>
       ) : null}

@@ -104,10 +104,6 @@ export interface RebatidaObjecion {
   rebatida: string;
 }
 
-export interface RebatidasObjeciones {
-  rebatidas: RebatidaObjecion[];
-}
-
 // ─── Secuencia de seguimiento ─────────────────────────────────────────────────
 
 export interface FollowUpMensaje {
@@ -186,14 +182,4 @@ export interface ComparativaCompetidores {
   competidores: AnalisisCompetidor[];
   recomendacion_diferenciacion: string; // qué ángulo tomar
   tabla_comparativa: Record<string, string>[]; // filas de la tabla
-}
-
-// ─── Resultado persistido en la fila ────────────────────────────────────────
-
-export interface ResultadoVentas {
-  tips_negociacion: TipNegociacion[];
-  historia_diaria: HistoriaEmprendedor | null;
-  porque_fallan: PorqueFallan | null;
-  perfil_cliente: PerfilClienteIdeal | null;
-  secciones_bloqueadas: string[];
 }

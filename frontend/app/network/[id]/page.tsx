@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { ArrowLeft, ArrowRight, X } from 'lucide-react';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { ACENTO } from '@/components/network/ExpertoCard';
@@ -79,29 +80,29 @@ function Galeria({ imagenes }: { imagenes: ImagenPerfil[] }) {
                 <button
                   type="button"
                   onClick={() => setAbierta((i) => ((i ?? 0) - 1 + imagenes.length) % imagenes.length)}
-                  className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20"
+                  className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
                   aria-label="Anterior"
                 >
-                  ←
+                  <ArrowLeft className="w-4 h-4" />
                 </button>
-                <span className="text-white/40 text-xs">
+                <span className="text-white/40 text-xs font-mono">
                   {(abierta ?? 0) + 1}/{imagenes.length}
                 </span>
                 <button
                   type="button"
                   onClick={() => setAbierta((i) => ((i ?? 0) + 1) % imagenes.length)}
-                  className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20"
+                  className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
                   aria-label="Siguiente"
                 >
-                  →
+                  <ArrowRight className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
                   onClick={() => setAbierta(null)}
-                  className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20"
+                  className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
                   aria-label="Cerrar"
                 >
-                  ✕
+                  <X className="w-4 h-4" />
                 </button>
               </span>
             </figcaption>

@@ -28,7 +28,7 @@ import { redisClient } from '../../config/redis';
 import { logger } from '../../utils/logger';
 import type { Alerta, NivelAlerta } from './types';
 import type { AlertasOperativas } from './agregadorOperativo';
-import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
+import { crearMensaje, textoDe } from '../../config/anthropic';
 
 // ─── Salida ─────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,6 @@
 'use client';
 import { useMemo, useState } from 'react';
+import { Flame, Calendar, Zap, Video } from 'lucide-react';
 import type { TendenciaViral } from './TendenciasSection';
 import { PlatformBadge } from './MarketingSocialIcons';
 
@@ -213,26 +214,26 @@ export default function RecomendacionPlataformaSection({
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-[12px] font-black text-white leading-snug break-words">{t.nombre}</p>
                         <span className="text-[10px] font-black tabular-nums text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded whitespace-nowrap flex-shrink-0 flex items-center gap-1">
-                          <span>🔥</span>
+                          <Flame className="w-3 h-3 text-rose-400" />
                           <span>{t.viralidad.toFixed(1)}/10</span>
                         </span>
                       </div>
                       {t.fecha && (
-                        <span className="text-[10px] font-black text-white/30 flex items-center gap-1">
-                          <span>🗓️</span> {t.fecha}
+                        <span className="text-[10px] font-black text-white/40 flex items-center gap-1">
+                          <Calendar className="w-3 h-3 text-white/40" /> {t.fecha}
                         </span>
                       )}
                       {t.gancho && (
                         <p className="text-[11px] text-amber-100/80 leading-relaxed italic break-words flex items-baseline gap-1.5">
                           <span className="text-amber-400 font-bold not-italic text-[10px] uppercase tracking-wider flex items-center gap-1">
-                            <span>🎣</span> Gancho:
+                            <Zap className="w-3 h-3 text-amber-400" /> Gancho:
                           </span>
                           <span>"{t.gancho}"</span>
                         </p>
                       )}
                       {t.formato && (
                         <p className="text-[11px] text-white/40 leading-relaxed break-words flex items-center gap-1">
-                          <span>🎬</span> Formato: {t.formato}
+                          <Video className="w-3 h-3 text-white/40" /> Formato: {t.formato}
                         </p>
                       )}
                       {t.hashtags.length > 0 && (

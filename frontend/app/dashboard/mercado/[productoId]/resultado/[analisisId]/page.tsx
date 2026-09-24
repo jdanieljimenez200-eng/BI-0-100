@@ -93,7 +93,7 @@ interface Analisis {
   viabilidad_estado: string;
   viabilidad_factores: Factores;
   tendencias_data: { volumen_busquedas_mensual: number; crecimiento_porcentaje: number; tendencia: string; crecimiento_descripcion: string; datos_12_meses: { mes: string; volumen: number }[]; };
-  competencia_data: { total_competidores: number; gap_detectado: string | null; competidores: Competidor[]; precio_mercado_promedio: number; };
+  competencia_data: { total_competidores: number; gap_detectado: string | null; competidores: Competidor[]; precio_mercado_promedio: number; fuente_disponible?: boolean; motivo_sin_fuente?: string | null; };
   densidad_data?: DensidadZona | null;
   renta_zona_data?: RentaZona | null;
   estudio_area_data?: EstudioArea | null;
@@ -113,6 +113,14 @@ interface Analisis {
   factores_negativos?: string[];
   precio_usuario?: number;
   confianza_analisis?: 'alta' | 'media' | 'baja';
+  /** Tracción tomada del POS (services/mercado/traccionReal.ts). */
+  traccion_data?: {
+    clientes_mes: number;
+    ticket_promedio: number;
+    tasa_repeticion: number | null;
+    meses_analizados: number;
+    confianza: 'alta' | 'media' | 'baja';
+  } | null;
   payback_data?: unknown;
   // Claves que el backend recortó al servir la respuesta. Los análisis freemium
   // anteriores al gate no la traen, así que el espejo estático de lib/gating
@@ -1069,10 +1077,12 @@ function normalizeCompetencia(raw: unknown, precioUsuario?: number) {
 
   const total = Number(r.total_competidores ?? competidores.length);
   const rangoPrecios = r.rango_precios as { promedio?: number } | undefined;
+  // Sin competidores el promedio es 0, no el precio del propio usuario: si no,
+  // su precio siempre salía clavado en «la media del mercado».
   const avgP = Number(r.precio_mercado_promedio ?? rangoPrecios?.promedio ?? (
     competidores.length > 0
       ? Math.round(competidores.reduce((acc, c) => acc + (c.precio_promedio || 0), 0) / competidores.length)
-      : (precioUsuario || 0)
+      : 0
   ));
 
   return {
@@ -1080,6 +1090,10 @@ function normalizeCompetencia(raw: unknown, precioUsuario?: number) {
     gap_detectado: (r.gap_detectado as string | null) ?? null,
     competidores,
     precio_mercado_promedio: avgP,
+    // Análisis viejos no traen la bandera: solo se considera «sin fuente» si el
+    // backend lo dice explícitamente.
+    fuente_disponible: r.fuente_disponible !== false,
+    motivo_sin_fuente: typeof r.motivo_sin_fuente === 'string' ? r.motivo_sin_fuente : null,
   };
 }
 
@@ -1267,10 +1281,11 @@ export default function ResultadoMercadoPage() {
     return () => { vigente = false; };
   }, [analisisId]);
 
-  // Loader: 700 ms si ya estaba precargado, 4500 ms si se está procesando activamente
+  // Loader: 0 ms si ya estaba precargado, 4500 ms si se está procesando activamente
   const { showLoader, loaderDone } = useAnalysisLoaderGate(
     !!analisis && analisis.estado_analisis !== 'procesando',
-    isPreloaded.current ? 700 : 4500
+    isPreloaded.current ? 0 : 4500,
+    isPreloaded.current ? 0 : 900
   );
 
   useEffect(() => {
@@ -1350,6 +1365,8 @@ export default function ResultadoMercadoPage() {
   const estudio_area_data = analisis.estudio_area_data ?? null;
   const precio_usuario = analisis.precio_usuario;
   const confianza_analisis = analisis.confianza_analisis;
+  // Tracción sacada del POS; null en análisis viejos o sin ventas.
+  const traccion = analisis.traccion_data ?? null;
 
   // El contenido de estas secciones ya no viaja del backend en freemium: aquí
   // solo decidimos qué silueta borrosa se pinta en su lugar. Los placeholders
@@ -1446,15 +1463,26 @@ export default function ResultadoMercadoPage() {
                 <h1 className="text-2xl font-black text-white tracking-tight">Estudio de Viabilidad</h1>
                 <p className="text-xs text-white/45 mt-1.5 max-w-xs leading-relaxed">Score calculado con datos reales de competencia, tendencias, precio y tamaño de mercado.</p>
               </div>
-              {confianza_analisis && (
-                <div className={`text-[10px] font-bold px-3 py-1.5 rounded-xl border ${
-                  confianza_analisis === 'alta'  ? 'text-green-300 bg-green-500/10 border-green-500/20'
-                  : confianza_analisis === 'media' ? 'text-yellow-300 bg-yellow-500/10 border-yellow-500/20'
-                  : 'text-white/30 bg-white/5 border-white/10'
-                }`}>
-                  {confianza_analisis === 'alta' ? 'Alta precisión' : confianza_analisis === 'media' ? 'Media precisión' : 'Estimado'}
-                </div>
-              )}
+              <div className="flex flex-col items-end gap-1.5">
+                {confianza_analisis && (
+                  <div className={`text-[10px] font-bold px-3 py-1.5 rounded-xl border ${
+                    confianza_analisis === 'alta'  ? 'text-green-300 bg-green-500/10 border-green-500/20'
+                    : confianza_analisis === 'media' ? 'text-yellow-300 bg-yellow-500/10 border-yellow-500/20'
+                    : 'text-white/30 bg-white/5 border-white/10'
+                  }`}>
+                    {confianza_analisis === 'alta' ? 'Alta precisión' : confianza_analisis === 'media' ? 'Media precisión' : 'Estimado'}
+                  </div>
+                )}
+                {/* La tracción no la recordó nadie: salió del punto de venta. */}
+                {traccion && (
+                  <div
+                    className="text-[10px] font-bold px-3 py-1.5 rounded-xl border text-brand-primary bg-brand-primary/10 border-brand-primary/25"
+                    title={`${traccion.clientes_mes} ventas/mes de promedio en ${traccion.meses_analizados} ${traccion.meses_analizados === 1 ? 'mes completo' : 'meses completos'} del POS`}
+                  >
+                    Tracción de tus ventas
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Score + Factors */}
@@ -1753,6 +1781,20 @@ export default function ResultadoMercadoPage() {
           <div className="rounded-2xl border border-white/8 p-6 relative overflow-hidden" style={{ background: 'rgba(255,255,255,0.015)' }}>
             <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/8 rounded-full blur-3xl pointer-events-none" />
             <SectionHeader icon={<IconCrosshair />} title="Competencia local" tooltip="Número de negocios similares al tuyo encontrados en tu zona. Más competidores no siempre es malo: también confirma que hay demanda real en el mercado." />
+            {competencia_data.fuente_disponible === false ? (
+              /* Antes este hueco se rellenaba con competidores inventados. Un
+                 vacío explicado vale más que una lista que no existe. */
+              <div className="bg-white/4 border border-white/8 rounded-xl px-4 py-5 text-center">
+                <p className="text-sm text-white/70 font-medium">No pudimos rastrear competencia en tu zona</p>
+                <p className="text-xs text-white/45 mt-1.5 leading-relaxed">
+                  {competencia_data.motivo_sin_fuente === 'sin_resultados'
+                    ? 'Las fuentes respondieron pero no encontraron negocios como el tuyo para esta búsqueda.'
+                    : 'No hay una fuente de competencia conectada ahora mismo.'}{' '}
+                  Este bloque no puntuó tu viabilidad: añade los competidores que ya conoces al relanzar el análisis y el diagnóstico mejora.
+                </p>
+              </div>
+            ) : (
+            <>
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div className="bg-white/4 border border-white/5 rounded-xl p-4 text-center">
                 <p className="text-2xl font-black text-white">{competencia_data.total_competidores}</p>
@@ -1773,6 +1815,8 @@ export default function ResultadoMercadoPage() {
               </div>
             </div>
             <CompetenciaMap total={competencia_data.total_competidores} />
+            </>
+            )}
           </div>
         )}
       </div>

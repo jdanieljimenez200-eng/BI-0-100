@@ -47,6 +47,11 @@ export default function AuthChart({
 }: AuthChartProps) {
   const MAX_VISIBLE = 38;
   const HISTORY = 36;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const [candles, setCandles] = useState<CandleData[]>(() => {
     const hist = generateHistory(HISTORY);
@@ -163,6 +168,19 @@ export default function AuthChart({
   const GREEN = '#00D97E';
   const RED = '#F5475B';
   const accent = positive ? GREEN : RED;
+
+  if (!mounted) {
+    return (
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          position: 'absolute',
+          inset: 0,
+        }}
+      />
+    );
+  }
 
   return (
     <div

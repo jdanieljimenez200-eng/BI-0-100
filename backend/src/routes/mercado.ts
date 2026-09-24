@@ -9,6 +9,8 @@ import { requireCanRunAnalisis, getPlanFromDB } from '../middleware/requirePlan'
 import { respuestaAnalisis } from '../services/billing/redactAnalisis';
 import { requireAnalisisLock } from '../middleware/idempotency';
 import { validateBody, exigirUuid } from '../middleware/validate';
+import { obtenerTraccionReal } from '../services/mercado/traccionReal';
+import { hoyDePeticion } from '../utils/fechaLocal';
 import { logger } from '../utils/logger';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
@@ -200,6 +202,35 @@ router.get('/producto/:productoId', authenticate, async (req: AuthRequest, res: 
   } catch (err: unknown) {
     logger.error('GET /api/mercado/producto/:productoId error:', err);
     res.status(500).json({ error: 'Error al obtener analisis' });
+  }
+});
+
+/**
+ * GET /api/mercado/traccion/:productoId — lo que de verdad vendió el producto.
+ *
+ * El formulario pedía «clientes al mes» y «tasa de repetición» a mano aunque el
+ * negocio llevara meses cobrando con el POS. Esto devuelve la tracción real para
+ * precargarlos. Va ANTES de `/:id` o `exigirUuid` respondería 400 al ver la
+ * palabra «traccion» donde espera un UUID.
+ */
+router.get('/traccion/:productoId', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    // `exigirUuid(router, 'id', 'productoId')` ya rechaza con 400 un id mal
+    // formado antes de llegar aquí.
+    const { productoId } = req.params;
+
+    const existe = await AppDataSource.manager.exists(Producto, {
+      where: { id: productoId, usuario_id: req.userId! },
+    });
+    if (!existe) return res.status(404).json({ error: 'Producto no encontrado' });
+
+    const traccion = await obtenerTraccionReal(req.userId!, productoId, await hoyDePeticion(req));
+    // 200 con `null`: «este producto todavía no tiene ventas» es una respuesta,
+    // no un error que el formulario deba tratar como fallo.
+    return res.json({ traccion });
+  } catch (err: unknown) {
+    logger.error('GET /api/mercado/traccion/:productoId error:', err);
+    res.status(500).json({ error: 'Error al leer las ventas del producto' });
   }
 });
 

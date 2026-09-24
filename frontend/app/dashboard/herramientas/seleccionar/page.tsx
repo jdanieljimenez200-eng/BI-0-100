@@ -1,10 +1,14 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { ArrowRight, Lock, Package } from 'lucide-react';
 import { useProductoActivo } from '@/lib/productoActivo';
+import { Breadcrumbs } from '@/components/ui';
 
 // Destinos permitidos tras elegir producto — evita open-redirect a rutas externas.
 const NEXT_FALLBACK = '/dashboard/herramientas';
@@ -57,9 +61,7 @@ function SeleccionarInner() {
       <div className="px-4 sm:px-6 py-10 max-w-3xl mx-auto">
         <div className="rounded-3xl border border-emerald-500/30 bg-white/3 p-8 text-center">
           <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
-            </svg>
+            <Package className="w-6 h-6" />
           </div>
           <h2 className="text-xl font-bold text-white mb-2">Primero necesitas un producto</h2>
           <p className="text-sm text-white/55 mb-5">
@@ -67,7 +69,7 @@ function SeleccionarInner() {
           </p>
           <Link
             href="/dashboard/nuevo"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-bold bg-gradient-to-br from-emerald-500 to-emerald-600"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-bold bg-gradient-to-br from-emerald-500 to-emerald-600 transition-all hover:brightness-110 active:scale-[0.98]"
           >
             Crear producto →
           </Link>
@@ -80,13 +82,14 @@ function SeleccionarInner() {
     <div className="relative px-4 sm:px-6 py-10 max-w-4xl mx-auto pb-20">
       <div className="fixed top-[-15%] right-[-8%] w-[45vh] h-[45vh] bg-emerald-500/10 rounded-full blur-[130px] pointer-events-none" />
 
-      <div className="flex items-center gap-2 text-sm mb-8">
-        <Link href="/dashboard" className="text-white/35 hover:text-white/70 transition-colors">Dashboard</Link>
-        <span className="text-white/20">›</span>
-        <Link href="/dashboard/herramientas" className="text-white/35 hover:text-white/70 transition-colors">Herramientas</Link>
-        <span className="text-white/20">›</span>
-        <span className="text-white/70 font-medium">Elegir producto</span>
-      </div>
+      <Breadcrumbs
+        items={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Herramientas', href: '/dashboard/herramientas' },
+          { label: 'Elegir producto' },
+        ]}
+        className="mb-8"
+      />
 
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -117,7 +120,7 @@ function SeleccionarInner() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: i * 0.05, ease: [0.16, 1, 0.3, 1] }}
-              className={`group relative text-left rounded-2xl border bg-gradient-to-br from-[#0d1117] to-[#0b1421] p-5 overflow-hidden transition-all ${
+              className={`group relative text-left rounded-2xl border bg-gradient-to-br from-[#0d1117] to-[#0b1421] p-5 overflow-hidden transition-all active:scale-[0.98] ${
                 bloqueado
                   ? 'border-white/8 opacity-55 cursor-not-allowed'
                   : activo
@@ -125,6 +128,7 @@ function SeleccionarInner() {
                     : 'border-white/8 hover:border-emerald-500/30 hover:shadow-[0_0_24px_rgba(255,255,255,0.06)]'
               }`}
             >
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
               <div className={`absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl pointer-events-none opacity-40 transition-opacity bg-emerald-500/10 ${bloqueado ? '' : 'group-hover:opacity-80'}`} />
               <div className="relative z-10 flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -135,17 +139,17 @@ function SeleccionarInner() {
                   </p>
                 </div>
                 {bloqueado ? (
-                  <span className="flex-shrink-0 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                  <span className="flex-shrink-0 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    <Lock className="w-3 h-3" />
                     Fuera del plan
                   </span>
                 ) : activo ? (
-                  <span className="flex-shrink-0 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <span className="flex-shrink-0 text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                     Actual
                   </span>
                 ) : (
                   <span className="flex-shrink-0 text-emerald-300 opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-0.5">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 5l7 7-7 7" /></svg>
+                    <ArrowRight className="w-4 h-4" />
                   </span>
                 )}
               </div>
@@ -167,7 +171,7 @@ function SeleccionarInner() {
           </p>
           <Link
             href="/dashboard/billing"
-            className="flex-shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-bold bg-gradient-to-br from-amber-500 to-amber-600"
+            className="flex-shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-bold bg-gradient-to-br from-amber-500 to-amber-600 transition-all hover:brightness-110 active:scale-[0.98]"
           >
             Ver planes →
           </Link>

@@ -251,8 +251,8 @@ function PlanCard({
 
   return (
     <div
-      className={`relative rounded-[26px] p-5 flex flex-col gap-4 ring-1 ${a.ring} ${a.tint} backdrop-blur-xl
-                  shadow-[0_10px_40px_-12px_rgba(0,0,0,0.6)] transition-transform duration-200 active:scale-[0.99]
+      className={`relative rounded-2xl p-5 flex flex-col gap-4 ring-1 ${a.ring} ${a.tint} backdrop-blur-xl
+                  shadow-surface transition-transform duration-200 active:scale-[0.99]
                   ${isCurrent ? 'ring-2 ring-finanzas/40' : isPopular ? 'ring-2' : ''}`}
     >
       {isCurrent ? (
@@ -271,12 +271,12 @@ function PlanCard({
 
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
-          <div className={`w-11 h-11 rounded-[14px] bg-white/[.07] flex items-center justify-center shadow-inner shadow-black/20 ${a.text}`}>
+          <div className={`w-11 h-11 rounded-xl bg-white/[.07] flex items-center justify-center shadow-inner shadow-black/20 ${a.text}`}>
             <Icon name={PLAN_ICON[planKey] ?? 'productos'} className="w-6 h-6" />
           </div>
           <div>
             <p className={`font-semibold text-[17px] ${a.text}`}>{plan.nombre}</p>
-            <p className="text-[12px] text-white/45">{plan.descripcion}</p>
+            <p className="text-[12px] text-white/60">{plan.descripcion}</p>
           </div>
         </div>
       </div>

@@ -247,7 +247,17 @@ export default function KitMarcaPage() {
 
               {marcaGuardada.paleta_colores && (
                 <div className="flex gap-2 flex-wrap mb-3">
-                  {(marcaGuardada.paleta_colores as unknown as Array<{nombre: string; hex: string}>).map(c => (
+                  {(Array.isArray(marcaGuardada.paleta_colores)
+                    ? (marcaGuardada.paleta_colores as unknown as Array<Record<string, unknown> | string>).map((c, i) =>
+                        typeof c === 'string'
+                          ? { nombre: `Color ${i + 1}`, hex: c }
+                          : { nombre: String(c?.nombre || `Color ${i + 1}`), hex: String(c?.hex || '#000000') }
+                      )
+                    : Object.entries(marcaGuardada.paleta_colores as Record<string, string>).map(([nombre, hex]) => ({
+                        nombre,
+                        hex: String(hex),
+                      }))
+                  ).map(c => (
                     <ColorSwatch key={c.nombre} hex={c.hex} nombre={c.nombre} />
                   ))}
                 </div>

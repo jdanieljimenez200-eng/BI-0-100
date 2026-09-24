@@ -65,5 +65,49 @@ describeWithDb('Finanzas routes', () => {
 
       expect(res.status).toBe(400);
     });
+
+    it('rechaza un crecimiento mensual imposible (>50%) con 400', async () => {
+      // Un 60% mensual proyecta ×100 en un año: no es una proyección.
+      const res = await request
+        .default(app)
+        .post('/api/finanzas/analizar')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ producto_id: await nuevoProductoId(), ...payloadValido, tasa_crecimiento_mensual: 60 });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /api/finanzas/calibracion/:productoId', () => {
+    it('sin historial contable devuelve ceros, no un invento', async () => {
+      const res = await request
+        .default(app)
+        .get(`/api/finanzas/calibracion/${await nuevoProductoId()}`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.meses_analizados).toBe(0);
+    });
+
+    it('rechaza un id que no es UUID y un producto ajeno', async () => {
+      const malFormado = await request
+        .default(app)
+        .get('/api/finanzas/calibracion/no-es-uuid')
+        .set('Authorization', `Bearer ${token}`);
+      expect(malFormado.status).toBe(400);
+
+      const otro = await signupTestUser();
+      const ajeno = await crearProductoDeUsuario(otro.userId);
+      const res = await request
+        .default(app)
+        .get(`/api/finanzas/calibracion/${ajeno.id}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(404);
+    });
+
+    it('sin sesión no se llega', async () => {
+      const res = await request.default(app).get(`/api/finanzas/calibracion/${await nuevoProductoId()}`);
+      expect(res.status).toBe(401);
+    });
   });
 });

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ImageIcon, ArrowLeft, ArrowRight, Plus } from 'lucide-react';
 import {
   borrarImagenGaleria,
   borrarServicio,
@@ -199,8 +200,8 @@ export default function EditorContenido({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={portada} alt="" className="absolute inset-0 w-full h-full object-cover" />
           ) : (
-            <span className="absolute inset-0 flex flex-col items-center justify-center text-white/35 text-xs gap-1">
-              <span className="text-2xl" aria-hidden="true">🖼️</span>
+            <span className="absolute inset-0 flex flex-col items-center justify-center text-white/50 text-xs gap-1.5">
+              <ImageIcon className="w-7 h-7 text-white/40" />
               Elige una imagen horizontal que represente tu trabajo
             </span>
           )}
@@ -235,18 +236,18 @@ export default function EditorContenido({
                     onClick={() => mover(i, -1)}
                     disabled={i === 0}
                     aria-label="Mover antes"
-                    className="w-7 h-7 rounded-md bg-white/15 text-white text-xs disabled:opacity-30"
+                    className="w-7 h-7 rounded-md bg-white/15 text-white text-xs disabled:opacity-30 flex items-center justify-center"
                   >
-                    ←
+                    <ArrowLeft className="w-3.5 h-3.5" />
                   </button>
                   <button
                     type="button"
                     onClick={() => mover(i, 1)}
                     disabled={i === imagenes.length - 1}
                     aria-label="Mover después"
-                    className="w-7 h-7 rounded-md bg-white/15 text-white text-xs disabled:opacity-30"
+                    className="w-7 h-7 rounded-md bg-white/15 text-white text-xs disabled:opacity-30 flex items-center justify-center"
                   >
-                    →
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
                 <button
@@ -262,8 +263,8 @@ export default function EditorContenido({
           ))}
 
           {imagenes.length < maxImagenes && (
-            <label className="aspect-square rounded-xl border border-dashed border-white/15 hover:border-white/35 flex flex-col items-center justify-center gap-1 text-white/40 hover:text-white/70 text-xs font-semibold cursor-pointer transition-colors">
-              <span className="text-2xl leading-none" aria-hidden="true">+</span>
+            <label className="aspect-square rounded-xl border border-dashed border-white/15 hover:border-white/35 flex flex-col items-center justify-center gap-1.5 text-white/50 hover:text-white text-xs font-semibold cursor-pointer transition-colors">
+              <Plus className="w-6 h-6 text-white/40" />
               Añadir fotos
               <input
                 ref={inputGaleria}

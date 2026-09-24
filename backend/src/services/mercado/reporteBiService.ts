@@ -42,7 +42,7 @@ export interface ReporteBi {
 // Se importa para usarla en el prompt y se re-exporta para no romper a los
 // consumidores existentes.
 import { describirFuenteCompetencia } from './fuentesCompetencia';
-import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
+import { crearMensaje, textoDe } from '../../config/anthropic';
 import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 export { describirFuenteCompetencia };

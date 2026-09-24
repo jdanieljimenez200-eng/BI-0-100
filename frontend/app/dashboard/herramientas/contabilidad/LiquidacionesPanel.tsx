@@ -1,18 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import {
-  Wallet,
-  Clock,
-  CheckCircle,
-  Check,
-  Building2,
-  Calendar,
-  AlertCircle,
-  CreditCard,
-  Bike,
-  Search,
-} from 'lucide-react';
+import { Clock, CheckCircle, Check, CreditCard } from 'lucide-react';
 import api from '@/lib/api';
 
 interface MovimientoLiquidacion {

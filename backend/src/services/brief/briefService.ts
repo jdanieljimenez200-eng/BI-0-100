@@ -5,7 +5,7 @@ import { sanitizeForLLM, sanitizeArrayForLLM } from '../../utils/sanitizeForLLM'
 import { parseLLMJson } from '../../middleware/validate';
 import { logger } from '../../utils/logger';
 import { z } from 'zod';
-import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
+import { crearMensaje, textoDe } from '../../config/anthropic';
 import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 const BriefSchema = z.object({

@@ -23,7 +23,7 @@ import { AnalisisVentas } from '../../models/AnalisisVentas';
 import { sanitizeForLLM } from '../../utils/sanitizeForLLM';
 import { redisClient } from '../../config/redis';
 import { logger } from '../../utils/logger';
-import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
+import { crearMensaje, textoDe } from '../../config/anthropic';
 
 export type ModuloResumen = 'mercado' | 'marketing' | 'finanzas' | 'legal' | 'brief' | 'ventas';
 

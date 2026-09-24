@@ -78,4 +78,31 @@ describe('proyeccionService.generarProyeccion', () => {
     const result = generarProyeccion(input);
     expect(result.meses[0].margen_neto).toBe(0);
   });
+
+  // ── Caja necesaria ─────────────────────────────────────────────────────────
+  // Un negocio rentable en el papel puede quedarse sin dinero por el camino: el
+  // punto más bajo del saldo es lo que de verdad hay que tener en la cuenta.
+
+  it('con inversión declarada, la caja necesaria parte de lo invertido', () => {
+    const input = { ...inputBase, inversion_inicial: 100_000 };
+    const r = generarProyeccion(input);
+
+    expect(r.caja_necesaria).toBeGreaterThanOrEqual(100_000 - r.meses[0].utilidad_neta);
+    expect(r.utilidad_antes_de_impuestos).toBe(true);
+  });
+
+  it('sin inversión y con meses rentables desde el inicio, no hace falta caja extra', () => {
+    const r = generarProyeccion(inputBase);
+    if (r.meses[0].utilidad_neta >= 0) expect(r.caja_necesaria).toBe(0);
+  });
+
+  it('un arranque en pérdidas exige caja aunque el año cierre bien', () => {
+    // Pocas unidades al principio y crecimiento fuerte: los primeros meses
+    // pierden dinero y el acumulado baja antes de subir.
+    const input = { ...inputBase, unidades_mes_inicial: 5, tasa_crecimiento_mensual: 40 };
+    const r = generarProyeccion(input);
+
+    expect(r.caja_necesaria).toBeGreaterThan(0);
+    expect(r.mes_valle).toBeGreaterThan(0);
+  });
 });

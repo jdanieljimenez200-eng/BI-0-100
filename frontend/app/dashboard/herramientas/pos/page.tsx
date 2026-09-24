@@ -980,7 +980,7 @@ function PosInner({
         </div>
 
         {/* Producto Activo Selector Card */}
-        <div className="bg-[#0F1C2A]/90 border border-white/10 rounded-2xl p-3.5 min-w-[290px] shadow-lg backdrop-blur-md">
+        <div className="bg-[#0F1C2A]/90 border border-white/10 rounded-2xl p-3.5 w-full sm:w-auto sm:min-w-[290px] shadow-lg backdrop-blur-md">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/40 mb-1">Punto de Cobro Activo:</p>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -1062,11 +1062,11 @@ function PosInner({
       </div>
 
       {/* Tabs Bar */}
-      <div className="flex gap-2 mb-6 border-b border-white/10">
+      <div className="flex gap-2 mb-6 border-b border-white/10 overflow-x-auto scrollbar-none pb-1 shrink-0">
         {[
           { key: 'vender', label: 'Caja Registradora (Vender)', icon: ShoppingCart, count: totales.itemsCount },
-          { key: 'catalogo', label: 'Menú / Catálogo', icon: DollarSign, count: items.length },
-          { key: 'historial', label: 'Historial de Ventas', icon: Hash, count: ventas.length },
+          { key: 'catalogo', label: 'Menú / Catálogo', icon: Tag, count: items.length },
+          { key: 'historial', label: 'Historial de Ventas', icon: Receipt, count: ventas.length },
         ].map((t) => {
           const Icon = t.icon;
           const active = tab === t.key;
@@ -1074,14 +1074,14 @@ function PosInner({
             <button
               key={t.key}
               onClick={() => setTab(t.key as typeof tab)}
-              className={`text-sm px-4 py-3 font-semibold transition-all border-b-2 -mb-px flex items-center gap-2 ${
+              className={`text-sm px-4 py-3 font-semibold transition-all border-b-2 -mb-px flex items-center gap-2 whitespace-nowrap ${
                 active
                   ? 'text-emerald-300 border-emerald-400'
-                  : 'text-white/40 border-transparent hover:text-white/80'
+                  : 'text-white/60 border-transparent hover:text-white/90'
               }`}
             >
               <Icon className="w-4 h-4" />
-              <span>${t.label}</span>
+              <span>{t.label}</span>
               {t.count !== undefined && t.count > 0 && (
                 <span
                   className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
@@ -1113,8 +1113,10 @@ function PosInner({
                 />
                 {searchVender && (
                   <button
+                    type="button"
                     onClick={() => setSearchVender('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+                    aria-label="Limpiar búsqueda"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -2475,7 +2477,12 @@ function PosInner({
                     {ventaDetalle.fecha} · Método: {ventaDetalle.metodo_pago}
                   </p>
                 </div>
-                <button onClick={() => setVentaDetalle(null)} className="text-white/40 hover:text-white">
+                <button
+                  type="button"
+                  onClick={() => setVentaDetalle(null)}
+                  aria-label="Cerrar modal"
+                  className="text-white/40 hover:text-white transition-colors"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>

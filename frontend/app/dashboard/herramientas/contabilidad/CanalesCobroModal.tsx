@@ -9,7 +9,6 @@ import {
   Plus,
   Trash2,
   Edit2,
-  CheckCircle2,
   Sparkles,
   AlertCircle,
   X,

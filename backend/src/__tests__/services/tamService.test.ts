@@ -310,3 +310,42 @@ describe('tamService.calcularTam — estacionalidad', () => {
     }
   });
 });
+
+describe('calcularTam — hasta dónde llegan nuestras tablas', () => {
+  it('fuera de México no se aplica el NSE de AMAI', () => {
+    const co = calcularTam({ ...inputBase, pais: 'CO', nseTarget: 'C+' });
+
+    // La población NO se recorta y se explica por qué.
+    expect(co.nse_aplicado).toBeUndefined();
+    expect(co.supuestos.poblacion_base).toBe(POBLACION_CO);
+    expect(co.supuestos.advertencias.join(' ')).toMatch(/AMAI/);
+  });
+
+  it('en México el NSE sí recorta la población', () => {
+    const mx = calcularTam({ ...inputBase, nseTarget: 'C+' });
+
+    expect(mx.nse_aplicado).toBe('C+');
+    expect(mx.supuestos.poblacion_base).toBeLessThan(POBLACION_MX);
+  });
+
+  it('el calendario comercial mexicano no se exporta a otros países', () => {
+    const mx = calcularTam({ ...inputBase, categoria: 'Alimentos y bebidas' });
+    const br = calcularTam({ ...inputBase, pais: 'BR', categoria: 'Alimentos y bebidas' });
+
+    expect(mx.estacionalidad).toBeDefined();
+    expect(br.estacionalidad).toBeUndefined();
+    expect(br.supuestos.advertencias.join(' ')).toMatch(/calendario comercial/i);
+  });
+
+  it('un negocio local avisa de que la base es toda la región', () => {
+    const local = calcularTam({ ...inputBase, scope: 'local', region: 'Jalisco' });
+
+    expect(local.supuestos.poblacion_base).toBe(POBLACION_JALISCO);
+    expect(local.supuestos.advertencias.join(' ')).toMatch(/tu zona inmediata/);
+  });
+
+  it('las penetraciones usadas se declaran junto al resultado', () => {
+    const r = calcularTam(inputBase);
+    expect(r.supuestos.penetracion_pct).toEqual({ pesimista: 0.1, realista: 0.25, optimista: 0.5 });
+  });
+});

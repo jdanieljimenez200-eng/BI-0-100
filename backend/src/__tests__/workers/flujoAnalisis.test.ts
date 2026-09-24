@@ -8,7 +8,6 @@ import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 jest.mock('../../events/sse', () => ({
   emitAnalysisUpdate: jest.fn(),
-  emitAnalysisList: jest.fn(),
 }));
 jest.mock('../../services/email/emailService', () => ({
   notificarAnalisisCompleto: jest.fn().mockResolvedValue(true),

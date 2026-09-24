@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { esPlanDePago } from '../../lib/plans';
 
 /**
@@ -161,9 +162,7 @@ export default function UpsellSlot({ plan, variant = 'inline', className = '' }:
           style={{ color: c.color }}
         >
           {c.cta}
-          <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M9 5l7 7-7 7" />
-          </svg>
+          <ChevronRight className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
         </Link>
       </aside>
     );
@@ -173,7 +172,7 @@ export default function UpsellSlot({ plan, variant = 'inline', className = '' }:
     <aside
       data-print="hide"
       aria-label="Sugerencia de plan"
-      className={`relative rounded-2xl border border-white/[.06] bg-white/[.015] overflow-hidden ${className}`}
+      className={`relative rounded-2xl border border-white/[.08] bg-white/[.02] overflow-hidden ${className}`}
     >
       <div className="absolute inset-y-0 left-0 w-[3px]" style={{ background: c.color }} aria-hidden="true" />
       {BotonCerrar}
@@ -188,7 +187,7 @@ export default function UpsellSlot({ plan, variant = 'inline', className = '' }:
           <h3 className="text-[15px] font-bold text-white/85 tracking-tight leading-snug mb-1 break-words">
             {c.titulo}
           </h3>
-          <p className="text-[12.5px] text-white/35 leading-relaxed break-words">{c.texto}</p>
+          <p className="text-[12.5px] text-white/60 leading-relaxed break-words">{c.texto}</p>
         </div>
         <Link
           href={c.href}
@@ -196,9 +195,7 @@ export default function UpsellSlot({ plan, variant = 'inline', className = '' }:
           style={{ color: c.color, borderColor: `${c.color}40`, background: `${c.color}12` }}
         >
           {c.cta}
-          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M9 5l7 7-7 7" />
-          </svg>
+          <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
         </Link>
       </div>
     </aside>

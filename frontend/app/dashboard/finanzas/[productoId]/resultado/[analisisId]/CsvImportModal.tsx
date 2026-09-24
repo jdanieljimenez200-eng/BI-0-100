@@ -199,7 +199,6 @@ export default function CsvImportModal({ productoId, onClose, onImported }: Prop
   const [step, setStep]                   = useState<1 | 2 | 3>(1);
   const [parsedRows, setParsedRows]       = useState<ParsedRow[]>([]);
   const [parseErrors, setParseErrors]     = useState<ParseError[]>([]);
-  const [fileName, setFileName]           = useState('');
   const [omitirDups, setOmitirDups]       = useState(true);
   const [loading, setLoading]             = useState(false);
   const [importResult, setImportResult]   = useState<ImportResult | null>(null);
@@ -208,7 +207,6 @@ export default function CsvImportModal({ productoId, onClose, onImported }: Prop
   const fileInputRef                      = useRef<HTMLInputElement>(null);
 
   const processFile = useCallback(async (file: File) => {
-    setFileName(file.name);
     setLoading(true);
     try {
       // Interop CJS/ESM: en dev (Turbopack) el módulo xlsx del CDN puede llegar

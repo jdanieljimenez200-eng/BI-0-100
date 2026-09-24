@@ -259,10 +259,16 @@ function requiereSanitario(producto: Producto, input: LegalAnalisisInput): boole
   return REGEX_SANITARIO.test(texto);
 }
 
-function disclaimerTexto(meta: PaisMeta): string {
+function disclaimerTexto(meta: PaisMeta, fechaISO?: string): string {
+  // La fecha importa: el dictamen lo escribe un modelo cuyo conocimiento tiene
+  // corte, y una reforma fiscal posterior no aparece por ningún lado. Decir «a
+  // esta fecha» es la diferencia entre una guía y una afirmación falsa.
+  const fecha = fechaISO
+    ? ` Se redactó el ${new Date(fechaISO).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}: cualquier reforma posterior no está recogida aquí.`
+    : '';
   return (
     'Este análisis es informativo, se genera automáticamente y NO constituye asesoría legal, fiscal ni contable. ' +
-    `La normativa de ${meta.nombre} cambia con frecuencia y su aplicación depende del giro, la entidad federativa/región y el volumen de operación. ` +
+    `La normativa de ${meta.nombre} cambia con frecuencia y su aplicación depende del giro, la entidad federativa/región y el volumen de operación.${fecha} ` +
     'Antes de tomar decisiones o presentar trámites, valida cada punto con un profesional autorizado y con la fuente oficial correspondiente.'
   );
 }
@@ -460,7 +466,7 @@ function ensamblar(
     regulacion_comercio_exterior: input.exporta_importa ? salida.regulacion_comercio_exterior : [],
     alertas: salida.alertas,
     checklist: salida.checklist,
-    disclaimer: disclaimerTexto(meta),
+    disclaimer: disclaimerTexto(meta, fechaISO),
     fuentes_recomendadas: meta.fuentes,
   };
 }
@@ -896,7 +902,7 @@ export function generarAnalisisLegalMock(
     regulacion_comercio_exterior: comercioExteriorMock(input, meta),
     alertas: alertasMock(input, meta, puntaje),
     checklist: checklistMock(input, meta),
-    disclaimer: disclaimerTexto(meta),
+    disclaimer: disclaimerTexto(meta, fechaISO),
     fuentes_recomendadas: meta.fuentes,
   };
 }

@@ -40,6 +40,3 @@ export const PALETA_PRESETS: PaletaPreset[] = [
   { key: 'ember', nombre: 'Ember', color_acento: '#ef4444', color_fondo: '#1a0505' },
   { key: 'slate', nombre: 'Slate', color_acento: '#3b82f6', color_fondo: '#1e293b' },
 ];
-
-export const WALLPAPER_PRESET_KEYS = WALLPAPER_PRESETS.map((w) => w.key);
-export const PALETA_PRESET_KEYS = PALETA_PRESETS.map((p) => p.key);

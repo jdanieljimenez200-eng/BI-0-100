@@ -202,10 +202,10 @@ export function Tabla<T>({
   if (filas.length === 0) return <Vacio>{vacio}</Vacio>;
   const visibles = max ? filas.slice(0, max) : filas;
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto scrollbar-thin">
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-white/8 text-left text-[10px] uppercase tracking-wide text-white/35">
+          <tr className="border-b border-white/8 text-left text-[10px] uppercase tracking-wide text-white/60">
             {columnas.map((c) => (
               <th key={c.titulo} className={`pb-2 pr-2 font-medium ${c.derecha ? 'text-right' : ''}`}>
                 {c.titulo}
@@ -219,7 +219,7 @@ export function Tabla<T>({
               {columnas.map((c) => (
                 <td
                   key={c.titulo}
-                  className={`py-2 pr-2 ${c.derecha ? 'text-right tabular-nums' : ''} ${c.className ?? 'text-white/70'}`}
+                  className={`py-2 pr-2 ${c.derecha ? 'text-right tabular-nums font-mono' : ''} ${c.className ?? 'text-white/70'}`}
                 >
                   {c.valor(f)}
                 </td>

@@ -616,10 +616,11 @@ export default function LegalResultadoPage() {
   // Avance visual de los pasos del loader mientras el análisis está en curso.
   const procesando = !analisis || analisis.estado_analisis === 'procesando';
 
-  // Loader: 700 ms si ya estaba precargado, 4500 ms si está en generación activa
+  // Loader: 0 ms si ya estaba precargado, 4500 ms si está en generación activa
   const { showLoader, loaderDone } = useAnalysisLoaderGate(
     !procesando,
-    isPreloaded.current ? 700 : 4500
+    isPreloaded.current ? 0 : 4500,
+    isPreloaded.current ? 0 : 900
   );
   useEffect(() => {
     if (!procesando) return;

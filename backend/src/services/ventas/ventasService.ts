@@ -4,8 +4,6 @@ import { parseLLMJson } from '../../middleware/validate';
 import { FrameExtraida } from '../media/frameExtractionService';
 import {
   HistoriaEmprendedor,
-  PorqueFallan,
-  RazonFracaso,
   TipNegociacion,
   VentasAnalisisInput,
   PerfilClienteIdeal,
@@ -13,7 +11,6 @@ import {
   FollowUpMensaje,
   PalabrasClaveAds,
   EvaluacionGuion,
-  MetricaGuion,
   AnalisisCompetidor,
   ComparativaCompetidores,
   CompetidorContexto,
@@ -49,18 +46,6 @@ const HistoriaOutputSchema = z.object({
   estrategia_marketing: z.string(),
   metricas: z.string(),
   leccion_aplicable: z.string(),
-});
-
-const RazonSchema = z.object({
-  titulo: z.string(),
-  descripcion: z.string(),
-  senales_alerta: z.array(z.string()).min(2).max(4),
-  como_evitarlo: z.string(),
-});
-
-const PorqueFallanOutputSchema = z.object({
-  patron_comun: z.string(),
-  razones: z.array(RazonSchema).min(3).max(5),
 });
 
 // ─── Prompts ────────────────────────────────────────────────────────────────
@@ -156,49 +141,6 @@ export function generarHistoriaMock(input: VentasAnalisisInput, fechaISO: string
     leccion_aplicable:
       'Especialízate en lo que ya te compra y construye tu operación alrededor de ese ciclo, no del catálogo completo.',
     fecha: fechaISO,
-  };
-}
-
-export function generarPorqueFallanMock(input: VentasAnalisisInput): PorqueFallan {
-  const ticket = input.ticket_promedio > 0 ? input.ticket_promedio : 500;
-  return {
-    patron_comun:
-      `Los emprendimientos de ${input.categoria || 'este giro'} con ticket de ~$${ticket} rara vez mueren ` +
-      'por falta de clientes: mueren por matemáticas rotas disfrazadas de "mal mes".',
-    razones: [
-      {
-        titulo: 'Precio que no cubre el costo real',
-        descripcion:
-          'Calculan el precio contra el costo del producto y olvidan comisiones, empaques, devoluciones y SU propio sueldo.',
-        senales_alerta: [
-          'Vendes todos los días y el dinero no alcanza a fin de mes',
-          'Repones inventario con tarjeta de crédito',
-          'No sabes tu margen exacto por venta',
-        ],
-        como_evitarlo:
-          'Saca tu costo unitario TOTAL (producto + logística + gasto fijo prorrateado) y ponle margen mínimo 35%.',
-      },
-      {
-        titulo: 'Depender de un solo canal',
-        descripcion: `Todo entra por ${input.canal_principal}. Cuando ese canal cambia reglas o sube costo, la venta cae a cero.`,
-        senales_alerta: [
-          '>70% de tus ventas vienen de un solo origen',
-          'Una caída del canal = pánico operativo',
-          'No tienes lista de contacto propia',
-        ],
-        como_evitarlo: 'Segundo canal activo en 60 días y base propia (WhatsApp/lista) desde la semana 1.',
-      },
-      {
-        titulo: 'Confundir ingresos con flujo',
-        descripcion: 'Vender a 30 días mientras pagas a 0 te quiebra aunque el P&L diga utilidad.',
-        senales_alerta: [
-          'Cobras "la próxima quincena"',
-          'Postergas pagos a proveedores seguido',
-          'No conoces tu saldo disponible HOY',
-        ],
-        como_evitarlo: 'Cuenta separada para impuestos+reposición; anticipo mínimo 50% en pedidos grandes.',
-      },
-    ],
   };
 }
 
@@ -319,32 +261,6 @@ Formato JSON: {"nombre","industria","pais","como_lo_logro","mentalidad_clave","o
     registrarFallbackIA('ventas.historia');
     console.error('[ventasService] historia LLM falló, usando mock:', err instanceof Error ? err.message : err);
     return generarHistoriaMock(input, fechaISO);
-  }
-}
-
-/** Por qué fracasan los emprendimientos COMO ESTE (personalizado). */
-export async function generarPorqueFallan(input: VentasAnalisisInput): Promise<PorqueFallan> {
-  if (!hayClaveAnthropic()) return generarPorqueFallanMock(input);
-
-  try {
-    const system = `Eres un analista de supervivencia empresarial. Has visto cientos de PYMEs LATAM cerrar en sus primeros 24 meses.
-Tu trabajo: decirle al dueño POR QUÉ mueren negocios como el suyo, con honestidad quirúrgica pero constructiva.
-Basas las razones en causas documentadas (flujo, márgenes, dependencia de canal, inventario muerto, founder burnout), aplicadas AL CONTEXTO dado.
-${REGLAS_JSON}`;
-    const prompt = `${ctxProducto(input)}
-
-Explica por qué fracasan los emprendimientos de ESTE perfil (giro, canal, ticket, tamaño de equipo).
-
-Formato JSON: {"patron_comun": str, "razones":[{"titulo","descripcion","senales_alerta":[2-4],"como_evitarlo"}]}
-- patron_comun: 1-2 oraciones del patrón dominante de muerte en este perfil.
-- 3-5 razones ordenadas por mortalidad esperada en ESTE contexto.
-- senales_alerta: señales tempranas observables en EL NEGOCIO del lector.
-- como_evitarlo: acción concreta con número/plazo.`;
-    const parsed = PorqueFallanOutputSchema.parse(await llamarClaude(system, prompt, 'ventas.porque_fallan'));
-    return parsed;
-  } catch (err) {
-    console.error('[ventasService] porque_fallan LLM falló, usando mock:', err instanceof Error ? err.message : err);
-    return generarPorqueFallanMock(input);
   }
 }
 
@@ -1028,7 +944,7 @@ Genera la comparativa estratégica:
   "competidores": [...misma lista que recibí, sin modificar],
   "recomendacion_diferenciacion": "2-3 frases del ángulo ganador",
   "tabla_comparativa": [
-    {"Criterio": "Hook", "Mi producto": "...", ${competidores.map((c, i) => `"${sanitizeForLLM(c.nombre, { maxLen: 30 })}": "..."`).join(', ')}},
+    {"Criterio": "Hook", "Mi producto": "...", ${competidores.map((c) => `"${sanitizeForLLM(c.nombre, { maxLen: 30 })}": "..."`).join(', ')}},
     {"Criterio": "CTA", ...},
     {"Criterio": "Propuesta", ...},
     {"Criterio": "Tono", ...},

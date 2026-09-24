@@ -131,6 +131,9 @@ interface ProyeccionAnual {
   };
   mejor_mes: number;
   peor_mes: number;
+  /** Caja que hay que aguantar hasta recuperar lo invertido (0 = ninguna). */
+  caja_necesaria: number;
+  mes_valle: number;
 }
 
 interface EscenarioBreakeven {
@@ -149,6 +152,7 @@ interface BreakevenData {
   punto_equilibrio_alcanzado: boolean;
   mes_equilibrio: number | null;
   meses_para_recuperar_inversion: number | null;
+  payback_no_disponible: string | null;
   escenarios: EscenarioBreakeven[];
 }
 
@@ -157,7 +161,10 @@ interface ResumenFinanzas {
   color_viabilidad: string;
   mensaje_viabilidad: string;
   roi_anual: number;
+  /** Con inversión declarada es ROI de verdad; si no, retorno sobre costos fijos. */
+  base_roi: 'inversion_inicial' | 'costos_fijos_anuales';
   payback_meses: number | null;
+  payback_no_disponible: 'sin_inversion_declarada' | 'no_se_recupera_en_12_meses' | null;
   ingreso_promedio_mensual: number;
   utilidad_promedio_mensual: number;
   recomendaciones: string[];
@@ -250,11 +257,6 @@ interface AnalisisFinanzas {
 const fmt = (n: number) =>
   new Intl.NumberFormat('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
 const fmtMXN = (n: number) => `$${fmt(n)}`;
-const shortMXN = (n: number) => {
-  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(n) >= 1_000) return `$${(n / 1_000).toFixed(0)}k`;
-  return `$${n}`;
-};
 
 // ─── Normalización defensiva de payloads jsonb ───────────────────────────────
 // Las columnas *_data son jsonb sin validar: filas antiguas o sembradas a mano
@@ -343,10 +345,12 @@ function normalizeProyeccion(raw: unknown): ProyeccionAnual {
     },
     mejor_mes: mejorMes,
     peor_mes: peorMes,
+    caja_necesaria: num(r.caja_necesaria),
+    mes_valle: num(r.mes_valle),
   };
 }
 
-function normalizeBreakeven(raw: unknown, proy?: ProyeccionAnual): BreakevenData {
+function normalizeBreakeven(raw: unknown): BreakevenData {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const uBreakeven = num(r.unidades_breakeven_mes) || num(r.punto_equilibrio_unidades);
   const iBreakeven = num(r.ingresos_breakeven_mes) || num(r.punto_equilibrio_ingresos);
@@ -354,7 +358,12 @@ function normalizeBreakeven(raw: unknown, proy?: ProyeccionAnual): BreakevenData
   const mContribPct = num(r.margen_contribucion_porcentaje) || num(r.margen_contribucion_pct);
   const mesEq = nullableNum(r.mes_equilibrio) ?? nullableNum(r.mes_breakeven);
   const alc = r.punto_equilibrio_alcanzado === true || (mesEq !== null && mesEq > 0);
-  const mesesRecup = nullableNum(r.meses_para_recuperar_inversion) ?? (mesEq !== null ? mesEq : null);
+  // El payback NO se sustituye por el mes de equilibrio: cubrir costos fijos no
+  // es haber recuperado la inversión. Si el backend no lo calculó, se dice por
+  // qué (no hay inversión declarada, o no se recupera en 12 meses).
+  const mesesRecup = nullableNum(r.meses_para_recuperar_inversion);
+  const paybackNoDisponible =
+    typeof r.payback_no_disponible === 'string' ? r.payback_no_disponible : null;
 
   let escenarios = Array.isArray(r.escenarios) && r.escenarios.length > 0
     ? (r.escenarios as Record<string, unknown>[]).map((e) => ({
@@ -402,6 +411,7 @@ function normalizeBreakeven(raw: unknown, proy?: ProyeccionAnual): BreakevenData
     punto_equilibrio_alcanzado: alc,
     mes_equilibrio: mesEq,
     meses_para_recuperar_inversion: mesesRecup,
+    payback_no_disponible: paybackNoDisponible,
     escenarios,
   };
 }
@@ -445,7 +455,14 @@ function normalizeResumen(raw: unknown, proy?: ProyeccionAnual, analisis?: Anali
       : 24
   );
 
-  const payback_meses = nullableNum(r.payback_meses) ?? nullableNum((an.breakeven_data as Record<string, unknown>)?.mes_breakeven) ?? nullableNum((an.breakeven_data as Record<string, unknown>)?.mes_equilibrio);
+  // Sin payback real no se rellena con el mes de equilibrio (ver normalizeBreakeven).
+  const payback_meses = nullableNum(r.payback_meses);
+  const payback_no_disponible =
+    typeof r.payback_no_disponible === 'string'
+      ? (r.payback_no_disponible as ResumenFinanzas['payback_no_disponible'])
+      : payback_meses === null
+        ? 'sin_inversion_declarada'
+        : null;
 
   const ingreso_promedio_mensual = num(r.ingreso_promedio_mensual) || (
     proy ? Math.round(proy.totales.ingresos_totales / 12) : 0
@@ -479,7 +496,9 @@ function normalizeResumen(raw: unknown, proy?: ProyeccionAnual, analisis?: Anali
     color_viabilidad,
     mensaje_viabilidad,
     roi_anual,
+    base_roi: r.base_roi === 'inversion_inicial' ? 'inversion_inicial' : 'costos_fijos_anuales',
     payback_meses,
+    payback_no_disponible,
     ingreso_promedio_mensual,
     utilidad_promedio_mensual,
     recomendaciones,
@@ -513,13 +532,6 @@ function normalizeInputs(raw: OverrideValues | null | undefined): OverrideValues
     tasa_crecimiento_mensual: num(raw?.tasa_crecimiento_mensual),
   };
 }
-
-// Dark-theme-aware viability styles
-const VIABILIDAD_STYLES: Record<string, { card: string; dot: string }> = {
-  alta:  { card: 'bg-finanzas/10 border-finanzas/30 text-green-300', dot: 'bg-finanzas' },
-  media: { card: 'bg-amber-500/10 border-amber-500/30 text-amber-300', dot: 'bg-amber-400' },
-  baja:  { card: 'bg-red-500/10 border-red-500/30 text-red-300', dot: 'bg-brand-accent' },
-};
 
 const CHART_COLORS = {
   ingresos: '#10B981',
@@ -862,12 +874,10 @@ export default function FinanzasResultadoPage() {
   // Forma completa garantizada: ningún acceso anidado (proy.totales.*,
   // be.escenarios, res.alertas) puede lanzar aunque el jsonb venga parcial.
   const proy = normalizeProyeccion(analisis.proyeccion_data);
-  const be = normalizeBreakeven(analisis.breakeven_data, proy);
+  const be = normalizeBreakeven(analisis.breakeven_data);
   const res = normalizeResumen(analisis.resumen_data, proy, analisis);
   const riesgos = normalizeRiesgos(analisis.riesgos_data);
   const inp = normalizeInputs(analisis.inputs_data);
-  const vKey = (res?.viabilidad?.toLowerCase() as keyof typeof VIABILIDAD_STYLES) || 'media';
-  const vs = VIABILIDAD_STYLES[vKey] ?? VIABILIDAD_STYLES.media;
 
   // Chart data
   const chartData = (proy?.meses || []).map((m) => ({
@@ -951,7 +961,9 @@ export default function FinanzasResultadoPage() {
                   res.viabilidad === 'media' ? 'text-amber-300 bg-amber-500/15 border-amber-500/30' :
                   'text-red-300 bg-red-500/15 border-red-500/30'
                 }`}>Viabilidad {res.viabilidad}</div>
-                <div className="text-[10px] font-medium text-emerald-400/60 uppercase tracking-widest">ROI: {res.roi_anual}% anual</div>
+                <div className="text-[10px] font-medium text-emerald-400/60 uppercase tracking-widest">
+                  {res.base_roi === 'inversion_inicial' ? 'ROI' : 'Retorno s/ costos fijos'}: {res.roi_anual}% anual
+                </div>
               </>
             )}
           </div>
@@ -987,7 +999,9 @@ export default function FinanzasResultadoPage() {
               glow: 'bg-emerald-500/8'
             },
             {
-              label: 'Utilidad neta',
+              // La proyección no descuenta IVA, ISR ni cuotas: decirlo evita
+              // que el dueño planee gastando dinero que le debe al fisco.
+              label: 'Utilidad antes de impuestos',
               value: fmtCurrency(proy.totales.utilidad_neta_total),
               icon: (
                 <TrendingUp className={`w-5 h-5 ${proy.totales.utilidad_neta_total >= 0 ? 'text-emerald-400' : 'text-red-400'}`} strokeWidth={1.8} />
@@ -997,7 +1011,9 @@ export default function FinanzasResultadoPage() {
               glow: proy.totales.utilidad_neta_total >= 0 ? 'bg-emerald-500/5' : 'bg-red-500/5'
             },
             {
-              label: 'ROI anual',
+              // Sin inversión declarada esto mide utilidad contra costos fijos,
+              // que no es ROI: la etiqueta lo dice en vez de disfrazarlo.
+              label: res.base_roi === 'inversion_inicial' ? 'ROI anual' : 'Retorno s/ costos fijos',
               value: `${res.roi_anual}%`,
               icon: (
                 <Target className="w-5 h-5 text-blue-400" strokeWidth={1.8} />
@@ -1188,19 +1204,46 @@ export default function FinanzasResultadoPage() {
           {/* Payback + mejor/peor */}
           <div className="grid grid-cols-3 gap-4">
             {/* Payback */}
+            {/* Sin inversión declarada no hay payback: se pide el dato en vez
+                de enseñar un mes que no significa nada. */}
             <div className={`rounded-surface border p-4 text-center ${
               res.payback_meses && res.payback_meses <= 6 ? 'border-emerald-500/30 bg-emerald-500/8' :
               res.payback_meses ? 'border-amber-500/30 bg-amber-500/8' :
+              res.payback_no_disponible === 'sin_inversion_declarada' ? 'border-white/12 bg-white/4' :
               'border-red-500/30 bg-red-500/8'
             }`}>
               <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Recuperación</p>
               <p className={`text-lg font-bold ${
                 res.payback_meses && res.payback_meses <= 6 ? 'text-emerald-300' :
-                res.payback_meses ? 'text-amber-300' : 'text-red-300'
-              }`}>{res.payback_meses ? `Mes ${res.payback_meses}` : 'No en 12 meses'}</p>
-              <p className="text-[10px] text-white/35 mt-0.5">recuperación inversión</p>
+                res.payback_meses ? 'text-amber-300' :
+                res.payback_no_disponible === 'sin_inversion_declarada' ? 'text-white/50' : 'text-red-300'
+              }`}>
+                {res.payback_meses
+                  ? `Mes ${res.payback_meses}`
+                  : res.payback_no_disponible === 'sin_inversion_declarada'
+                    ? 'Sin calcular'
+                    : 'No en 12 meses'}
+              </p>
+              <p className="text-[10px] text-white/35 mt-0.5">
+                {res.payback_meses
+                  ? 'recuperas la inversión'
+                  : res.payback_no_disponible === 'sin_inversion_declarada'
+                    ? 'declara tu inversión inicial'
+                    : 'recuperación inversión'}
+              </p>
             </div>
-            {/* Mejor mes */}
+            {/* Caja necesaria: el punto más bajo del saldo. Un negocio
+                rentable en el papel puede quedarse sin dinero antes de llegar. */}
+            {proy.caja_necesaria > 0 ? (
+              <div className="rounded-surface border border-amber-500/30 bg-amber-500/8 p-4 text-center">
+                <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Caja necesaria</p>
+                <p className="text-lg font-bold text-amber-300">{fmtCurrency(proy.caja_necesaria)}</p>
+                <p className="text-[10px] text-white/35 mt-0.5">
+                  {proy.mes_valle > 0 ? `punto más bajo: mes ${proy.mes_valle}` : 'antes de arrancar'}
+                </p>
+              </div>
+            ) : (
+            /* Mejor mes */
             <div className="rounded-surface border border-emerald-500/30 bg-emerald-500/8 p-4 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-1">
                 <span className="w-1.5 h-1.5 rounded-pill bg-emerald-400" />
@@ -1209,6 +1252,7 @@ export default function FinanzasResultadoPage() {
               <p className="text-lg font-bold text-emerald-300">{proy.meses[proy.mejor_mes - 1]?.nombre_mes}</p>
               <p className="text-[10px] text-emerald-400/50 mt-0.5">{fmtCurrency(proy.meses[proy.mejor_mes - 1]?.utilidad_neta)} utilidad</p>
             </div>
+            )}
             {/* Peor mes */}
             <div className="rounded-surface border border-red-500/30 bg-red-500/8 p-4 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-1">

@@ -70,7 +70,17 @@ export interface TendenciasResult {
   picos_estacionales: Record<string, string>;
   tendencia: 'CRECIENTE' | 'ESTABLE' | 'DECRECIENTE';
   es_mock: boolean;
+  /**
+   * false = no hubo fuente de tendencias (sin SERPAPI_KEY o falló). Los campos
+   * numéricos van en cero y NO deben puntuar: antes se inventaba un volumen de
+   * búsquedas y el score lo tomaba por real.
+   */
+  fuente_disponible: boolean;
+  motivo_sin_fuente?: MotivoSinFuente;
 }
+
+/** Por qué no hay datos externos. Se muestra tal cual al usuario. */
+export type MotivoSinFuente = 'sin_configurar' | 'fuente_fallo' | 'sin_resultados';
 
 // ─── Competencia ─────────────────────────────────────────────────────────────
 
@@ -108,6 +118,13 @@ export interface CompetenciaResult {
   /** Se emite cuando la muestra web es muy inferior al censo oficial: evita
    *  leer "pocos resultados en Google" como "mercado sin competencia". */
   advertencia_muestra?: string;
+  /**
+   * false = ninguna fuente devolvió competencia (sin clave, la fuente falló o
+   * no hubo resultados). `competidores` va vacío y los factores que dependen de
+   * ella no puntúan: cero competidores encontrados NO es cero competidores.
+   */
+  fuente_disponible: boolean;
+  motivo_sin_fuente?: MotivoSinFuente;
 }
 
 // ─── Viabilidad ──────────────────────────────────────────────────────────────
@@ -138,6 +155,12 @@ export interface ViabilidadResult {
   factores_positivos: string[];
   factores_negativos: string[];
   confianza: 'alta' | 'media' | 'baja'; // NUEVO: indica si los datos son reales o estimados
+  /**
+   * Proporción del peso del modelo que sí se pudo evaluar (0-1). Con 0.35, el
+   * score salió de un tercio de las señales y la pantalla debe decirlo en vez
+   * de presentar un número redondo como si fuera un diagnóstico completo.
+   */
+  cobertura_datos: number;
 }
 
 // ─── Densidad de competencia por km² ────────────────────────────────────────
@@ -208,6 +231,17 @@ export interface TamResult {
   nse_aplicado?: string;
   pct_mercado_nse?: number;
   estacionalidad?: MesEstacional[];
+  /**
+   * De qué está hecho el número. Los tres escenarios son penetraciones
+   * SUPUESTAS sobre población (0,1 / 0,25 / 0,5 %), no una medición de mercado:
+   * la pantalla tiene que poder decirlo, y las advertencias explican qué no se
+   * pudo aplicar en este país (NSE, estacionalidad) o a esta escala.
+   */
+  supuestos: {
+    penetracion_pct: { pesimista: number; realista: number; optimista: number };
+    poblacion_base: number;
+    advertencias: string[];
+  };
 }
 
 // ─── Alertas ─────────────────────────────────────────────────────────────────

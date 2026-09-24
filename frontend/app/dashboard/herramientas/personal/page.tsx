@@ -37,6 +37,7 @@ import MotionModal from '@/components/motion/MotionModal';
 import ProductoGate from '@/components/herramientas/ProductoGate';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
 import { ProductoActivo } from '@/lib/productoActivo';
+import { Breadcrumbs, SearchInput, Toast } from '@/components/ui';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -109,16 +110,7 @@ function periodoPorTipo(tipo: Empleado['tipo_pago']): { inicio: string; fin: str
   return { inicio: lunes.toISOString().slice(0, 10), fin: domingo.toISOString().slice(0, 10) };
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
 
-function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
-  useEffect(() => { const t = setTimeout(onClose, 2800); return () => clearTimeout(t); }, [onClose]);
-  return (
-    <div className="fixed bottom-6 right-6 z-50 rounded-2xl border border-white/15 bg-[#0F1C2A]/95 backdrop-blur-xl px-5 py-3 shadow-2xl text-sm text-white/80">
-      {msg}
-    </div>
-  );
-}
 
 // ─── Modal: Empleado ──────────────────────────────────────────────────────────
 
@@ -512,14 +504,17 @@ function PersonalInner({ producto, cambiarProducto }: { producto: ProductoActivo
       {/* Header */}
       <div className="border-b border-white/8 bg-[#060e18]/95 backdrop-blur-xl sticky top-0 z-30">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-4">
-          <button onClick={() => router.back()} className="text-white/40 hover:text-white/70 transition-colors text-sm flex items-center gap-2">
-            <ArrowLeft className="w-4 h-4" />
-            <span>Herramientas</span>
-          </button>
+          <Breadcrumbs
+            items={[
+              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'Herramientas', href: '/dashboard/herramientas' },
+              { label: 'Personal & Nómina' },
+            ]}
+          />
           <div className="flex-1" />
           {tab === 'equipo' && (
             <button onClick={() => setModalNuevo(true)}
-              className="flex items-center gap-2 px-4 h-9 rounded-xl bg-rose-600 hover:bg-rose-500 text-sm font-medium transition-colors shadow-lg shadow-rose-600/20">
+              className="flex items-center gap-2 px-4 h-9 rounded-xl bg-rose-600 hover:bg-rose-500 text-sm font-medium transition-colors shadow-lg shadow-rose-600/20 active:scale-[0.98]">
               <Plus className="w-4 h-4" />
               <span>Nuevo empleado</span>
             </button>
@@ -560,7 +555,7 @@ function PersonalInner({ producto, cambiarProducto }: { producto: ProductoActivo
                   <p className="text-xs text-white/40">{k.label}</p>
                   <Icon className={`w-4 h-4 ${k.color}`} />
                 </div>
-                <p className={`text-2xl font-bold ${k.color} tabular-nums`}>{k.value}</p>
+                <p className={`text-2xl font-bold ${k.color} font-mono tabular-nums`}>{k.value}</p>
               </div>
             );
           })}
@@ -603,23 +598,13 @@ function PersonalInner({ producto, cambiarProducto }: { producto: ProductoActivo
             {/* Search + Status Pills + Frequency */}
             <div className="space-y-3">
               <div className="flex flex-col sm:flex-row gap-3">
-                <div className="relative flex-1">
-                  <Search className="w-4 h-4 text-white/30 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
+                <div className="flex-1">
+                  <SearchInput
                     value={searchEmp}
-                    onChange={e => setSearchEmp(e.target.value)}
+                    onChange={setSearchEmp}
                     placeholder="Buscar por nombre, cargo, teléfono o notas…"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-10 h-10 text-sm text-white placeholder-white/25 focus:outline-none focus:border-rose-500/50 transition-colors"
+                    shortcutKey="f"
                   />
-                  {searchEmp && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchEmp('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-white/30 hover:text-white/70 transition-colors"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
                 </div>
 
                 {/* Status Pills */}
@@ -640,7 +625,7 @@ function PersonalInner({ producto, cambiarProducto }: { producto: ProductoActivo
                         }`}
                       >
                         <span>{label}</span>
-                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold tabular-nums ${
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold tabular-nums ${
                           active ? 'bg-rose-500/40 text-rose-100' : 'bg-white/10 text-white/50'
                         }`}>
                           {count}

@@ -64,9 +64,12 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans:    ['var(--font-jakarta)', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
-        display: ['var(--font-jakarta)', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        sans:    ['var(--font-tesla)', 'var(--font-jakarta)', 'Montserrat', 'system-ui', 'sans-serif'],
+        display: ['var(--font-tesla)', 'var(--font-title)', 'Montserrat', 'system-ui', 'sans-serif'],
+        title:   ['var(--font-tesla)', 'var(--font-title)', 'Montserrat', 'system-ui', 'sans-serif'],
+        tesla:   ['var(--font-tesla)', 'Montserrat', 'system-ui', 'sans-serif'],
         mono:    ['var(--font-mono)', 'DM Mono', 'ui-monospace', 'monospace'],
+        serif:   ['var(--font-serif)', 'Playfair Display', 'Georgia', 'serif'],
       },
       /* Radios semánticos. Se resuelven vía custom properties definidas en
          app/globals.css, que el ThemeProvider re-tintea con data-radio.

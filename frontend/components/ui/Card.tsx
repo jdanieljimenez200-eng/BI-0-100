@@ -16,12 +16,12 @@ import { cn } from '@/lib/utils';
  * flotan sobre contenido o sobre un halo de color).
  */
 export const cardVariants = cva(
-  'relative overflow-hidden rounded-surface border transition-all duration-300 ease-out',
+  'relative overflow-hidden rounded-surface border transition-all duration-300 ease-out before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/[0.12] before:to-transparent pointer-events-auto',
   {
     variants: {
       tone: {
-        glass: 'border-white/[0.06] bg-[rgba(15,28,42,0.4)] backdrop-blur-[var(--blur-surface)]',
-        solid: 'border-white/[0.05] bg-[#0A121D]',
+        glass: 'border-white/[0.08] bg-[rgba(15,28,42,0.75)] backdrop-blur-md',
+        solid: 'border-white/[0.08] bg-[#0A121D]',
         bare: 'border-transparent bg-transparent',
       },
       elevation: {
@@ -31,7 +31,7 @@ export const cardVariants = cva(
         floating: 'shadow-floating',
       },
       interactive: {
-        true: 'hover:border-white/[0.14] hover:bg-white/[0.02] hover:shadow-elevated hover:-translate-y-0.5 motion-reduce:hover:translate-y-0',
+        true: 'hover:border-white/20 hover:bg-white/[0.03] hover:shadow-elevated hover:-translate-y-0.5 motion-reduce:hover:translate-y-0',
         false: '',
       },
       padding: {
@@ -95,13 +95,13 @@ export function CardHeader({
     <div className={cn('mb-5 flex items-start justify-between gap-4', className)}>
       <div className="min-w-0">
         {kicker && (
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/65">
             {kicker}
           </p>
         )}
         <h3 className="text-lg font-semibold tracking-tight text-white">{title}</h3>
         {description && (
-          <p className="mt-1.5 text-sm font-light leading-relaxed text-white/45">{description}</p>
+          <p className="mt-1.5 text-sm font-normal leading-relaxed text-white/60">{description}</p>
         )}
       </div>
       {action && <div className="shrink-0">{action}</div>}

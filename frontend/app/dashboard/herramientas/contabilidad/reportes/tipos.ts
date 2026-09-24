@@ -118,14 +118,3 @@ export interface CotizacionesReporte {
 }
 
 export type Granularidad = 'dia' | 'semana' | 'mes' | 'anio';
-
-export interface PanelReportes {
-  resumen: ResumenReporte;
-  serie: { granularidad: Granularidad; puntos: PuntoSerie[] };
-  productos: ProductoReporte[];
-  almacen: AlmacenReporte;
-  clientes: ClientesReporte;
-  horarios: HorariosReporte;
-  metodos_pago: MetodoPagoReporte[];
-  cotizaciones: CotizacionesReporte;
-}

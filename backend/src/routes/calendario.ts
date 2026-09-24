@@ -13,6 +13,8 @@ import { resolverClienteParaVenta } from '../services/crm/resolverCliente';
 import { encolarBorrarEvento, encolarGuardarCita } from '../workers/calendarQueue';
 import { hoyDePeticion } from '../utils/fechaLocal';
 import { idempotente } from '../middleware/idempotency';
+import lugaresRouter from './calendarioLugares';
+import esperaRouter from './calendarioEspera';
 
 const router = Router();
 exigirUuid(router, 'id');
@@ -21,6 +23,12 @@ router.use(requireToolCapability('citas'));
 // Desbloqueo por plan/selección para todas las rutas (sin getCount: el tope de
 // movimientos no debe bloquear lecturas).
 router.use(requireHerramientaAccess('citas'));
+
+// Fila de espera y catálogo de lugares. Van ANTES de las rutas `/:id` de abajo:
+// si se montaran después, `GET /api/calendario/lugares` entraría por `/:id` y
+// `exigirUuid` respondería 400 al ver "lugares" donde espera un UUID.
+router.use('/lugares', lugaresRouter);
+router.use('/espera', esperaRouter);
 
 // Tope freemium: cada cita agendada cuenta como un movimiento.
 const contarCitas = (cuentaId: string) =>

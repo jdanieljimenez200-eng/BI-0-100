@@ -13,6 +13,9 @@ export { Badge, badgeVariants, type BadgeProps } from './Badge';
 export { Input, type InputProps } from './Input';
 export { Skeleton, SkeletonText } from './Skeleton';
 export { EmptyState } from './EmptyState';
+export { Breadcrumbs, type BreadcrumbItem, type BreadcrumbsProps } from './Breadcrumbs';
+export { SearchInput, type SearchInputProps } from './SearchInput';
+export { Toast, type ToastProps, type ToastType } from './Toast';
 export { Stat } from './Stat';
 export { Pagination } from './Pagination';
 export { Table, TableWrap, THead, TBody, TR, TH, TD } from './Table';
@@ -32,4 +35,12 @@ export {
   MotionAccordion,
   PageTransition,
   Reveal,
+  SectionReveal,
+  SectionRevealItem,
 } from '../motion';
+
+// Primitivos de animación avanzada (Vengence UI + Skiper UI + Anim Master Lib)
+export { BorderBeam, type BorderBeamProps } from './BorderBeam';
+export { ShinyText, type ShinyTextProps } from './ShinyText';
+export { KineticRoll, type KineticRollProps } from './KineticRoll';
+export { ShimmerButton, type ShimmerButtonProps } from './ShimmerButton';

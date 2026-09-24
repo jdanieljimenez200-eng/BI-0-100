@@ -95,24 +95,3 @@ export const ORDEN_MODULOS: ModuloSlug[] = [
   'finanzas',
   'legal',
 ];
-
-/**
- * Convierte `#RRGGBB` o `#RGB` en el triplete "R G B" que espera
- * `rgb(var(--mod-rgb) / alpha)`. Devuelve blanco si el valor no es un hex
- * válido, de modo que un color mal escrito degrade sin romper el layout.
- */
-export function hexARgbTriplete(hex: string): string {
-  const limpio = hex.trim().replace(/^#/, '');
-  const expandido =
-    limpio.length === 3
-      ? limpio
-          .split('')
-          .map((c) => c + c)
-          .join('')
-      : limpio;
-
-  if (!/^[0-9a-fA-F]{6}$/.test(expandido)) return '255 255 255';
-
-  const valor = Number.parseInt(expandido, 16);
-  return `${(valor >> 16) & 255} ${(valor >> 8) & 255} ${valor & 255}`;
-}

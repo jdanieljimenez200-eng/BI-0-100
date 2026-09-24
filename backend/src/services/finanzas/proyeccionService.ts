@@ -42,6 +42,18 @@ export function generarProyeccion(input: FinanzasInput): ProyeccionAnual {
     });
   }
 
+  // Cuánta caja hay que aguantar antes de que el negocio se pague solo: el
+  // punto más bajo del acumulado contando la inversión inicial. Sin esto, un
+  // negocio «rentable» en el papel podía quedarse sin dinero en el mes 3 y la
+  // proyección no lo mencionaba.
+  const inversion = Math.max(0, Number(input.inversion_inicial) || 0);
+  let valle = { monto: -inversion, mes: 0 };
+  for (const m of meses) {
+    const saldo = m.acumulado_neto - inversion;
+    if (saldo < valle.monto) valle = { monto: saldo, mes: m.mes };
+  }
+  const caja_necesaria = valle.monto < 0 ? r2(Math.abs(valle.monto)) : 0;
+
   const totales = {
     unidades_totales: meses.reduce((s, m) => s + m.unidades, 0),
     ingresos_totales: round2(meses.reduce((s, m) => s + m.ingresos, 0)),
@@ -55,7 +67,18 @@ export function generarProyeccion(input: FinanzasInput): ProyeccionAnual {
   const mejor_mes = meses.reduce((best, m) => m.utilidad_neta > meses[best - 1].utilidad_neta ? m.mes : best, 1);
   const peor_mes = meses.reduce((worst, m) => m.utilidad_neta < meses[worst - 1].utilidad_neta ? m.mes : worst, 1);
 
-  return { meses, totales, mejor_mes, peor_mes };
+  return {
+    meses,
+    totales,
+    mejor_mes,
+    peor_mes,
+    caja_necesaria,
+    mes_valle: valle.mes,
+    // La utilidad de esta proyección es ANTES de impuestos: no se descuentan
+    // IVA, ISR ni cuotas patronales. El estimador fiscal real vive en la
+    // pestaña de movimientos, que trabaja sobre lo que de verdad se facturó.
+    utilidad_antes_de_impuestos: true,
+  };
 }
 
 function round2(n: number): number {

@@ -28,6 +28,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { Breadcrumbs, SearchInput } from '@/components/ui';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -118,7 +119,7 @@ const META: Record<string, HerramientaMeta> = {
     categoria: 'comercial',
     categoriaLabel: 'Agenda & Citas',
     subtitulo: 'Agenda visual',
-    descripcion: 'Calendario mensual y vista agenda con citas por color. Recordatorios automáticos por WhatsApp.',
+    descripcion: 'Calendario mensual, agenda y fila de espera del día con tus lugares (mesa, silla, consultorio). Avisas por WhatsApp cuando toca el turno.',
     icono: Calendar,
     acentoTw: 'text-cyan-300', glowTw: 'bg-cyan-500/10', borderTw: 'border-cyan-500/25',
     href: '/dashboard/herramientas/calendario',
@@ -244,8 +245,8 @@ function HerramientaCard({
               </span>
             )}
             {noActivada && !activable && (
-              <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/40 border border-white/12 rounded-full px-2 py-0.5 flex items-center gap-1">
-                <Lock className="w-2.5 h-2.5" />
+              <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/40 border border-white/12 rounded-full px-2 py-0.5 flex items-center gap-1 font-mono tabular-nums">
+                <Lock className="w-2.5 h-2.5 font-sans" />
                 ${h.precio_mxn}/mes
               </span>
             )}
@@ -317,6 +318,7 @@ export default function HerramientasPage() {
   const [plan, setPlan] = useState('');
   const [seleccion, setSeleccion] = useState<SeleccionInfo>({ permite: false, max: -1 });
   const [filtroCategoria, setFiltroCategoria] = useState<'todas' | 'finanzas' | 'operaciones' | 'comercial'>('todas');
+  const [busqueda, setBusqueda] = useState('');
   const [error, setError] = useState(false);
   const [mutandoKey, setMutandoKey] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -363,9 +365,27 @@ export default function HerramientasPage() {
   }, [herramientas]);
 
   const herramientasFiltradas = useMemo(() => {
-    if (filtroCategoria === 'todas') return herramientas;
-    return herramientas.filter((h) => META[h.herramienta]?.categoria === filtroCategoria);
-  }, [herramientas, filtroCategoria]);
+    let result = herramientas;
+    if (filtroCategoria !== 'todas') {
+      result = result.filter((h) => META[h.herramienta]?.categoria === filtroCategoria);
+    }
+    const q = busqueda.toLowerCase().trim();
+    if (q) {
+      result = result.filter((h) => {
+        const meta = META[h.herramienta];
+        return (
+          h.label.toLowerCase().includes(q) ||
+          h.herramienta.toLowerCase().includes(q) ||
+          (meta && (
+            meta.subtitulo.toLowerCase().includes(q) ||
+            meta.descripcion.toLowerCase().includes(q) ||
+            meta.categoriaLabel.toLowerCase().includes(q)
+          ))
+        );
+      });
+    }
+    return result;
+  }, [herramientas, filtroCategoria, busqueda]);
 
   const seleccionar = async (key: string) => {
     setMutandoKey(key);
@@ -402,11 +422,13 @@ export default function HerramientasPage() {
       <div className="fixed bottom-[-10%] left-[-8%] w-[38vh] h-[38vh] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
 
       {/* Breadcrumbs */}
-      <div className="flex items-center gap-2 text-sm mb-8">
-        <Link href="/dashboard" className="text-white/35 hover:text-white/70 transition-colors">Dashboard</Link>
-        <span className="text-white/20">›</span>
-        <span className="text-white/70 font-medium">Herramientas</span>
-      </div>
+      <Breadcrumbs
+        items={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Herramientas' },
+        ]}
+        className="mb-8"
+      />
 
       {/* Hero title */}
       <motion.div
@@ -451,7 +473,7 @@ export default function HerramientasPage() {
               <Boxes className="w-3.5 h-3.5" />
             </div>
           </div>
-          <p className="text-2xl font-extrabold text-white tabular-nums leading-tight">{abribles.length} <span className="text-sm font-normal text-white/30">/ {herramientas.length}</span></p>
+          <p className="text-2xl font-extrabold text-white font-mono tabular-nums leading-tight">{abribles.length} <span className="text-sm font-normal text-white/30 font-sans">/ {herramientas.length}</span></p>
           <p className="text-[11px] text-white/40 mt-1">Activas para tu equipo</p>
         </div>
 
@@ -462,7 +484,7 @@ export default function HerramientasPage() {
               <RefreshCw className="w-3.5 h-3.5" />
             </div>
           </div>
-          <p className="text-2xl font-extrabold text-cyan-300 tabular-nums leading-tight">{finanzasSyncCount} <span className="text-sm font-normal text-cyan-400/50">servicios</span></p>
+          <p className="text-2xl font-extrabold text-cyan-300 font-mono tabular-nums leading-tight">{finanzasSyncCount} <span className="text-sm font-normal text-cyan-400/50 font-sans">servicios</span></p>
           <p className="text-[11px] text-white/40 mt-1">Flujo de caja automático</p>
         </div>
 
@@ -473,7 +495,7 @@ export default function HerramientasPage() {
               <Users className="w-3.5 h-3.5" />
             </div>
           </div>
-          <p className="text-2xl font-extrabold text-violet-300 tabular-nums leading-tight">{comercialCount} <span className="text-sm font-normal text-violet-400/50">servicios</span></p>
+          <p className="text-2xl font-extrabold text-violet-300 font-mono tabular-nums leading-tight">{comercialCount} <span className="text-sm font-normal text-violet-400/50 font-sans">servicios</span></p>
           <p className="text-[11px] text-white/40 mt-1">Cotizaciones, CRM y Citas</p>
         </div>
 
@@ -489,35 +511,46 @@ export default function HerramientasPage() {
         </div>
       </div>
 
-      {/* ══ Filtro por Categorías ══ */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none mb-6">
-        {([
-          { key: 'todas', label: 'Todas', count: conteosCategorias.todas, icon: Layers },
-          { key: 'finanzas', label: 'Finanzas & Cobro', count: conteosCategorias.finanzas, icon: CreditCard },
-          { key: 'operaciones', label: 'Operaciones & Stock', count: conteosCategorias.operaciones, icon: Boxes },
-          { key: 'comercial', label: 'Comercial & Clientes', count: conteosCategorias.comercial, icon: Briefcase },
-        ] as const).map((tab) => {
-          const Icon = tab.icon;
-          const activo = filtroCategoria === tab.key;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setFiltroCategoria(tab.key)}
-              className={`text-xs px-3.5 py-2 rounded-xl border font-semibold transition-all shrink-0 flex items-center gap-2 ${
-                activo
-                  ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30'
-                  : 'border-white/8 bg-[#0F1C2A] text-white/50 hover:border-white/20 hover:text-white/80'
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              <span>{tab.label}</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${activo ? 'bg-emerald-500/30 text-emerald-200 font-bold' : 'bg-white/5 text-white/40'}`}>
-                {tab.count}
-              </span>
-            </button>
-          );
-        })}
+      {/* ══ Filtro por Categorías y Búsqueda Rápida ══ */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          {([
+            { key: 'todas', label: 'Todas', count: conteosCategorias.todas, icon: Layers },
+            { key: 'finanzas', label: 'Finanzas & Cobro', count: conteosCategorias.finanzas, icon: CreditCard },
+            { key: 'operaciones', label: 'Operaciones & Stock', count: conteosCategorias.operaciones, icon: Boxes },
+            { key: 'comercial', label: 'Comercial & Clientes', count: conteosCategorias.comercial, icon: Briefcase },
+          ] as const).map((tab) => {
+            const Icon = tab.icon;
+            const activo = filtroCategoria === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setFiltroCategoria(tab.key)}
+                className={`text-xs px-3.5 py-2 rounded-xl border font-semibold transition-all shrink-0 flex items-center gap-2 ${
+                  activo
+                    ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30'
+                    : 'border-white/8 bg-[#0F1C2A] text-white/50 hover:border-white/20 hover:text-white/80'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono tabular-nums ${activo ? 'bg-emerald-500/30 text-emerald-200 font-bold' : 'bg-white/5 text-white/40'}`}>
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="w-full sm:w-72 shrink-0">
+          <SearchInput
+            value={busqueda}
+            onChange={setBusqueda}
+            placeholder="Buscar herramienta..."
+            shortcutKey="k"
+          />
+        </div>
       </div>
 
       {aviso && (

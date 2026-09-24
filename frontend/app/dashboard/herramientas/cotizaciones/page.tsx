@@ -27,6 +27,7 @@ import ProductoGate from '@/components/herramientas/ProductoGate';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
 import { ProductoActivo } from '@/lib/productoActivo';
 import { MotionModal } from '@/components/motion/MotionModal';
+import { Breadcrumbs, SearchInput, Toast } from '@/components/ui';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -102,16 +103,7 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
 
-function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
-  useEffect(() => { const t = setTimeout(onClose, 2800); return () => clearTimeout(t); }, [onClose]);
-  return (
-    <div className="fixed bottom-6 right-6 z-50 rounded-2xl border border-white/15 bg-[#0F1C2A]/95 backdrop-blur-xl px-5 py-3 shadow-2xl text-sm text-white/80">
-      {msg}
-    </div>
-  );
-}
 
 // ─── Print Modal (PDF via window.print) ───────────────────────────────────────
 
@@ -321,24 +313,35 @@ function ItemRow({ item, onChange, onRemove }: {
   onRemove: () => void;
 }) {
   return (
-    <div className="grid grid-cols-[1fr_60px_88px_88px_32px] gap-2 items-center">
+    <div className="flex flex-col sm:grid sm:grid-cols-[1fr_60px_88px_88px_32px] gap-2 items-stretch sm:items-center bg-white/[0.02] sm:bg-transparent p-2.5 sm:p-0 rounded-xl sm:rounded-none border border-white/5 sm:border-0">
       <input value={item.descripcion}
         onChange={e => onChange(calcItem({ ...item, descripcion: e.target.value }))}
         placeholder="Descripción del producto o servicio"
-        className="bg-white/5 border border-white/10 rounded-xl px-3 h-9 text-sm text-white placeholder-white/20 focus:outline-none focus:border-blue-500/40"
+        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 h-9 text-sm text-white placeholder-white/20 focus:outline-none focus:border-blue-500/40"
       />
-      <input type="number" min="1" value={item.cantidad}
-        onChange={e => onChange(calcItem({ ...item, cantidad: Math.max(1, Number(e.target.value) || 1) }))}
-        className="bg-white/5 border border-white/10 rounded-xl px-2 h-9 text-sm text-white text-center focus:outline-none focus:border-blue-500/40"
-      />
-      <input type="number" min="0" step="0.01" value={item.precio_unitario}
-        onChange={e => onChange(calcItem({ ...item, precio_unitario: Math.max(0, Number(e.target.value) || 0) }))}
-        className="bg-white/5 border border-white/10 rounded-xl px-2 h-9 text-sm text-white text-right focus:outline-none focus:border-blue-500/40"
-      />
-      <div className="h-9 rounded-xl bg-blue-500/8 border border-blue-500/15 flex items-center justify-end px-3 text-sm text-blue-300 font-medium">
-        {item.subtotal.toFixed(2)}
+      <div className="flex items-center gap-2 sm:contents">
+        <div className="flex-1 sm:flex-initial">
+          <span className="text-[10px] text-white/40 sm:hidden block mb-0.5">Cant.</span>
+          <input type="number" min="1" value={item.cantidad}
+            onChange={e => onChange(calcItem({ ...item, cantidad: Math.max(1, Number(e.target.value) || 1) }))}
+            className="w-full sm:w-auto bg-white/5 border border-white/10 rounded-xl px-2 h-9 text-sm text-white text-center focus:outline-none focus:border-blue-500/40"
+          />
+        </div>
+        <div className="flex-1 sm:flex-initial">
+          <span className="text-[10px] text-white/40 sm:hidden block mb-0.5">Precio</span>
+          <input type="number" min="0" step="0.01" value={item.precio_unitario}
+            onChange={e => onChange(calcItem({ ...item, precio_unitario: Math.max(0, Number(e.target.value) || 0) }))}
+            className="w-full sm:w-auto bg-white/5 border border-white/10 rounded-xl px-2 h-9 text-sm text-white text-right focus:outline-none focus:border-blue-500/40 font-mono"
+          />
+        </div>
+        <div className="flex-1 sm:flex-initial">
+          <span className="text-[10px] text-white/40 sm:hidden block mb-0.5">Subtotal</span>
+          <div className="h-9 rounded-xl bg-blue-500/8 border border-blue-500/15 flex items-center justify-end px-3 text-sm text-blue-300 font-medium font-mono">
+            {item.subtotal.toFixed(2)}
+          </div>
+        </div>
+        <button type="button" onClick={onRemove} aria-label="Eliminar ítem" className="shrink-0 text-white/40 hover:text-red-400 transition-colors text-lg leading-none p-2 sm:p-0">×</button>
       </div>
-      <button type="button" onClick={onRemove} aria-label="Eliminar ítem" className="text-white/25 hover:text-red-400 transition-colors text-lg leading-none">×</button>
     </div>
   );
 }
@@ -453,9 +456,9 @@ function CotizacionModal({ cotizacion, negocioId, productoId, onClose, onSaved }
           {/* Items */}
           <div>
             <p className="text-xs text-white/40 uppercase tracking-wide mb-3">Ítems / Servicios</p>
-            <div className="grid grid-cols-[1fr_60px_88px_88px_32px] gap-2 mb-2">
+            <div className="hidden sm:grid sm:grid-cols-[1fr_60px_88px_88px_32px] gap-2 mb-2">
               {['Descripción', 'Cant.', 'Precio', 'Subtotal', ''].map(h => (
-                <span key={h} className="text-xs text-white/30 text-right first:text-left">{h}</span>
+                <span key={h} className="text-xs text-white/40 text-right first:text-left">{h}</span>
               ))}
             </div>
             <div className="space-y-2">
@@ -741,13 +744,14 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
       <div className="fixed bottom-[-12%] left-[-10%] w-[35vh] h-[35vh] bg-emerald-500/5 rounded-full blur-[110px] pointer-events-none" />
 
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-xs text-white/40 mb-6">
-        <Link href="/dashboard" className="hover:text-white transition-colors">Dashboard</Link>
-        <span>›</span>
-        <Link href="/dashboard/herramientas" className="hover:text-white transition-colors">Herramientas</Link>
-        <span>›</span>
-        <span className="text-white font-medium">Cotizaciones</span>
-      </div>
+      <Breadcrumbs
+        items={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Herramientas', href: '/dashboard/herramientas' },
+          { label: 'Cotizaciones' },
+        ]}
+        className="mb-6"
+      />
 
       {/* Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -787,7 +791,7 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
 
           <button
             onClick={() => { setEditando(null); setModalNuevo(true); }}
-            className="flex items-center gap-2 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-colors shadow-[0_4px_16px_rgba(59,130,246,0.3)]"
+            className="flex items-center gap-2 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-colors shadow-[0_4px_16px_rgba(59,130,246,0.3)] active:scale-[0.98]"
           >
             <Plus className="w-4 h-4" />
             Nueva Cotización
@@ -802,7 +806,7 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
             <span className="text-[10px] font-bold uppercase tracking-wider">Total Cotizado</span>
             <FileText className="w-4 h-4 text-white/30" />
           </div>
-          <p className="text-2xl font-bold text-white my-1">
+          <p className="text-2xl font-bold text-white my-1 font-mono tabular-nums">
             ${stats.valorTotal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </p>
           <p className="text-[10px] text-white/40">{stats.total} propuestas generadas</p>
@@ -813,7 +817,7 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
             <span className="text-[10px] font-bold uppercase tracking-wider">Total Ganado</span>
             <DollarSign className="w-4 h-4 text-emerald-400" />
           </div>
-          <p className="text-2xl font-bold text-emerald-300 my-1">
+          <p className="text-2xl font-bold text-emerald-300 my-1 font-mono tabular-nums">
             ${stats.valorGanado.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </p>
           <p className="text-[10px] text-emerald-400/80">{stats.aceptadas} cotizaciones aceptadas</p>
@@ -824,7 +828,7 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
             <span className="text-[10px] font-bold uppercase tracking-wider">Tasa de Cierre</span>
             <Percent className="w-4 h-4 text-blue-400" />
           </div>
-          <p className="text-2xl font-bold text-blue-300 my-1">{stats.tasaConversion}%</p>
+          <p className="text-2xl font-bold text-blue-300 my-1 font-mono tabular-nums">{stats.tasaConversion}%</p>
           <p className="text-[10px] text-white/40">Conversión sobre total</p>
         </div>
 
@@ -833,30 +837,20 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
             <span className="text-[10px] font-bold uppercase tracking-wider">En Seguimiento</span>
             <Clock className="w-4 h-4 text-amber-400" />
           </div>
-          <p className="text-2xl font-bold text-amber-300 my-1">{stats.enviadas + stats.borradores}</p>
+          <p className="text-2xl font-bold text-amber-300 my-1 font-mono tabular-nums">{stats.enviadas + stats.borradores}</p>
           <p className="text-[10px] text-white/40">{stats.enviadas} enviadas · {stats.borradores} borradores</p>
         </div>
       </div>
 
       {/* Filters & Search bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="w-4 h-4 text-white/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
+        <div className="w-full sm:max-w-sm">
+          <SearchInput
             value={searchCotizaciones}
-            onChange={(e) => setSearchCotizaciones(e.target.value)}
-            placeholder="Buscar por # cotización, cliente o empresa..."
-            className="w-full bg-[#0F1C2A] border border-white/10 rounded-xl pl-9 pr-8 py-2.5 text-xs text-white placeholder:text-white/30 focus:border-blue-500/50 outline-none"
+            onChange={setSearchCotizaciones}
+            placeholder="Buscar cotización, cliente o empresa..."
+            shortcutKey="f"
           />
-          {searchCotizaciones && (
-            <button
-              onClick={() => setSearchCotizaciones('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
 
         <div className="flex gap-1.5 overflow-x-auto pb-1">
@@ -877,7 +871,7 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
               }`}
             >
               <span>{s.label}</span>
-              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+              <span className={`text-[10px] font-mono tabular-nums font-bold px-1.5 py-0.2 rounded-full ${
                 filtroEstado === s.value ? 'bg-blue-500/40 text-blue-100' : 'bg-white/10 text-white/40'
               }`}>
                 {s.count}
@@ -889,8 +883,10 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
 
       {/* Lista */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+        <div className="space-y-3">
+          {[1, 2, 3].map((k) => (
+            <div key={k} className="h-20 rounded-2xl bg-white/[0.03] border border-white/8 animate-pulse" />
+          ))}
         </div>
       ) : visibles.length === 0 ? (
         <div className="text-center py-16 bg-[#0F1C2A]/60 border border-white/10 rounded-3xl">
@@ -925,7 +921,7 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
           {visibles.map((cot) => (
             <div
               key={cot.id}
-              className="flex flex-col sm:flex-row sm:items-center gap-3 bg-[#0F1C2A] border border-white/8 rounded-2xl px-5 py-4 hover:border-blue-500/30 transition-all group"
+              className="relative flex flex-col sm:flex-row sm:items-center gap-3 bg-[#0F1C2A] border border-white/8 rounded-2xl px-5 py-4 hover:border-blue-500/30 transition-all group overflow-hidden before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/[0.08] before:to-transparent"
             >
               <div className="flex-shrink-0 sm:w-32">
                 <p className="text-sm font-mono font-bold text-white">{cot.numero}</p>
@@ -942,10 +938,10 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
               </div>
 
               <div className="text-left sm:text-right flex-shrink-0">
-                <p className="text-base font-bold text-white">
+                <p className="text-base font-bold text-white font-mono tabular-nums">
                   {cot.moneda} ${Number(cot.total).toFixed(2)}
                 </p>
-                <p className="text-[11px] text-white/40">{fmtDate(cot.fecha_creacion)}</p>
+                <p className="text-[11px] text-white/40 font-mono tabular-nums">{fmtDate(cot.fecha_creacion)}</p>
               </div>
 
               {/* Actions */}
@@ -1027,7 +1023,7 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
         <PrintModal cot={printTarget} onClose={() => setPrintTarget(null)} />
       )}
 
-      {toast && <Toast msg={toast} onClose={() => setToast('')} />}
+      {toast && <Toast message={toast} onClose={() => setToast('')} />}
     </div>
   );
 }

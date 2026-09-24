@@ -1,5 +1,6 @@
 import { TamResult, TamEscenario, MesEstacional } from './types';
 import { getPoblacionRegion, NSE_PCT, getPaisInfo } from '../../utils/latam';
+import { paisTieneTablaNse, paisTieneCalendarioComercial } from './coberturaPais';
 
 // ─── Inputs ──────────────────────────────────────────────────────────────────
 
@@ -217,11 +218,29 @@ export function calcularTam(input: TamInput): TamResult {
       break;
   }
 
-  // 2. Aplicar filtro NSE si se proporcionó
+  const advertencias: string[] = [];
+
+  // Un negocio de barrio no vende a todo el estado. No tenemos población por
+  // colonia, así que se dice de qué base salió el número en vez de presentarlo
+  // como si fuera el mercado de la puerta de al lado.
+  if (scope === 'local') {
+    advertencias.push(
+      `La base son los ${poblacionBase.toLocaleString('es-MX')} habitantes de ${ubicacion}, no los de tu zona inmediata: si atiendes solo un barrio, tu mercado real es una fracción de esto.`
+    );
+  }
+
+  // 2. Aplicar filtro NSE si se proporcionó.
+  //    Solo donde existe una tabla real: NSE_PCT es la clasificación AMAI de
+  //    México y multiplicarla en Colombia (estratos 1-6) o Brasil (clases con
+  //    otros cortes) daba un recorte de población sin ningún respaldo.
   let nseAplicado: string | undefined;
   let pctMercadoNse: number | undefined;
 
-  if (nseTarget) {
+  if (nseTarget && !paisTieneTablaNse(pais)) {
+    advertencias.push(
+      `No aplicamos el filtro de nivel socioeconómico: la tabla que usamos es la clasificación AMAI de México y no describe la estructura de ${paisInfo.nombre}.`
+    );
+  } else if (nseTarget) {
     const nseKeys = resolveNseKeys(nseTarget);
     // Varios segmentos suman su porcentaje de población (tope 100%).
     const pctNse = Math.min(
@@ -247,8 +266,14 @@ export function calcularTam(input: TamInput): TamResult {
   const tamMaximo = optimista.mercado_anual;
   const tamPromedio = realista.mercado_anual;
 
-  // 5. Estacionalidad
-  const estacionalidad = getEstacionalidad(categoria);
+  // 5. Estacionalidad: el calendario comercial que tenemos (Buen Fin, fiestas
+  //    patrias, cuesta de enero) es mexicano. En otro país no se muestra.
+  const estacionalidad = paisTieneCalendarioComercial(pais) ? getEstacionalidad(categoria) : undefined;
+  if (!paisTieneCalendarioComercial(pais) && getEstacionalidad(categoria)) {
+    advertencias.push(
+      `No mostramos estacionalidad: nuestro calendario comercial es el mexicano y no aplica a ${paisInfo.nombre}.`
+    );
+  }
 
   return {
     scope,
@@ -266,5 +291,16 @@ export function calcularTam(input: TamInput): TamResult {
     ...(nseAplicado ? { nse_aplicado: nseAplicado } : {}),
     ...(pctMercadoNse ? { pct_mercado_nse: pctMercadoNse } : {}),
     ...(estacionalidad ? { estacionalidad } : {}),
+    // Los tres escenarios son penetraciones supuestas sobre población, no una
+    // medición: se declara para que la pantalla no los presente como un hecho.
+    supuestos: {
+      penetracion_pct: {
+        pesimista: PENETRACION.pesimista,
+        realista: PENETRACION.realista,
+        optimista: PENETRACION.optimista,
+      },
+      poblacion_base: poblacionBase,
+      advertencias,
+    },
   };
 }

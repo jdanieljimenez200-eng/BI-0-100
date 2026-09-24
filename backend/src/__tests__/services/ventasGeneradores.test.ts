@@ -1,7 +1,6 @@
 import {
   generarTipsMock,
   generarHistoriaMock,
-  generarPorqueFallanMock,
   generarRebatidasMock,
   generarFollowUpsMock,
   generarPalabrasClaveAdsMock,
@@ -72,25 +71,6 @@ describe('ventasService — generadores deterministas (mock sin IA)', () => {
       expect(h.estrategia_marketing).toBeTruthy();
       expect(h.metricas).toContain('$');
       expect(h.leccion_aplicable).toBeTruthy();
-    });
-  });
-
-  describe('generarPorqueFallanMock', () => {
-    it('estructura completa con razones ordenadas y señales', () => {
-      const pf = generarPorqueFallanMock(inputBase);
-      expect(pf.patron_comun.length).toBeGreaterThan(20);
-      expect(pf.razones.length).toBeGreaterThanOrEqual(3);
-      for (const r of pf.razones) {
-        expect(r.titulo).toBeTruthy();
-        expect(r.descripcion).toBeTruthy();
-        expect(r.senales_alerta.length).toBeGreaterThanOrEqual(2);
-        expect(r.como_evitarlo).toBeTruthy();
-      }
-    });
-
-    it('personaliza el patrón con la categoría del producto', () => {
-      const pf = generarPorqueFallanMock({ ...inputBase, categoria: 'cafetería' });
-      expect(pf.patron_comun).toContain('cafetería');
     });
   });
 

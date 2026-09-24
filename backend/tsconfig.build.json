@@ -2,9 +2,14 @@
   // Build de producción (npm run build → dist/, lo que copia Dockerfile.prod).
   // Sin .d.ts ni .map: nadie importa este paquete como librería, y los mapas solo
   // engordaban la imagen. `npm run typecheck` sigue usando tsconfig.json.
+  //
+  // Sin `incremental`: el .tsbuildinfo compartido con typecheck no registra qué
+  // hay en dist/, así que tras borrar dist/ el build salía con código 0 sin
+  // emitir nada. Un build de producción siempre debe ser completo.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "declaration": false,
-    "sourceMap": false
+    "sourceMap": false,
+    "incremental": false
   }
 }

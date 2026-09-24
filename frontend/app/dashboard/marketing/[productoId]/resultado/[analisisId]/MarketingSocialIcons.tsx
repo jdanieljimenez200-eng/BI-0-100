@@ -110,7 +110,7 @@ export function IconDefaultChannel({ className = 'w-4 h-4' }: { className?: stri
 export interface PlatformMeta {
   key: string;
   name: string;
-  emoji: string;
+  emoji?: string;
   badge: string;
   color: string;
   bgClass: string;
@@ -126,7 +126,7 @@ export function getPlatformMeta(rawName?: string | null): PlatformMeta {
     return {
       key: 'youtube',
       name: norm.includes('short') ? 'YouTube Shorts' : 'YouTube',
-      emoji: '📺',
+      emoji: '',
       badge: 'YT',
       color: '#FF0000',
       bgClass: 'bg-red-500/15',
@@ -140,7 +140,7 @@ export function getPlatformMeta(rawName?: string | null): PlatformMeta {
     return {
       key: 'instagram',
       name: norm.includes('reel') ? 'Instagram Reels' : 'Instagram',
-      emoji: '📸',
+      emoji: '',
       badge: 'IG',
       color: '#E1306C',
       bgClass: 'bg-pink-500/15',
@@ -154,7 +154,7 @@ export function getPlatformMeta(rawName?: string | null): PlatformMeta {
     return {
       key: 'tiktok',
       name: 'TikTok',
-      emoji: '🎵',
+      emoji: '',
       badge: 'TT',
       color: '#00F2FE',
       bgClass: 'bg-cyan-500/15',
@@ -168,7 +168,7 @@ export function getPlatformMeta(rawName?: string | null): PlatformMeta {
     return {
       key: 'facebook',
       name: 'Facebook',
-      emoji: '👥',
+      emoji: '',
       badge: 'FB',
       color: '#1877F2',
       bgClass: 'bg-blue-500/15',
@@ -182,7 +182,7 @@ export function getPlatformMeta(rawName?: string | null): PlatformMeta {
     return {
       key: 'whatsapp',
       name: 'WhatsApp',
-      emoji: '💬',
+      emoji: '',
       badge: 'WA',
       color: '#25D366',
       bgClass: 'bg-emerald-500/15',
@@ -196,7 +196,7 @@ export function getPlatformMeta(rawName?: string | null): PlatformMeta {
     return {
       key: 'linkedin',
       name: 'LinkedIn',
-      emoji: '💼',
+      emoji: '',
       badge: 'LI',
       color: '#0A66C2',
       bgClass: 'bg-sky-500/15',
@@ -210,7 +210,7 @@ export function getPlatformMeta(rawName?: string | null): PlatformMeta {
     return {
       key: 'x',
       name: 'X (Twitter)',
-      emoji: '𝕏',
+      emoji: '',
       badge: 'X',
       color: '#E7E9EA',
       bgClass: 'bg-slate-500/15',
@@ -224,7 +224,7 @@ export function getPlatformMeta(rawName?: string | null): PlatformMeta {
     return {
       key: 'pinterest',
       name: 'Pinterest',
-      emoji: '📌',
+      emoji: '',
       badge: 'PT',
       color: '#E60023',
       bgClass: 'bg-red-500/15',
@@ -238,7 +238,7 @@ export function getPlatformMeta(rawName?: string | null): PlatformMeta {
     return {
       key: 'google',
       name: 'Google Ads',
-      emoji: '🎯',
+      emoji: '',
       badge: 'GA',
       color: '#4285F4',
       bgClass: 'bg-blue-500/15',
@@ -252,7 +252,7 @@ export function getPlatformMeta(rawName?: string | null): PlatformMeta {
     return {
       key: 'telegram',
       name: 'Telegram',
-      emoji: '✈️',
+      emoji: '',
       badge: 'TG',
       color: '#229ED9',
       bgClass: 'bg-sky-500/15',
@@ -266,7 +266,7 @@ export function getPlatformMeta(rawName?: string | null): PlatformMeta {
     return {
       key: 'threads',
       name: 'Threads',
-      emoji: '🧵',
+      emoji: '',
       badge: 'TH',
       color: '#FFFFFF',
       bgClass: 'bg-zinc-500/15',
@@ -280,7 +280,7 @@ export function getPlatformMeta(rawName?: string | null): PlatformMeta {
     return {
       key: 'email',
       name: 'Email Marketing',
-      emoji: '✉️',
+      emoji: '',
       badge: 'EM',
       color: '#F59E0B',
       bgClass: 'bg-amber-500/15',
@@ -294,7 +294,7 @@ export function getPlatformMeta(rawName?: string | null): PlatformMeta {
   return {
     key: 'general',
     name: rawName || 'Canal Digital',
-    emoji: '📢',
+    emoji: '',
     badge: (rawName || 'SM').slice(0, 2).toUpperCase(),
     color: '#8B5CF6',
     bgClass: 'bg-purple-500/15',
@@ -350,7 +350,7 @@ export function PlatformBadge({
           <IconComponent className={iconSizes} />
         </span>
       )}
-      {showEmoji && (
+      {showEmoji && meta.emoji && (
         <span className="leading-none select-none text-[110%]" aria-hidden="true">
           {meta.emoji}
         </span>

@@ -32,13 +32,21 @@ export function useAnalysisLoaderGate(
   const minDone = useMinLoadingTime(minMs);
   const loaderDone = ready && minDone;
 
-  const [handoffDone, setHandoffDone] = useState(false);
+  const [handoffDone, setHandoffDone] = useState(minMs <= 0 && handoffMs <= 0);
 
   useEffect(() => {
     if (!loaderDone) return;
+    if (handoffMs <= 0) {
+      setHandoffDone(true);
+      return;
+    }
     const timer = setTimeout(() => setHandoffDone(true), handoffMs);
     return () => clearTimeout(timer);
   }, [loaderDone, handoffMs]);
+
+  if (minMs <= 0 && handoffMs <= 0 && ready) {
+    return { showLoader: false, loaderDone: true };
+  }
 
   return { showLoader: !(loaderDone && handoffDone), loaderDone };
 }

@@ -209,8 +209,8 @@ function useSmoothInteger(target: number, reduceMotion: boolean): number {
 
   useEffect(() => {
     if (reduceMotion) {
-      valueRef.current = targetRef.current;
-      setShown(Math.floor(targetRef.current));
+      valueRef.current = target;
+      setShown(Math.floor(target));
       return;
     }
 
@@ -218,16 +218,18 @@ function useSmoothInteger(target: number, reduceMotion: boolean): number {
     let last = performance.now();
 
     const tick = (now: number) => {
-      // dt acotado: al volver de una pestaña en background el salto sería enorme.
       const dt = Math.min(now - last, 120);
       last = now;
 
       const diff = targetRef.current - valueRef.current;
-      valueRef.current =
-        Math.abs(diff) < 0.05
-          ? targetRef.current
-          : valueRef.current + diff * (1 - Math.exp(-dt / 220));
+      if (Math.abs(diff) < 0.05) {
+        valueRef.current = targetRef.current;
+        const next = Math.floor(valueRef.current);
+        setShown((prev) => (prev === next ? prev : next));
+        return; // Detener bucle: objetivo alcanzado
+      }
 
+      valueRef.current += diff * (1 - Math.exp(-dt / 220));
       const next = Math.floor(valueRef.current);
       setShown((prev) => (prev === next ? prev : next));
       frame = requestAnimationFrame(tick);
@@ -235,7 +237,7 @@ function useSmoothInteger(target: number, reduceMotion: boolean): number {
 
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [reduceMotion]);
+  }, [target, reduceMotion]);
 
   return shown;
 }

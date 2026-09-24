@@ -22,7 +22,7 @@ export function TableWrap({
   return (
     <div
       className={cn(
-        'w-full overflow-x-auto rounded-surface border border-white/[0.06]',
+        'w-full overflow-x-auto scrollbar-thin rounded-surface border border-white/10 bg-[#0A121D]/75',
         className
       )}
     >
@@ -45,14 +45,14 @@ export function Table({
 
 export function THead({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <thead className={cn('bg-white/[0.025]', className)}>
+    <thead className={cn('bg-white/[0.03] border-b border-white/10', className)}>
       {children}
     </thead>
   );
 }
 
 export function TBody({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <tbody className={cn('divide-y divide-white/[0.05]', className)}>{children}</tbody>;
+  return <tbody className={cn('divide-y divide-white/[0.06]', className)}>{children}</tbody>;
 }
 
 export function TR({
@@ -65,7 +65,7 @@ export function TR({
     <tr
       className={cn(
         'transition-colors duration-150',
-        interactive && 'cursor-pointer hover:bg-white/[0.03]',
+        interactive && 'cursor-pointer hover:bg-white/[0.04]',
         className
       )}
       {...rest}
@@ -85,8 +85,8 @@ export function TH({
     <th
       scope="col"
       className={cn(
-        'whitespace-nowrap border-b border-white/[0.07] px-4 py-3 text-left',
-        'text-[10px] font-bold uppercase tracking-[0.16em] text-white/40',
+        'whitespace-nowrap px-4 py-3 text-left',
+        'text-[10px] font-bold uppercase tracking-[0.16em] text-white/65',
         numeric && 'text-right',
         className
       )}
@@ -106,8 +106,8 @@ export function TD({
   return (
     <td
       className={cn(
-        'px-4 py-3.5 align-middle text-white/80',
-        numeric && 'text-right font-medium tabular-nums',
+        'px-4 py-3.5 align-middle text-white/85 text-xs sm:text-sm',
+        numeric && 'text-right font-mono font-medium tabular-nums',
         className
       )}
       {...rest}

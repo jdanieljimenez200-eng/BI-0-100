@@ -114,7 +114,7 @@ function reducer(state: FormState, action: FormAction): FormState {
 }
 
 // Traduce los `path` de los issues Zod del backend a claves de FormState.
-// ProductoInputSchema usa nombres de columna (`estatus_proyecto`) mientras el
+// routes/productos.ts usa nombres de columna (`estatus_proyecto`) mientras el
 // formulario guarda `estatus`; sin este mapa el error nunca llega al input.
 const API_FIELD_TO_FORM: Partial<Record<string, keyof FormState>> = {
   nombre:             'nombre',

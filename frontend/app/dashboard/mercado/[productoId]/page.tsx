@@ -9,6 +9,17 @@ import { interpretarErrorApi } from '@/lib/apiError';
 import AvisoErrorApi from '@/components/ui/AvisoErrorApi';
 import { PAISES_LATAM, REGIONES_POR_PAIS, getPaisInfo } from '@/lib/latam';
 
+/** Espejo de backend/src/services/mercado/traccionReal.ts. */
+interface TraccionReal {
+  clientes_mes: number;
+  ticket_promedio: number;
+  tasa_repeticion: number | null;
+  meses_analizados: number;
+  desde: string;
+  hasta: string;
+  confianza: 'alta' | 'media' | 'baja';
+}
+
 interface Producto {
   id: string;
   nombre: string;
@@ -202,6 +213,8 @@ export default function MercadoFormPage() {
   
   // Tracción (solo si Negocio en Marcha — pre-llenado desde Producto)
   const [clientesMes, setClientesMes] = useState('');
+  // Tracción sacada de las ventas del POS (null = el producto aún no vende ahí).
+  const [traccion, setTraccion] = useState<TraccionReal | null>(null);
   const [tasaRepeticion, setTasaRepeticion] = useState('');
   const [canalAdquisicion, setCanalAdquisicion] = useState('');
 
@@ -242,6 +255,19 @@ export default function MercadoFormPage() {
         if (data.canal_adquisicion) setCanalAdquisicion(data.canal_adquisicion);
       })
       .catch(() => { if (vigente) setProductoError('No se pudo cargar el producto.'); });
+
+    // Si el producto ya se vende con el POS, sus ventas describen la tracción
+    // mejor que un número recordado. Manda sobre lo declarado en el producto.
+    api.get(`/mercado/traccion/${productoId}`)
+      .then(({ data }) => {
+        if (!vigente || !data?.traccion) return;
+        const t = data.traccion as TraccionReal;
+        setTraccion(t);
+        setClientesMes(String(t.clientes_mes));
+        if (t.tasa_repeticion !== null) setTasaRepeticion(String(t.tasa_repeticion));
+      })
+      .catch(() => { /* sin POS no hay nada que precargar */ });
+
     return () => { vigente = false; };
   }, [productoId]);
 
@@ -429,6 +455,21 @@ export default function MercadoFormPage() {
         {esNegocioEnMarcha && (
           <div className="animate-fade-in">
             <Block n={3} title="Tracción Actual" subtitle="Basado en tus métricas reales">
+              {/* Tracción del POS: se precarga sola y el usuario puede
+                  corregirla. Antes había que recordarla y teclearla. */}
+              {traccion && (
+                <div className="mb-4 rounded-xl border border-brand-primary/25 bg-brand-primary/8 px-4 py-3">
+                  <p className="text-sm font-semibold text-white">Tomado de tus ventas</p>
+                  <p className="text-[11px] text-white/55 leading-relaxed mt-0.5">
+                    {traccion.clientes_mes} {isServicio ? 'citas' : 'ventas'} al mes de promedio y ticket de $
+                    {traccion.ticket_promedio.toLocaleString('es-MX')}, con {traccion.meses_analizados}{' '}
+                    {traccion.meses_analizados === 1 ? 'mes completo' : 'meses completos'} del punto de venta
+                    {traccion.tasa_repeticion !== null ? ` · ${traccion.tasa_repeticion}% de clientes repiten` : ''}.
+                    {traccion.confianza === 'baja' ? ' Con un solo mes, tómalo como referencia.' : ''}
+                    {' '}Puedes cambiarlo si no representa tu mes típico.
+                  </p>
+                </div>
+              )}
               <Field label={isServicio ? 'Citas/Sesiones al mes' : 'Ventas al mes'} optional help={isServicio ? 'Número promedio de citas o sesiones que atiendes en un mes típico. Sirve para dimensionar tu tracción real frente al tamaño del mercado.' : 'Número promedio de ventas que cierras en un mes típico. Sirve para dimensionar tu tracción real frente al tamaño del mercado.'}>
                 <input type="number" min="0" value={clientesMes} onChange={e => setClientesMes(e.target.value)} placeholder="Ej: 100" className={inputCls} />
               </Field>

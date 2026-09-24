@@ -1,5 +1,6 @@
 export * from './PageTransition';
 export * from './Reveal';
+export * from './SectionReveal';
 export * from './MotionModal';
 export * from './MotionDrawer';
 export * from './MotionDropdown';

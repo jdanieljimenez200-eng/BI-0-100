@@ -21,6 +21,7 @@
 
 import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
+import { ChevronRight } from 'lucide-react';
 
 export interface AvisoErrorApiProps {
   /** Mensaje ya interpretado (`interpretarErrorApi().mensaje`). Vacío/null → no renderiza nada. */
@@ -81,15 +82,7 @@ export default function AvisoErrorApi({
         className="inline-flex flex-shrink-0 items-center justify-center gap-1.5 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-2.5 text-[12.5px] font-bold text-amber-200 transition-colors hover:bg-amber-400/20 active:scale-[.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60"
       >
         {ctaLabel}
-        <svg
-          aria-hidden="true"
-          className="h-3.5 w-3.5 flex-shrink-0"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M9 5l7 7-7 7" />
-        </svg>
+        <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
       </Link>
     </motion.div>
   );

@@ -84,6 +84,7 @@ const HERRAMIENTAS_ITEMS: { href: string; label: string; Icon: LucideIcon }[] = 
   { href: '/dashboard/herramientas/clientes', label: 'Clientes (CRM)', Icon: Users },
   { href: '/dashboard/herramientas/calendario', label: 'Agenda & Citas', Icon: Calendar },
   { href: '/dashboard/herramientas/personal', label: 'Personal & Nómina', Icon: Briefcase },
+  { href: '/dashboard/herramientas/mantenimientos', label: 'Mantenimientos', Icon: Wrench },
   { href: '/dashboard/herramientas/contabilidad', label: 'Reportes', Icon: BarChart3 },
 ];
 
@@ -149,7 +150,7 @@ function SidebarLink({
       onClick={onNavigate}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'group relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors duration-150',
+        'group relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17]',
         collapsed && 'justify-center px-2 py-2',
         active ? 'text-white' : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200'
       )}
@@ -251,7 +252,7 @@ function ChevronToggle({
       onClick={onClick}
       aria-expanded={open}
       aria-label={label}
-      className="p-1 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.06] transition-colors"
+      className="p-1 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.06] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17]"
     >
       <ChevronDown
         className={cn('w-3.5 h-3.5 transition-transform duration-200', open && 'rotate-180')}
@@ -595,7 +596,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
                     href={tool.href}
                     onClick={cerrarDrawer}
                     className={cn(
-                      'group/tool flex items-center gap-2 truncate rounded-md px-2 py-1 text-[12px] transition-colors duration-150',
+                      'group/tool flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17]',
                       pathname === tool.href
                         ? 'bg-white/[0.08] font-medium text-white'
                         : 'text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200'
@@ -687,7 +688,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={() => setCollapsed(false)}
               aria-label="Expandir menú"
-              className="p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-white/5 rounded-lg transition-colors"
+              className="p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-white/5 rounded-lg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17]"
             >
               <ChevronsLeft className="h-4 w-4 rotate-180" />
             </button>
@@ -695,7 +696,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={handleLogout}
               aria-label="Cerrar sesión"
-              className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-white/5 rounded-lg transition-colors"
+              className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-white/5 rounded-lg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17]"
             >
               <LogOut className="h-4 w-4" />
             </button>
@@ -826,7 +827,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page content */}
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 md:px-8">
+        <main className="w-full max-w-[1600px] flex-1 px-4 py-6 sm:px-6 md:px-8 lg:px-10">
           {children}
         </main>
       </div>

@@ -8,12 +8,19 @@ export function generarResumen(
   const { costos_fijos_mensuales, unidades_mes_inicial } = input;
   const { totales } = proyeccion;
 
-  // ROI anual: (utilidad_neta_total / costos_fijos_total) * 100
-  const inversion_total = costos_fijos_mensuales * 12;
+  // ROI anual. Con inversión declarada es el retorno de verdad (utilidad del
+  // año sobre lo que costó arrancar). Sin ella se cae al costo fijo anual, que
+  // NO es una inversión: se marca la base para que la pantalla no lo llame ROI
+  // a secas.
+  const inversion_inicial = Math.max(0, Number(input.inversion_inicial) || 0);
+  const base_roi: 'inversion_inicial' | 'costos_fijos_anuales' =
+    inversion_inicial > 0 ? 'inversion_inicial' : 'costos_fijos_anuales';
+  const base_monto = inversion_inicial > 0 ? inversion_inicial : costos_fijos_mensuales * 12;
   const roi_anual =
-    inversion_total > 0
-      ? Math.round((totales.utilidad_neta_total / inversion_total) * 100)
-      : 0;
+    base_monto > 0 ? Math.round((totales.utilidad_neta_total / base_monto) * 100) : 0;
+
+  // Un «ROI» que en realidad mide utilidad contra costos fijos no se llama ROI.
+  const etiquetaRoi = base_roi === 'inversion_inicial' ? 'ROI' : 'retorno sobre costos fijos';
 
   const ingreso_promedio_mensual = Math.round(totales.ingresos_totales / 12);
   const utilidad_promedio_mensual = Math.round(totales.utilidad_neta_total / 12);
@@ -32,12 +39,12 @@ export function generarResumen(
     viabilidad = 'media';
     color_viabilidad = 'yellow';
     mensaje_viabilidad =
-      `El negocio es viable pero el retorno es moderado (ROI ${roi_anual}% anual, equilibrio en mes ${breakeven.mes_equilibrio ?? '>6'}). Optimizar estructura de costos o incrementar precio entre un 10-15% podría mejorar el ROI por encima del 30% sin perder mercado.`;
+      `El negocio es viable pero el retorno es moderado (${etiquetaRoi} ${roi_anual}% anual, equilibrio en mes ${breakeven.mes_equilibrio ?? '>6'}). Optimizar estructura de costos o incrementar precio entre un 10-15% podría mejorar el ROI por encima del 30% sin perder mercado.`;
   } else {
     viabilidad = 'alta';
     color_viabilidad = 'green';
     mensaje_viabilidad =
-      `Sólido: ROI anual proyectado del ${roi_anual}% con punto de equilibrio en mes ${breakeven.mes_equilibrio ?? 1}. La estructura financiera permite bootstrapping sin financiamiento externo y con margen para reinvertir en crecimiento.`;
+      `Sólido: ${etiquetaRoi} anual proyectado del ${roi_anual}% con punto de equilibrio en mes ${breakeven.mes_equilibrio ?? 1}. La estructura financiera permite bootstrapping sin financiamiento externo y con margen para reinvertir en crecimiento.`;
   }
 
   // Recomendaciones y alertas
@@ -60,7 +67,7 @@ export function generarResumen(
   }
 
   if (roi_anual > 50) {
-    recomendaciones.push(`ROI proyectado del ${roi_anual}% anual: alto rendimiento. Modelo apto para reinvertir utilidades y acelerar crecimiento. Considera destinar el 20-30% de utilidades mensuales a adquisición de clientes.`);
+    recomendaciones.push(`${etiquetaRoi === 'ROI' ? 'ROI' : 'Retorno sobre costos fijos'} proyectado del ${roi_anual}% anual: alto rendimiento. Modelo apto para reinvertir utilidades y acelerar crecimiento. Considera destinar el 20-30% de utilidades mensuales a adquisición de clientes.`);
   }
   if (breakeven.mes_equilibrio && breakeven.mes_equilibrio <= 3) {
     recomendaciones.push(`Punto de equilibrio en mes ${breakeven.mes_equilibrio}: excelente para bootstrapping. Tendrás flujo positivo antes de que agotes la reserva inicial, lo que reduce el riesgo de descapitalización.`);
@@ -77,7 +84,9 @@ export function generarResumen(
     color_viabilidad,
     mensaje_viabilidad,
     roi_anual,
+    base_roi,
     payback_meses: breakeven.meses_para_recuperar_inversion,
+    payback_no_disponible: breakeven.payback_no_disponible,
     ingreso_promedio_mensual,
     utilidad_promedio_mensual,
     recomendaciones,

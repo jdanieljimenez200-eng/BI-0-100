@@ -1,6 +1,5 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
 import { PlatformBadge } from './MarketingSocialIcons';
 
 export type AmbitoTendencia = 'Global' | 'Nacional' | 'Sector';
@@ -49,26 +48,6 @@ interface Tendencia {
   ambito: AmbitoTendencia;
 }
 
-const PLATFORM_COLOR: Record<string, string> = {
-  TikTok: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-  Instagram: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
-  'Instagram Reels': 'bg-pink-500/20 text-pink-300 border-pink-500/30',
-  LinkedIn: 'bg-sky-500/20 text-sky-300 border-sky-500/30',
-  X: 'bg-slate-500/20 text-slate-300 border-slate-500/30',
-  'Google Ads': 'bg-green-500/20 text-green-300 border-green-500/30',
-  Email: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-  'YouTube Shorts': 'bg-red-500/20 text-red-300 border-red-500/30',
-  YouTube: 'bg-red-500/20 text-red-300 border-red-500/30',
-  Facebook: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  WhatsApp: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-  Twitter: 'bg-sky-500/20 text-sky-300 border-sky-500/30',
-  Pinterest: 'bg-red-500/20 text-red-300 border-red-500/30',
-  Threads: 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30',
-  Telegram: 'bg-sky-500/20 text-sky-300 border-sky-500/30',
-  Snapchat: 'bg-yellow-400/20 text-yellow-200 border-yellow-400/30',
-  Reddit: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
-};
-
 const AMBITOS: AmbitoTendencia[] = ['Global', 'Nacional', 'Sector'];
 
 function AmbitoIcon({ ambito, className = 'w-3.5 h-3.5' }: { ambito: AmbitoTendencia; className?: string }) {
@@ -94,26 +73,6 @@ function AmbitoIcon({ ambito, className = 'w-3.5 h-3.5' }: { ambito: AmbitoTende
   );
 }
 
-const CAT_COLOR: Record<AmbitoTendencia, { border: string; active: string; text: string; bg: string }> = {
-  Global: {
-    border: 'border-cyan-500/30',
-    active: 'bg-cyan-500/20 border-cyan-400/50 text-cyan-300',
-    text: 'text-cyan-400',
-    bg: 'bg-cyan-500/5',
-  },
-  Nacional: {
-    border: 'border-emerald-500/30',
-    active: 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300',
-    text: 'text-emerald-400',
-    bg: 'bg-emerald-500/5',
-  },
-  Sector: {
-    border: 'border-purple-500/30',
-    active: 'bg-purple-500/20 border-purple-400/50 text-purple-300',
-    text: 'text-purple-400',
-    bg: 'bg-purple-500/5',
-  },
-};
 
 function limpio(v: unknown, max = 800): string | undefined {
   if (typeof v !== 'string') return undefined;
@@ -223,7 +182,6 @@ export default function TendenciasSection({ tendencias, pais, giro }: Tendencias
   const activeTab: AmbitoTendencia =
     tabElegida && disponibles.includes(tabElegida) ? tabElegida : disponibles[0];
   const filtered = items.filter((t) => t.ambito === activeTab);
-  const c = CAT_COLOR[activeTab];
 
   const handleCopy = (id: string, text: string) => {
     if (typeof navigator === 'undefined' || !navigator.clipboard) return;

@@ -24,6 +24,8 @@ interface FormData {
   costos_fijos_mensuales: string;
   unidades_mes_inicial: string;
   tasa_crecimiento_mensual: string;
+  /** Opcional: sin ella no hay payback que calcular. */
+  inversion_inicial: string;
 }
 
 // ─── Shared CSS ───────────────────────────────────────────────────────────────
@@ -84,6 +86,17 @@ function Field({
   );
 }
 
+/** Lo que devuelve GET /api/finanzas/calibracion/:productoId. */
+interface Calibracion {
+  ingreso_promedio_mensual: number;
+  egreso_promedio_mensual: number;
+  costos_fijos_sugeridos: number;
+  tasa_crecimiento_mensual: number | null;
+  meses_analizados: number;
+  confianza: 'alta' | 'media' | 'baja';
+  advertencias: string[];
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function FinanzasScopePage() {
@@ -101,12 +114,17 @@ export default function FinanzasScopePage() {
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [desglozarCostos, setDesglozarCostos] = useState(false);
   const [desglose, setDesglose] = useState({ renta: '', sueldos: '', publicidad: '', software: '', otros: '' });
+  // Números reales del negocio (contabilidad + POS). La plataforma ya los tenía
+  // y el formulario los pedía igual a mano.
+  const [calibracion, setCalibracion] = useState<Calibracion | null>(null);
+  const [calibracionAplicada, setCalibracionAplicada] = useState(false);
   const [form, setForm] = useState<FormData>({
     precio_venta: '',
     costo_variable_unitario: '',
     costos_fijos_mensuales: '',
     unidades_mes_inicial: '',
     tasa_crecimiento_mensual: '10',
+    inversion_inicial: '',
   });
 
   useEffect(() => {
@@ -127,6 +145,8 @@ export default function FinanzasScopePage() {
         if (Number.isFinite(fijos) && fijos > 0) heredados.costos_fijos_mensuales = String(fijos);
         const clientes = Number(data?.clientes_mes);
         if (Number.isFinite(clientes) && clientes > 0) heredados.unidades_mes_inicial = String(clientes);
+        const inversion = Number(data?.inversion_inicial);
+        if (Number.isFinite(inversion) && inversion > 0) heredados.inversion_inicial = String(inversion);
 
         if (Object.keys(heredados).length > 0) {
           setHeredados(new Set(Object.keys(heredados)));
@@ -140,8 +160,32 @@ export default function FinanzasScopePage() {
         }
       })
       .catch(() => { if (vigente) setProductoError('No se pudo cargar el producto.'); });
+
+    // Si el negocio ya factura, sus propios números valen más que una
+    // estimación tecleada. Se ofrecen, no se imponen.
+    api.get(`/finanzas/calibracion/${productoId}`)
+      .then(({ data }) => {
+        if (vigente && data?.meses_analizados > 0) setCalibracion(data as Calibracion);
+      })
+      .catch(() => { /* sin contabilidad cargada no hay nada que ofrecer */ });
+
     return () => { vigente = false; };
   }, [productoId]);
+
+  /** Vuelca la calibración en el formulario. */
+  function usarNumerosReales() {
+    if (!calibracion) return;
+    setForm((f) => ({
+      ...f,
+      costos_fijos_mensuales: calibracion.costos_fijos_sugeridos > 0
+        ? String(Math.round(calibracion.costos_fijos_sugeridos))
+        : f.costos_fijos_mensuales,
+      tasa_crecimiento_mensual: calibracion.tasa_crecimiento_mensual !== null
+        ? String(Math.round(calibracion.tasa_crecimiento_mensual * 10) / 10)
+        : f.tasa_crecimiento_mensual,
+    }));
+    setCalibracionAplicada(true);
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -166,6 +210,7 @@ export default function FinanzasScopePage() {
       costos_fijos_mensuales: 'Los costos fijos mensuales',
       unidades_mes_inicial: 'Las unidades del mes 1',
       tasa_crecimiento_mensual: 'La tasa de crecimiento',
+      inversion_inicial: 'La inversión inicial',
     };
     const nums = ['precio_venta', 'costo_variable_unitario', 'costos_fijos_mensuales', 'unidades_mes_inicial', 'tasa_crecimiento_mensual'] as const;
     const errs: Partial<Record<keyof FormData, string>> = {};
@@ -176,6 +221,15 @@ export default function FinanzasScopePage() {
     }
     if (!errs.precio_venta && !errs.costo_variable_unitario && Number(form.precio_venta) <= Number(form.costo_variable_unitario)) {
       errs.precio_venta = 'El precio de venta debe ser mayor al costo variable unitario.';
+    }
+    // La inversión es opcional, pero si se escribe tiene que ser un número.
+    if (form.inversion_inicial && (isNaN(Number(form.inversion_inicial)) || Number(form.inversion_inicial) < 0)) {
+      errs.inversion_inicial = 'La inversión inicial debe ser un número válido (≥ 0).';
+    }
+    // Por encima del 50 % mensual el backend rechaza: una proyección así no
+    // describe ningún negocio (×86 en un año).
+    if (!errs.tasa_crecimiento_mensual && Number(form.tasa_crecimiento_mensual) > 50) {
+      errs.tasa_crecimiento_mensual = 'Un crecimiento mayor al 50% mensual no es proyectable: revisa el dato.';
     }
     if (Object.keys(errs).length > 0) { setFieldErrors(errs); return; }
 
@@ -191,6 +245,7 @@ export default function FinanzasScopePage() {
         costos_fijos_mensuales: Number(form.costos_fijos_mensuales),
         unidades_mes_inicial: Number(form.unidades_mes_inicial),
         tasa_crecimiento_mensual: Number(form.tasa_crecimiento_mensual),
+        inversion_inicial: form.inversion_inicial ? Number(form.inversion_inicial) : null,
       });
       router.push(`/dashboard/finanzas/${productoId}/resultado/${data.analisis_id}`);
     } catch (err: unknown) {
@@ -268,6 +323,35 @@ export default function FinanzasScopePage() {
       </div>
 
       <form onSubmit={handleAnalizar} noValidate className="flex flex-col gap-4">
+
+        {/* Números reales del negocio: la plataforma ya los tiene en
+            contabilidad y el formulario los pedía igual a mano. */}
+        {calibracion && (
+          <div className="bg-finanzas/8 border border-finanzas/25 rounded-2xl px-4 py-3.5 flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white">
+                {calibracionAplicada ? 'Usando tus números reales' : 'Tenemos tus números reales'}
+              </p>
+              <p className="text-[11px] text-white/50 leading-relaxed mt-0.5">
+                {calibracion.meses_analizados} {calibracion.meses_analizados === 1 ? 'mes' : 'meses'} de tu contabilidad:
+                {' '}costos fijos ≈ ${Math.round(calibracion.costos_fijos_sugeridos).toLocaleString('es-MX')}/mes
+                {calibracion.tasa_crecimiento_mensual !== null
+                  ? `, crecimiento real ${calibracion.tasa_crecimiento_mensual > 0 ? '+' : ''}${Math.round(calibracion.tasa_crecimiento_mensual * 10) / 10}% mensual`
+                  : ''}
+                {calibracion.confianza !== 'alta' ? ` · confianza ${calibracion.confianza} (pocos meses de historial)` : ''}
+              </p>
+            </div>
+            {!calibracionAplicada && (
+              <button
+                type="button"
+                onClick={usarNumerosReales}
+                className="px-3 h-9 rounded-xl bg-finanzas/20 border border-finanzas/40 text-xs font-medium text-white hover:bg-finanzas/30 transition-colors"
+              >
+                Usar mis números
+              </button>
+            )}
+          </div>
+        )}
 
         {/* BLOQUE 1 - Estructura de Precios */}
         <Block n={1} title="Estructura de Precios y Costos" subtitle="La base del modelo financiero">
@@ -397,9 +481,24 @@ export default function FinanzasScopePage() {
             </div>
           </Field>
 
+          <Field
+            label="Inversión inicial"
+            unit="opcional"
+            heredado={heredados.has('inversion_inicial')}
+            help="Todo lo que costó arrancar: equipo, obra, inventario inicial, depósitos, permisos. Sin este dato no calculamos el payback — antes decíamos «recuperas tu inversión en 1 mes» sin saber cuánto habías invertido."
+            error={fieldErrors.inversion_inicial}
+          >
+            <input
+              type="number" name="inversion_inicial"
+              value={form.inversion_inicial} onChange={handleChange}
+              placeholder="ej. 150000" min="0"
+              className={`${inputCls} ${fieldErrors.inversion_inicial ? inputErrCls : ''}`}
+            />
+          </Field>
+
           <div className="bg-finanzas/5 border border-finanzas/15 rounded-xl px-4 py-3">
             <p className="text-[11px] text-finanzas/70 leading-relaxed">
-              La IA calculará automáticamente 3 escenarios (pesimista, base, optimista) y el punto de equilibrio exacto. La inversión inicial registrada en tu producto se usa para estimar el payback.
+              Calcularemos 3 escenarios (pesimista, base, optimista) y el punto de equilibrio exacto. El payback solo aparece si declaras la inversión inicial.
             </p>
           </div>
 

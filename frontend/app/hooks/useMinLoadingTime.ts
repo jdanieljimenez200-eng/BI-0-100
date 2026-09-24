@@ -8,9 +8,13 @@ import { useEffect, useState } from 'react';
 export const MIN_LOADING_MS = 5000;
 
 export const useMinLoadingTime = (minTime = MIN_LOADING_MS) => {
-  const [isReady, setIsReady] = useState(false);
+  const [isReady, setIsReady] = useState(minTime <= 0);
 
   useEffect(() => {
+    if (minTime <= 0) {
+      setIsReady(true);
+      return;
+    }
     const timer = setTimeout(() => setIsReady(true), minTime);
     return () => clearTimeout(timer);
   }, [minTime]);

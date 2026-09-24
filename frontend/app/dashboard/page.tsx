@@ -4,7 +4,17 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AnimatePresence, motion, useReducedMotion, type Variants } from 'framer-motion';
+import {
+  Package,
+  Plus,
+  ArrowRight,
+  RefreshCw,
+  Sparkles,
+  Image as ImageIcon,
+  Check,
+} from 'lucide-react';
 import api from '@/lib/api';
+import { MODULE_THEME } from '@/lib/moduleTheme';
 import {
   IconCheck,
   IconFinanzas,
@@ -56,79 +66,41 @@ type IconComponent = (props: { className?: string }) => ReactElement;
 const MODULOS: ModuloKey[] = ['mercado', 'marketing', 'ventas', 'finanzas', 'legal'];
 
 const MODULE_CONFIG: Record<ModuloKey, { label: string; hex: string; Icon: IconComponent }> = {
-  mercado: { label: 'Mercado', hex: '#3B82F6', Icon: IconMercado },
-  marketing: { label: 'Marketing', hex: '#8B5CF6', Icon: IconMarketing },
-  ventas: { label: 'Ventas', hex: '#F97316', Icon: IconVentas },
-  finanzas: { label: 'Finanzas', hex: '#10B981', Icon: IconFinanzas },
-  legal: { label: 'Legal', hex: '#7C3AED', Icon: IconLegal },
+  mercado: { label: 'Mercado', hex: MODULE_THEME.mercado.hex, Icon: IconMercado },
+  marketing: { label: 'Marketing', hex: MODULE_THEME.marketing.hex, Icon: IconMarketing },
+  ventas: { label: 'Ventas', hex: MODULE_THEME.ventas.hex, Icon: IconVentas },
+  finanzas: { label: 'Finanzas', hex: MODULE_THEME.finanzas.hex, Icon: IconFinanzas },
+  legal: { label: 'Legal', hex: MODULE_THEME.legal.hex, Icon: IconLegal },
 };
 
 const ACCENT = '#E74C3C';
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Iconografía local (trazo 1.7, currentColor — coherente con ModuleIcons)
+   Iconografía canónica unificada con Lucide (trazo 1.8)
    ────────────────────────────────────────────────────────────────────────── */
 
 function IconProceso({ className }: { className?: string }): ReactElement {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor"
-         strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M21 12a9 9 0 1 1-6.22-8.56" />
-      <path d="M21 3v6h-6" />
-    </svg>
-  );
+  return <RefreshCw className={className} strokeWidth={1.8} aria-hidden="true" />;
 }
 
 function IconProductos({ className }: { className?: string }): ReactElement {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor"
-         strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M21 8.5 12 13 3 8.5 12 4l9 4.5z" />
-      <path d="M3 8.5v7L12 20l9-4.5v-7" />
-      <path d="M12 13v7" />
-    </svg>
-  );
+  return <Package className={className} strokeWidth={1.8} aria-hidden="true" />;
 }
 
 function IconArrow({ className }: { className?: string }): ReactElement {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor"
-         strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M5 12h14" />
-      <path d="m13 6 6 6-6 6" />
-    </svg>
-  );
+  return <ArrowRight className={className} strokeWidth={2} aria-hidden="true" />;
 }
 
 function IconPlus({ className }: { className?: string }): ReactElement {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor"
-         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
+  return <Plus className={className} strokeWidth={2} aria-hidden="true" />;
 }
 
 function IconSpark({ className }: { className?: string }): ReactElement {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor"
-         strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" />
-      <path d="M19 16.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z" />
-    </svg>
-  );
+  return <Sparkles className={className} strokeWidth={1.8} aria-hidden="true" />;
 }
 
-/** Marcador cuando el producto no tiene imagen subida. */
 function IconImagen({ className }: { className?: string }): ReactElement {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor"
-         strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="4" width="18" height="16" rx="2.5" />
-      <circle cx="8.75" cy="9.75" r="1.6" />
-      <path d="M21 15.5l-4.6-4.1a1.6 1.6 0 0 0-2.2.06L4.2 20" />
-    </svg>
-  );
+  return <ImageIcon className={className} strokeWidth={1.8} aria-hidden="true" />;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -795,7 +767,7 @@ export default function DashboardPage(): ReactElement {
               label="Completados"
               valor={valCompletados}
               detalle="Informes listos para revisar y exportar"
-              hex="#10B981"
+              hex={MODULE_THEME.finanzas.hex}
               Icon={IconCheck}
             />
 
@@ -806,7 +778,7 @@ export default function DashboardPage(): ReactElement {
               label="En proceso"
               valor={valProceso}
               detalle={stats.enProceso > 0 ? 'La IA está generando tus informes' : 'Sin trabajos en la cola'}
-              hex="#F97316"
+              hex={MODULE_THEME.ventas.hex}
               Icon={IconProceso}
               girar={stats.enProceso > 0 && animar}
             />
@@ -818,7 +790,7 @@ export default function DashboardPage(): ReactElement {
               label="Productos"
               valor={valProductos}
               detalle={`${valTotal} análisis lanzados en total`}
-              hex="#3B82F6"
+              hex={MODULE_THEME.mercado.hex}
               Icon={IconProductos}
             />
           </motion.section>

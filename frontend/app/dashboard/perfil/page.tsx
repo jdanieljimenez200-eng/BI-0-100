@@ -22,6 +22,7 @@ export default function PerfilPage() {
   const [editando, setEditando] = useState(false);
   const [formData, setFormData] = useState({ nombre: '', email: '' });
   const [guardando, setGuardando] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
   useEffect(() => {
     let vigente = true;
@@ -39,11 +40,12 @@ export default function PerfilPage() {
 
   const handleGuardar = async () => {
     if (!formData.nombre.trim() || !formData.email.trim()) {
-      alert('Todos los campos son requeridos');
+      setFeedback({ type: 'error', msg: 'Todos los campos son requeridos' });
       return;
     }
 
     setGuardando(true);
+    setFeedback(null);
     try {
       await api.put('/dashboard/perfil', {
         nombre: formData.nombre.trim(),
@@ -53,9 +55,9 @@ export default function PerfilPage() {
       setUsuario(data);
       localStorage.setItem('usuario', JSON.stringify(data));
       setEditando(false);
-      alert('Perfil actualizado correctamente');
+      setFeedback({ type: 'success', msg: 'Perfil actualizado correctamente' });
     } catch (error: any) {
-      alert(error?.response?.data?.error || 'Error al actualizar el perfil');
+      setFeedback({ type: 'error', msg: error?.response?.data?.error || 'Error al actualizar el perfil' });
     } finally {
       setGuardando(false);
     }
@@ -114,6 +116,20 @@ export default function PerfilPage() {
         <div className="h-[2px] bg-gradient-to-r from-brand-accent/50 via-brand-accent to-transparent" />
 
         <div className="p-8">
+          {/* Feedback banner */}
+          {feedback && (
+            <div
+              role="alert"
+              className={`mb-6 p-4 rounded-xl text-sm flex items-center gap-3 border ${
+                feedback.type === 'success'
+                  ? 'bg-green-500/10 border-green-500/25 text-green-300'
+                  : 'bg-red-500/10 border-red-500/25 text-red-300'
+              }`}
+            >
+              <span className="font-medium">{feedback.msg}</span>
+            </div>
+          )}
+
           {/* Profile section */}
           <div className="mb-8 pb-8 border-b border-white/5">
             <div className="flex items-start justify-between gap-4 mb-6">
@@ -216,6 +232,8 @@ export default function PerfilPage() {
             <button
               onClick={() => {
                 api.post('/auth/logout', {}).catch(() => {});
+                localStorage.removeItem('accessToken');
+                localStorage.removeItem('refreshToken');
                 localStorage.removeItem('usuario');
                 router.push('/');
               }}

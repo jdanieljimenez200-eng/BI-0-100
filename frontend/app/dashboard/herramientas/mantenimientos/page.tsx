@@ -1,16 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import {
-  ArrowLeft,
   CalendarClock,
   Check,
   CheckCircle2,
   History,
   Loader2,
   Plus,
-  Search,
   Sparkles,
   Trash2,
   Wrench,
@@ -18,6 +15,7 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
+import { Breadcrumbs, SearchInput } from '@/components/ui';
 
 // ─── Tipos (espejo de /api/mantenimientos) ───────────────────────────────────
 
@@ -224,13 +222,11 @@ function FormularioAlta({
       />
 
       <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-white/50">Tipo de equipo</label>
-      <div className="relative mb-2">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
-        <input
+      <div className="mb-2">
+        <SearchInput
           value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
+          onChange={setBusqueda}
           placeholder="Busca: refrigerador, tanque de gas, tijeras…"
-          className="w-full rounded-xl border border-white/10 bg-black/30 py-2.5 pl-9 pr-4 text-sm text-white placeholder-white/30 focus:border-orange-400/50 focus:outline-none"
         />
       </div>
       <div className="mb-4 flex flex-wrap gap-1.5">
@@ -516,21 +512,17 @@ function MantenimientosContenido() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1B1408] via-[#0A0F17] to-[#070B12]">
       <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#0A0F17]/85 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-5 py-3">
-          <Link
-            href="/dashboard/herramientas"
-            aria-label="Volver a herramientas"
-            className="rounded-lg border border-white/[0.09] p-1.5 text-white/60 transition-colors hover:bg-white/[0.05] hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-          <div className="flex items-center gap-2">
-            <Wrench className="h-4 w-4 text-orange-300" />
-            <span className="text-sm font-semibold text-white">Mantenimientos</span>
-          </div>
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-5 py-3.5">
+          <Breadcrumbs
+            items={[
+              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'Herramientas', href: '/dashboard/herramientas' },
+              { label: 'Mantenimientos' },
+            ]}
+          />
           <button
             onClick={() => setMostrarAlta((v) => !v)}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-orange-400/30 bg-orange-500/10 px-3 py-1.5 text-xs font-semibold text-orange-200 transition-colors hover:bg-orange-500/20"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-orange-400/30 bg-orange-500/10 px-3.5 py-1.5 text-xs font-semibold text-orange-200 transition-colors hover:bg-orange-500/20 active:scale-[0.98]"
           >
             <Plus className="h-3.5 w-3.5" />
             Agregar equipo
@@ -546,14 +538,15 @@ function MantenimientosContenido() {
         {resumen && resumen.total > 0 && (
           <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {([
-              ['Vencidos', resumen.vencidos, 'text-red-300'],
-              ['Ya tocan', resumen.proximos, 'text-amber-300'],
-              ['Al día', resumen.al_dia, 'text-emerald-300'],
+              ['Vencidos', resumen.vencidos, 'text-red-400'],
+              ['Ya tocan', resumen.proximos, 'text-amber-400'],
+              ['Al día', resumen.al_dia, 'text-emerald-400'],
               ['Sin registro', resumen.sin_registro, 'text-white/60'],
             ] as const).map(([etiqueta, valor, color]) => (
-              <div key={etiqueta} className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-                <p className={`text-2xl font-bold ${color}`}>{valor}</p>
-                <p className="text-[11px] uppercase tracking-wide text-white/45">{etiqueta}</p>
+              <div key={etiqueta} className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] p-4 backdrop-blur-xl transition-all hover:border-white/20">
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+                <p className={`text-2xl font-bold font-mono tabular-nums tracking-tight ${color}`}>{valor}</p>
+                <p className="mt-1 text-[11px] font-medium uppercase tracking-wider text-white/45">{etiqueta}</p>
               </div>
             ))}
           </div>
@@ -596,12 +589,19 @@ function MantenimientosContenido() {
             {ordenados.map((equipo) => {
               const estilo = ESTILO_ESTADO[equipo.estado];
               return (
-                <article key={equipo.id} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                  <div className="flex flex-wrap items-start gap-3">
-                    <span className="text-2xl" aria-hidden>{equipo.emoji ?? '🛠️'}</span>
+                <article key={equipo.id} className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] p-4.5 backdrop-blur-xl transition-all hover:border-white/20">
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                  <div className="flex flex-wrap items-start gap-3.5">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]">
+                      {equipo.emoji ? (
+                        <span className="text-xl" aria-hidden>{equipo.emoji}</span>
+                      ) : (
+                        <Wrench className="h-5 w-5 text-orange-400" />
+                      )}
+                    </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-semibold text-white">{equipo.nombre}</h3>
+                        <h3 className="font-semibold text-white tracking-tight">{equipo.nombre}</h3>
                         <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium ${estilo.chip}`}>
                           <span className={`h-1.5 w-1.5 rounded-full ${estilo.punto}`} />
                           {estilo.etiqueta}
@@ -612,7 +612,7 @@ function MantenimientosContenido() {
                         {textoProximo(equipo)}
                       </p>
                       <p className="mt-0.5 text-[11px] text-white/40">
-                        Cada {equipo.intervalo_dias} días · {INTENSIDADES.find((i) => i.valor === equipo.intensidad_uso)?.label}
+                        Cada <span className="font-mono tabular-nums">{equipo.intervalo_dias}</span> días · {INTENSIDADES.find((i) => i.valor === equipo.intensidad_uso)?.label}
                         {equipo.ubicacion ? ` · ${equipo.ubicacion}` : ''}
                         {equipo.intervalo_origen === 'ia' ? ' · intervalo estimado con IA' : ''}
                         {equipo.intervalo_origen === 'manual' ? ' · intervalo tuyo' : ''}
@@ -623,21 +623,21 @@ function MantenimientosContenido() {
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => setRegistrando(registrando === equipo.id ? null : equipo.id)}
-                        className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/20"
+                        className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/20 active:scale-[0.98]"
                       >
                         Ya le di mantenimiento
                       </button>
                       <button
                         onClick={() => void verHistorial(equipo.id)}
                         aria-label={`Historial de ${equipo.nombre}`}
-                        className="rounded-lg border border-white/10 p-1.5 text-white/50 hover:bg-white/5 hover:text-white"
+                        className="rounded-xl border border-white/10 p-1.5 text-white/50 transition-colors hover:bg-white/5 hover:text-white active:scale-[0.98]"
                       >
                         <History className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => void eliminar(equipo)}
                         aria-label={`Eliminar ${equipo.nombre}`}
-                        className="rounded-lg border border-white/10 p-1.5 text-white/40 hover:bg-red-500/10 hover:text-red-300"
+                        className="rounded-xl border border-white/10 p-1.5 text-white/40 transition-colors hover:bg-red-500/10 hover:text-red-300 active:scale-[0.98]"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -661,16 +661,16 @@ function MantenimientosContenido() {
                       ) : (
                         <>
                           <p className="mb-2 text-xs uppercase tracking-wide text-white/45">
-                            Historial · gasto total ${historial.total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                            Historial · gasto total <span className="font-mono tabular-nums font-semibold text-white/80">${historial.total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
                           </p>
                           <ul className="space-y-2">
                             {historial.registros.map((r) => (
                               <li key={r.id} className="flex flex-wrap items-baseline gap-2 text-sm text-white/70">
-                                <span className="font-mono text-xs text-white/50">{r.fecha}</span>
+                                <span className="font-mono tabular-nums text-xs text-white/50">{r.fecha}</span>
                                 <span>{r.notas ?? 'Mantenimiento'}</span>
                                 {r.responsable && <span className="text-white/45">· {r.responsable}</span>}
                                 {r.costo !== null && (
-                                  <span className="ml-auto font-semibold text-white/85">
+                                  <span className="ml-auto font-mono tabular-nums font-semibold text-white/85">
                                     ${Number(r.costo).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                                   </span>
                                 )}

@@ -40,6 +40,7 @@ import { getTaxConfig, comprobanteNombre } from '@/lib/taxConfig';
 import ProductoGate from '@/components/herramientas/ProductoGate';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
 import type { ProductoActivo } from '@/lib/productoActivo';
+import { Breadcrumbs, SearchInput } from '@/components/ui';
 import CsvImportModal from '../../finanzas/[productoId]/resultado/[analisisId]/CsvImportModal';
 import ReportesPanel from './reportes/ReportesPanel';
 import CanalesCobroModal, { CanalCobroData } from './CanalesCobroModal';
@@ -481,13 +482,14 @@ function ContabilidadInner({
       <div className="fixed bottom-[-12%] left-[-10%] w-[35vh] h-[35vh] bg-teal-500/5 rounded-full blur-[110px] pointer-events-none" />
 
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm mb-6">
-        <Link href="/dashboard" className="text-white/40 hover:text-white">Dashboard</Link>
-        <span className="text-white/20">›</span>
-        <Link href="/dashboard/herramientas" className="text-white/40 hover:text-white">Herramientas</Link>
-        <span className="text-white/20">›</span>
-        <span className="text-white/80 font-medium">Reportes</span>
-      </div>
+      <Breadcrumbs
+        items={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Herramientas', href: '/dashboard/herramientas' },
+          { label: 'Reportes & Contabilidad' },
+        ]}
+        className="mb-6"
+      />
 
       {/* Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -570,7 +572,7 @@ function ContabilidadInner({
                   <IconComponent className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <p className={`text-xl sm:text-2xl font-extrabold ${k.color} tabular-nums leading-tight`}>{k.value}</p>
+              <p className={`text-xl sm:text-2xl font-extrabold ${k.color} font-mono tabular-nums leading-tight`}>{k.value}</p>
               {k.sub && <p className="text-[10px] text-white/30 mt-1">{k.sub}</p>}
             </button>
           );
@@ -804,23 +806,13 @@ function ContabilidadInner({
               {/* Barra de Búsqueda y Filtros */}
               <div className="space-y-3">
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <div className="relative flex-1">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-                    <input
-                      type="text"
-                      placeholder="Buscar por concepto, categoría, fuente o monto..."
+                  <div className="flex-1">
+                    <SearchInput
                       value={busqueda}
-                      onChange={(e) => setBusqueda(e.target.value)}
-                      className="w-full bg-[#0F1C2A] border border-white/10 rounded-xl pl-9 pr-9 py-2 text-xs text-white placeholder-white/30 focus:border-emerald-500/50 outline-none transition-colors"
+                      onChange={setBusqueda}
+                      placeholder="Buscar por concepto, categoría, fuente o monto..."
+                      shortcutKey="f"
                     />
-                    {busqueda && (
-                      <button
-                        onClick={() => setBusqueda('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
                   </div>
 
                   {categoriasExistentes.length > 0 && (
@@ -1045,16 +1037,20 @@ function ContabilidadInner({
                           ) : (
                             <>
                               <button
+                                type="button"
                                 onClick={() => iniciarEdicion(m)}
                                 disabled={m.es_auto_generado}
                                 title={m.es_auto_generado ? 'Los movimientos auto-generados no se editan directamente' : 'Editar concepto o monto'}
+                                aria-label="Editar movimiento"
                                 className="text-xs text-white/40 hover:text-white p-1.5 rounded-lg hover:bg-white/5 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
                               <button
+                                type="button"
                                 onClick={() => eliminarMovimiento(m.id)}
                                 title="Borrar movimiento"
+                                aria-label="Borrar movimiento"
                                 className="text-xs text-white/40 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />

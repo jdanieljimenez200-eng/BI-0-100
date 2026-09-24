@@ -11,6 +11,7 @@ import {
   ScriptWhatsAppVentasPlus,
   SecuenciaSeguimientoVentasPlus,
 } from './types';
+import { cpcDeReferencia } from './benchmarksPais';
 
 const CATEGORY_AFFINITY: Record<string, { premium: number; volumen: number; especializado: number }> = {
   'Tecnología y gadgets':        { premium: 80, volumen: 50, especializado: 70 },
@@ -233,7 +234,8 @@ export function generarEstrategias(
   reporteAds?: ReporteAdsProcesado,
   canalCierre?: CanalCierre,
   nivelTraccion?: NivelTraccion,
-  margenEstimado?: RangoMargen
+  margenEstimado?: RangoMargen,
+  pais?: string | null
 ): EstrategiaMarketing[] {
   const scores = calcularPuntajesFit(categoria, precio, ctx, reporteAds);
   const esServicio = tipo === 'servicio';
@@ -261,8 +263,11 @@ export function generarEstrategias(
     margenTexto = '60% – 70%';
   }
 
+  // El CPC del reporte de ads del usuario manda; si no lo ha subido, se usa el
+  // supuesto del país EN SU MONEDA (antes era 2.6 para los 18 países).
   const cpcHistorico = reporteAds?.totales?.cpc_promedio;
-  const cpcPromedio = cpcHistorico && cpcHistorico > 0 ? cpcHistorico : 2.6;
+  const usaDatosPropios = Boolean(cpcHistorico && cpcHistorico > 0);
+  const cpcPromedio = usaDatosPropios ? cpcHistorico! : cpcDeReferencia(pais).cpc;
   const clicsEstimados = Math.max(25, Math.round((basePresupuesto * 0.70) / cpcPromedio));
 
   const tasaConvProspecto = canalCierre === 'whatsapp_dm' ? 5.5 : canalCierre === 'llamada' ? 4.2 : 3.2;
@@ -286,7 +291,12 @@ export function generarEstrategias(
     ventas_cerradas: ventasCerradas,
     tasa_cierre: tasaCierre,
     ingreso_proyectado: ingresoProyectado,
-    roas_estimado: Math.max(1.2, roasEstimado),
+    // Sin piso: `Math.max(1.2, …)` garantizaba que la simulación JAMÁS mostrara
+    // una campaña que pierde dinero, que es justo lo que el dueño necesita ver
+    // antes de gastar.
+    roas_estimado: roasEstimado,
+    rentable: roasEstimado >= 1,
+    origen_supuestos: usaDatosPropios ? 'tus_datos' : 'benchmark',
     cac_maximo_tolerable: cacMaximoTolerable,
     ticket_promedio_con_bump: ticketConBump,
     punto_equilibrio_unidades: puntoEquilibrioUnidades,

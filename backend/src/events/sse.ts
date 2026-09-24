@@ -135,23 +135,3 @@ export function emitAnalysisUpdate(
 ): void {
   push(userId, 'analysis-update', data);
 }
-
-export function emitAnalysisList(
-  userId: string,
-  data: {
-    tipo: string;
-    lista: unknown[];
-  }
-): void {
-  push(userId, 'analysis-list', data);
-}
-
-export function emitTabCheck(userId: string): void {
-  push(userId, 'tab-check', { ts: Date.now() });
-}
-
-export function getClientCount(): number {
-  let total = 0;
-  for (const set of clients.values()) total += set.size;
-  return total;
-}

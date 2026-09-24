@@ -161,4 +161,31 @@ describe('posicionamientoService.generarEstrategias', () => {
     const ventas = conAds.find((e) => e.tipo === 'VENTAS')!;
     expect(ventas.por_que).toContain('Histórico en Meta Ads');
   });
+
+  // ── Unit economics honesta ─────────────────────────────────────────────────
+
+  it('una campaña que pierde dinero se reporta como no rentable', () => {
+    // Ticket bajo y presupuesto alto: con cualquier supuesto razonable el
+    // retorno queda por debajo de 1. Antes un `Math.max(1.2, …)` garantizaba que
+    // la simulación nunca mostrara una campaña perdedora.
+    const estrategias = generarEstrategias('Llavero', 'Alimentos y bebidas', 'producto', 20, 50_000);
+    const ue = estrategias.find((e) => e.tipo === 'VENTAS_PLUS')!.unit_economics!;
+
+    expect(ue.roas_estimado).toBeLessThan(1);
+    expect(ue.rentable).toBe(false);
+  });
+
+  it('el CPC de respaldo es el del país, no un número fijo para toda LATAM', () => {
+    // ctx, puv, canalVenta, buyerPersonas, reporteAds, canalCierre,
+    // nivelTraccion, margenEstimado van sin declarar: el país es el último.
+    const sinDeclarar = [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] as const;
+    const mx = generarEstrategias('Pan', 'Alimentos y bebidas', 'producto', 299, 1000, ...sinDeclarar, 'MX');
+    const co = generarEstrategias('Pan', 'Alimentos y bebidas', 'producto', 299, 1000, ...sinDeclarar, 'CO');
+
+    const cpcMx = mx.find((e) => e.tipo === 'VENTAS_PLUS')!.unit_economics!;
+    const cpcCo = co.find((e) => e.tipo === 'VENTAS_PLUS')!.unit_economics!;
+
+    expect(cpcMx.cpc_promedio).not.toBe(cpcCo.cpc_promedio);
+    expect(cpcMx.origen_supuestos).toBe('benchmark');
+  });
 });

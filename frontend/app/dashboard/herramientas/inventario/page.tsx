@@ -26,6 +26,7 @@ import ProductoGate from '@/components/herramientas/ProductoGate';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
 import type { ProductoActivo } from '@/lib/productoActivo';
 import { modalVariants, backdropVariants } from '@/lib/motion/tokens';
+import { Breadcrumbs, SearchInput } from '@/components/ui';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -433,13 +434,14 @@ function InventarioInner({
       <div className="fixed bottom-[-12%] left-[-10%] w-[35vh] h-[35vh] bg-rose-500/5 rounded-full blur-[110px] pointer-events-none" />
 
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm mb-6">
-        <Link href="/dashboard" className="text-white/40 hover:text-white">Dashboard</Link>
-        <span className="text-white/20">›</span>
-        <Link href="/dashboard/herramientas" className="text-white/40 hover:text-white">Herramientas</Link>
-        <span className="text-white/20">›</span>
-        <span className="text-white/80 font-medium">Inventario</span>
-      </div>
+      <Breadcrumbs
+        items={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Herramientas', href: '/dashboard/herramientas' },
+          { label: 'Inventario & Stock' },
+        ]}
+        className="mb-6"
+      />
 
       {/* Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -466,7 +468,6 @@ function InventarioInner({
       </div>
 
       {/* Resumen KPIs */}
-      {/* Resumen KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {[
           { label: 'Total Insumos', value: resumen.total_insumos, color: 'text-white', sub: 'en catálogo', icon: Package },
@@ -481,7 +482,7 @@ function InventarioInner({
                 <span className="text-[10px] font-bold uppercase tracking-wider">{k.label}</span>
                 <Icon className="w-4 h-4 text-white/30" />
               </div>
-              <p className={`text-2xl font-extrabold ${k.color} tabular-nums leading-tight my-1`}>{k.value}</p>
+              <p className={`text-2xl font-extrabold ${k.color} font-mono tabular-nums leading-tight my-1`}>{k.value}</p>
               {k.sub && <p className="text-[10px] text-white/40">{k.sub}</p>}
             </div>
           );
@@ -517,20 +518,13 @@ function InventarioInner({
         <div className="space-y-4">
           {/* Controls: Search + Status filters + Category filters */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-white/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
+            <div className="flex-1">
+              <SearchInput
                 value={searchStock}
-                onChange={(e) => setSearchStock(e.target.value)}
+                onChange={setSearchStock}
                 placeholder="Buscar insumo por nombre, proveedor o ubicación..."
-                className="w-full bg-[#0F1C2A] border border-white/10 rounded-xl pl-9 pr-8 py-2.5 text-xs text-white placeholder:text-white/30 focus:border-amber-500/50 outline-none"
+                shortcutKey="f"
               />
-              {searchStock && (
-                <button onClick={() => setSearchStock('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white">
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
             </div>
 
             {/* Status filters & Actions */}
@@ -740,20 +734,13 @@ function InventarioInner({
         <div className="space-y-4">
           {/* Controls: Search + Type Filter */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-white/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
+            <div className="flex-1">
+              <SearchInput
                 value={searchMovimientos}
-                onChange={(e) => setSearchMovimientos(e.target.value)}
-                placeholder="Buscar por nombre de insumo, motivo o proveedor..."
-                className="w-full bg-[#0F1C2A] border border-white/10 rounded-xl pl-9 pr-8 py-2.5 text-xs text-white placeholder:text-white/30 focus:border-amber-500/50 outline-none"
+                onChange={setSearchMovimientos}
+                placeholder="Buscar por insumo, motivo o proveedor..."
+                shortcutKey="f"
               />
-              {searchMovimientos && (
-                <button onClick={() => setSearchMovimientos('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white">
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
             </div>
 
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
@@ -798,7 +785,7 @@ function InventarioInner({
                         </span>
                         <span>{insumo?.nombre ?? 'Insumo eliminado'}</span>
                       </p>
-                      <p className="text-[11px] text-white/40">
+                      <p className="text-[11px] text-white/40 font-mono tabular-nums">
                         {m.fecha} · {fmtNum(n(m.cantidad), 3)} {insumo?.unidad ?? 'u'} · Stock final: {fmtNum(n(m.stock_resultante), 3)}
                         {m.motivo && ` · "${m.motivo}"`}
                         {m.proveedor && ` · Prov: ${m.proveedor}`}
@@ -806,7 +793,7 @@ function InventarioInner({
                     </div>
                     <div className="text-right">
                       {n(m.costo_total) > 0 && (
-                        <p className="text-sm font-bold text-emerald-300">
+                        <p className="text-sm font-bold text-emerald-300 font-mono tabular-nums">
                           {fmtMoney(n(m.costo_total), taxCfg.simbolo, taxCfg.locale)}
                         </p>
                       )}
@@ -829,14 +816,12 @@ function InventarioInner({
       {tab === 'catalogo' && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
+            <div className="w-full sm:max-w-sm">
+              <SearchInput
                 value={searchCatalogo}
-                onChange={(e) => setSearchCatalogo(e.target.value)}
+                onChange={setSearchCatalogo}
                 placeholder="Buscar insumo por nombre o categoría..."
-                className="w-full bg-[#0F1C2A] border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-white/30 focus:border-amber-500/50 outline-none"
+                shortcutKey="f"
               />
             </div>
             <button

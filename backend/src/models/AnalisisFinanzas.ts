@@ -22,7 +22,7 @@ export type ResumenFinanciero = ReturnType<typeof generarResumen>;
 // Snapshot de los inputs originales almacenado en `inputs_data`.
 export type FinanzasInputsSnapshot = Pick<FinanzasInput,
   'precio_venta' | 'costo_variable_unitario' | 'costos_fijos_mensuales'
-  | 'unidades_mes_inicial' | 'tasa_crecimiento_mensual'>;
+  | 'unidades_mes_inicial' | 'tasa_crecimiento_mensual' | 'inversion_inicial'>;
 
 @Entity('analisis_finanzas')
 @Index(['usuario_id', 'producto_id'])

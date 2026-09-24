@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
-import { gsap } from 'gsap';
+import React, { useState } from 'react';
+import { Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface InputFieldProps {
   id: string;
@@ -11,7 +11,7 @@ interface InputFieldProps {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onBlur?: () => void;
-  onFocus?: () => void;
+  onFocus?: (e?: React.FocusEvent<HTMLInputElement>) => void;
   error?: string;
   success?: boolean;
   touched?: boolean;
@@ -38,118 +38,103 @@ export default function InputField({
   disabled,
   placeholder,
   autoComplete,
-  icon,
+  icon: _icon,
   showPassword,
   onTogglePassword,
 }: InputFieldProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [internalShowPassword, setInternalShowPassword] = useState(false);
 
-  // Animación de focus
-  useEffect(() => {
-    if (!inputRef.current) return;
-
-    const colors = icon === 'email' ? '#E74C3C' : '#10B981';
-
-    gsap.to(inputRef.current, {
-      boxShadow: `0 0 30px ${colors}40, inset 0 0 20px ${colors}10`,
-      duration: 0.4,
-      ease: 'power2.out',
-      overwrite: 'auto',
-    });
-
-    gsap.to(`.${id}-label`, {
-      color: colors,
-      duration: 0.3,
-      ease: 'power2.out',
-      overwrite: 'auto',
-    });
-
-    gsap.to(`.${id}-bg`, {
-      scale: 1.02,
-      opacity: 0.8,
-      duration: 0.3,
-      ease: 'power2.out',
-      overwrite: 'auto',
-    });
-  }, [id, icon]);
-
-  const handleInputBlur = () => {
-    if (!inputRef.current) return;
-
-    gsap.to(inputRef.current, {
-      boxShadow: '0 0 0px rgba(0, 0, 0, 0)',
-      duration: 0.3,
-      ease: 'power2.out',
-      overwrite: 'auto',
-    });
-
-    onBlur?.();
+  const isPasswordVisible = showPassword !== undefined ? showPassword : internalShowPassword;
+  const handleTogglePassword = () => {
+    if (onTogglePassword) {
+      onTogglePassword();
+    } else {
+      setInternalShowPassword((v) => !v);
+    }
   };
+
+  const hasError = Boolean(error && touched);
+  const hasSuccess = Boolean(success && touched && value);
 
   return (
     <div className="form-element group">
-      <label htmlFor={id} className={`${id}-label block text-xs font-bold text-white/60 uppercase tracking-widest mb-3 transition-colors duration-300`}>
+      <label
+        htmlFor={id}
+        className={`block text-xs font-sans font-semibold tracking-normal mb-2 transition-colors duration-150 ${
+          hasError
+            ? 'text-red-400'
+            : hasSuccess
+              ? 'text-emerald-400'
+              : 'text-slate-300 group-focus-within:text-white'
+        }`}
+      >
         {label}
       </label>
-      <div className={`${id}-bg relative rounded-xl transition-all duration-300`}>
+
+      <div className="relative rounded-xl transition-all duration-150">
         <input
-          ref={inputRef}
           id={id}
           name={name}
-          type={type === 'password' && showPassword ? 'text' : type}
+          type={type === 'password' && isPasswordVisible ? 'text' : type}
           required
           autoComplete={autoComplete}
           value={value}
           onChange={onChange}
-          onBlur={handleInputBlur}
+          onBlur={onBlur}
           onFocus={onFocus}
           disabled={disabled}
-          className="w-full bg-[#03070C]/50 border rounded-xl px-5 py-3.5 text-sm text-white placeholder-white/20 focus:outline-none focus:bg-gradient-to-br focus:from-[#0F1828] focus:to-[#0A121D] transition-all duration-300 relative z-10 will-change-transform"
-          style={{
-            borderColor: success && touched ? 'rgba(34, 197, 94, 0.5)' : error && touched ? 'rgba(231, 76, 60, 0.6)' : 'rgba(255, 255, 255, 0.1)',
-            backgroundColor: error && touched ? 'rgba(231, 76, 60, 0.05)' : '',
-            paddingRight: type === 'password' ? '3.5rem' : undefined,
-          }}
+          className={`w-full bg-[#161618] border rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 transition-all duration-150 outline-none ${
+            hasError
+              ? 'border-red-500/60 bg-red-500/[0.04] focus:border-red-400 focus:ring-2 focus:ring-red-500/15'
+              : hasSuccess
+                ? 'border-emerald-500/50 bg-emerald-500/[0.03] focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/15'
+                : 'border-white/[0.09] hover:border-white/20 focus:border-white/30 focus:bg-[#1A1A1D] focus:ring-2 focus:ring-white/10'
+          } ${type === 'password' ? 'pr-24' : (hasSuccess || hasError) ? 'pr-10' : ''}`}
           placeholder={placeholder}
-          aria-describedby={error ? `${id}-error` : success ? `${id}-success` : undefined}
+          aria-invalid={hasError ? true : undefined}
+          aria-describedby={hasError ? `${id}-error` : undefined}
         />
+
+        {/* Indicador de estado inline en el input (sin causar CLS ni empujar el formulario) */}
+        {type !== 'password' && hasSuccess && (
+          <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-emerald-400 animate-in fade-in duration-200">
+            <CheckCircle2 className="w-4 h-4" />
+          </div>
+        )}
+
+        {type !== 'password' && hasError && (
+          <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-red-400 animate-in fade-in duration-200">
+            <AlertCircle className="w-4 h-4" />
+          </div>
+        )}
 
         {type === 'password' && (
           <button
             type="button"
-            onClick={onTogglePassword}
-            aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors duration-300 text-[10px] uppercase font-bold tracking-widest hover:scale-110"
+            onClick={handleTogglePassword}
+            aria-label={isPasswordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors duration-150 text-xs font-sans font-medium cursor-pointer"
           >
-            {showPassword ? 'Ocultar' : 'Mostrar'}
+            {isPasswordVisible ? (
+              <EyeOff className="w-3.5 h-3.5 text-slate-300" />
+            ) : (
+              <Eye className="w-3.5 h-3.5 text-slate-300" />
+            )}
+            <span>{isPasswordVisible ? 'Ocultar' : 'Mostrar'}</span>
           </button>
         )}
       </div>
 
-      {/* Success state */}
-      {touched && value && success && (
-        <div className="mt-3 flex items-center gap-2 p-3 bg-green-500/10 border border-green-500/20 rounded-lg animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="w-5 h-5 rounded-full bg-green-500/30 flex items-center justify-center flex-shrink-0">
-            <svg className="w-3 h-3 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-            </svg>
-          </div>
-          <span className="text-xs text-green-300 font-semibold" id={`${id}-success`}>
-            {icon === 'email' ? 'Correo verificado' : 'Listo'}
-          </span>
-        </div>
-      )}
-
-      {/* Error state */}
-      {error && touched && (
-        <div className="mt-3 flex items-center gap-2 p-3 bg-[#E74C3C]/10 border border-[#E74C3C]/20 rounded-lg animate-in shake" id={`${id}-error`}>
-          <div className="w-5 h-5 rounded-full bg-[#E74C3C]/30 flex items-center justify-center flex-shrink-0">
-            <svg className="w-3 h-3 text-[#E74C3C]" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18.101 12.93a1 1 0 00-1.414-1.414L10 17.586l-6.687-6.687a1 1 0 00-1.414 1.414l8 8a1 1 0 001.414 0l8-8z" clipRule="evenodd" />
-            </svg>
-          </div>
-          <span className="text-xs text-[#E74C3C] font-semibold">{error}</span>
-        </div>
+      {/* Mensaje de error conciso inline (sin banners aparatosos) */}
+      {hasError && (
+        <p
+          id={`${id}-error`}
+          role="alert"
+          className="mt-1.5 flex items-center gap-1.5 text-xs text-red-400 font-medium animate-in fade-in slide-in-from-top-1 duration-150"
+        >
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          <span>{error}</span>
+        </p>
       )}
     </div>
   );

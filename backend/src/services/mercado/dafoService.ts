@@ -39,7 +39,7 @@ function dafoTemplate(
 // ─── Schema de validación del output del LLM ────────────────────────────────
 
 import { z } from 'zod';
-import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
+import { crearMensaje, textoDe } from '../../config/anthropic';
 import { registrarFallbackIA } from '../../utils/seguimientoIA';
 
 const DafoItemSchema = z.object({

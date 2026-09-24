@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { DollarSign, Shuffle, Target, AlertTriangle } from 'lucide-react';
 import { PlatformBadge } from './MarketingSocialIcons';
 
 // ─── Tipos mínimos ────────────────────────────────────────────────────────────
@@ -639,9 +640,8 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
         <div className="space-y-4 pt-8 border-t border-white/8">
           <div>
             <h3 className="text-[15px] font-black text-white flex items-center gap-2">
-              <span>💰</span>
+              <DollarSign className="w-4 h-4 text-emerald-400" />
               <span>Cómo repartir el presupuesto</span>
-              <span>📊</span>
             </h3>
             <p className="text-[12px] text-white/40 mt-0.5">
               Punto de partida: {formatMXN(presupuestoBase)} al mes, el presupuesto sugerido para la estrategia {estrategia.nombre}. Mueve el control para ver tu caso.
@@ -677,7 +677,7 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
 
             <div>
               <p className="text-[11px] font-black text-white/40 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                <span>🔀</span>
+                <Shuffle className="w-3.5 h-3.5 text-marketing" />
                 <span>Mezcla de canales</span>
               </p>
               <div className="flex flex-wrap gap-2" role="group" aria-label="Mezcla de canales">
@@ -707,7 +707,7 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               {
-                label: '📱 Pauta en redes',
+                label: 'Pauta en redes',
                 monto: montoDigital,
                 pct: mezcla.digital,
                 icon: (
@@ -720,7 +720,7 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
                 text: 'text-marketing',
               },
               {
-                label: '🏢 Publicidad física',
+                label: 'Publicidad física',
                 monto: montoFisica,
                 pct: mezcla.fisica,
                 icon: (
@@ -733,7 +733,7 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
                 text: 'text-amber-400',
               },
               {
-                label: '🎬 Producción de contenido',
+                label: 'Producción de contenido',
                 monto: montoProduccion,
                 pct: mezcla.produccion,
                 icon: (
@@ -761,7 +761,7 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
           {/* Reparto por red social */}
           <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-5 space-y-3">
             <p className="text-[11px] font-black text-white/40 uppercase tracking-widest flex items-center gap-1.5">
-              <span>🎯</span>
+              <Target className="w-3.5 h-3.5 text-marketing" />
               <span>Pauta por red · según el peso de cada una en tu calendario</span>
             </p>
             {repartoDigital.map((r) => {
@@ -783,8 +783,8 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
                     />
                   </div>
                   {bajo && (
-                    <p className="text-[11px] text-amber-300/80 flex items-center gap-1">
-                      <span>⚠️</span>
+                    <p className="text-[11px] text-amber-300/80 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                       <span>Menos de {formatMXN(60)} diarios rinden muy poco: concentra el gasto en una sola red hasta que puedas subirlo.</span>
                     </p>
                   )}

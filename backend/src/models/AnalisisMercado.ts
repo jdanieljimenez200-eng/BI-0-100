@@ -23,6 +23,7 @@ import type {
 import type { RentaZonaResult, EstudioAreaResult } from '../services/zona/types';
 import type { DatosOficialesResult } from '../services/estadisticas/types';
 import type { ReporteBi } from '../services/mercado/reporteBiService';
+import type { TraccionReal } from '../services/mercado/traccionReal';
 
 export type EstadoAnalisis = 'procesando' | 'completado' | 'error';
 
@@ -136,6 +137,13 @@ export class AnalisisMercado {
   // `null` solo cuando la consulta entera falló y el análisis siguió sin ella.
   @Column({ nullable: true, type: 'jsonb' })
   datos_oficiales_data!: DatosOficialesResult | null;
+
+  // Tracción tomada de las ventas reales del POS (services/mercado/traccionReal.ts).
+  // `null` = el producto no tiene ventas cerradas y se usó lo declarado en el
+  // formulario. Se guarda para que la pantalla pueda distinguir «tus ventas» de
+  // «lo que escribiste».
+  @Column({ nullable: true, type: 'jsonb' })
+  traccion_data!: TraccionReal | null;
 
   // Estado del proceso
   @Column({ default: 'procesando' })

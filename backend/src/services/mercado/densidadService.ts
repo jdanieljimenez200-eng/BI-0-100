@@ -119,12 +119,30 @@ const NO_EVALUABLE_NACIONAL =
   'A escala nacional el radio de búsqueda no describe el área del mercado. Declara el área en km² para medir densidad.';
 const NO_EVALUABLE_SIN_AREA =
   'No se declaró radio ni área de la zona, así que no se puede calcular densidad por km² (no se asume un área por defecto).';
+const NO_EVALUABLE_SIN_COMPETENCIA =
+  'No hubo fuente de competencia para esta búsqueda: sin competidores rastreados no se puede medir densidad por km².';
 
 export function calcularDensidadZona(
   competencia: CompetenciaResult,
   opciones: DensidadZonaOpciones = {},
 ): DensidadZonaResult {
   const resuelta = resolverArea(opciones);
+
+  // Dividir cero competidores entre el área daría densidad 0 y la narrativa de
+  // «hueco geográfico» sobre un dato que nadie midió.
+  if (competencia.fuente_disponible === false) {
+    return {
+      es_evaluable: false,
+      score: null,
+      competidores_km2: null,
+      area_km2: resuelta?.area ?? null,
+      origen_area: resuelta?.origen ?? null,
+      distancia_media_km: null,
+      interpretacion: 'no_evaluable',
+      mensaje: NO_EVALUABLE_SIN_COMPETENCIA,
+      confianza: 'baja',
+    };
+  }
 
   if (resuelta === null) {
     return {
