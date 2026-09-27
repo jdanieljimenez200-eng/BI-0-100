@@ -32,6 +32,24 @@ describeWithDb('Cotizaciones routes', () => {
       expect(res.status).toBe(400);
     });
 
+    // Valores que no caben en su columna: antes pasaban la validación y el
+    // INSERT (o la conversión en venta) respondía 500.
+    it.each([
+      ['impuesto_tasa por encima de 100 (numeric(5,2))', { impuesto_tasa: 1000 }],
+      ['moneda de más de 3 letras (ventas.moneda es varchar(3))', { moneda: 'PESOS' }],
+      ['cliente_telefono de más de 30 caracteres', { cliente_telefono: '5'.repeat(31) }],
+      ['precio_unitario que no cabe en venta_items', { items: [{ ...itemBase, precio_unitario: 1e12 }] }],
+      ['descripción de item de más de 255 caracteres', { items: [{ ...itemBase, descripcion: 'x'.repeat(256) }] }],
+    ])('rechaza con 400: %s', async (_caso, extra) => {
+      const res = await request
+        .default(app)
+        .post('/api/cotizaciones')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ cliente_nombre: 'Cliente', items: [itemBase], ...extra });
+
+      expect(res.status).toBe(400);
+    });
+
     it('crea una cotización con folio autogenerado (COT-######)', async () => {
       const res = await request
         .default(app)

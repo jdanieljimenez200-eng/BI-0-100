@@ -16,8 +16,11 @@ export class AddConfianzaYDeltaScoreAResultadosReportados1775340000000 implement
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "progreso_resultados_reportados" DROP COLUMN IF EXISTS "delta_score"`);
-    await queryRunner.query(`ALTER TABLE "progreso_resultados_reportados" DROP COLUMN IF EXISTS "confianza_nota"`);
-    await queryRunner.query(`ALTER TABLE "progreso_resultados_reportados" DROP COLUMN IF EXISTS "confianza"`);
+    // `IF EXISTS` también en la tabla: RevertProgresoHistorialTracking1775350000000
+    // la borra y su down no la recrea (decisión de producto), así que al revertir
+    // por debajo de ella esta tabla ya no está y el rollback se cortaba aquí.
+    await queryRunner.query(`ALTER TABLE IF EXISTS "progreso_resultados_reportados" DROP COLUMN IF EXISTS "delta_score"`);
+    await queryRunner.query(`ALTER TABLE IF EXISTS "progreso_resultados_reportados" DROP COLUMN IF EXISTS "confianza_nota"`);
+    await queryRunner.query(`ALTER TABLE IF EXISTS "progreso_resultados_reportados" DROP COLUMN IF EXISTS "confianza"`);
   }
 }

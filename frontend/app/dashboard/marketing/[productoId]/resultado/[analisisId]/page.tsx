@@ -528,40 +528,20 @@ function normalizeCopies(raw: unknown, rawEstrategias?: EstrategiaMarketing[]): 
 }
 
 function normalizeCalendario(raw: unknown): CalendarioSemanalMarketing {
+  // Todo arranca vacío y solo se llena con lo que mandó el backend. Antes estos
+  // campos traían contenido inventado de fábrica —un calendario de dos semanas
+  // con publicaciones y copies, y tendencias con score 92/88/84 y su
+  // justificación— que se pintaba igual que el real cuando `calendario_data`
+  // venía null. Las secciones ya están guardadas por `length > 0`, así que sin
+  // dato simplemente no se enseña el bloque.
   const base: CalendarioSemanalMarketing = {
     estrategia_tipo: 'PREMIUM',
     semanas: [],
-    tendencias: [
-      { plataforma: 'Instagram', tendencia: 'Reels educativos breves con hook en primeros 3s', score: 92, hashtags: ['#Tips', '#Negocio', '#Reels'], justificacion: 'Gran alcance orgánico para formatos de valor directo.' },
-      { plataforma: 'TikTok', tendencia: 'Detrás de escena / proceso paso a paso', score: 88, hashtags: ['#BehindTheScenes', '#Emprendimiento'], justificacion: 'Humaniza la marca y crea confianza rápida.' },
-      { plataforma: 'LinkedIn', tendencia: 'Reflexiones y aprendizajes de la industria', score: 84, hashtags: ['#Liderazgo', '#B2B'], justificacion: 'Posicionamiento de autoridad ante directivos y decisores.' },
-    ],
-    sugerencia_visual_campana: 'Composición sobria, fondos oscuros contrastados con acentos de color de marca y tipografías limpias y legibles.',
-    recomendacion_plataforma: [
-      { plataforma: 'Instagram', motivo: 'Canal prioritario para vitrina visual y conversión de audiencia interesada.' },
-      { plataforma: 'TikTok', motivo: 'Excelente motor de descubrimiento para nuevos clientes mediante video corto.' },
-      { plataforma: 'LinkedIn', motivo: 'Canal de autoridad institucional para generar alianzas y captar clientes B2B.' },
-    ],
+    tendencias: [],
+    recomendacion_plataforma: [],
   };
 
-  if (!raw || typeof raw !== 'object') {
-    base.semanas = [1, 2].map((num) => ({
-      numero: num as 1 | 2,
-      dias: DIAS_ORDEN.map((dia, idx) => ({
-        dia,
-        publicaciones: idx < 5 ? [{
-          hora: idx % 2 === 0 ? '10:00' : '17:00',
-          plataforma: idx % 3 === 0 ? 'Instagram' : idx % 3 === 1 ? 'TikTok' : 'LinkedIn',
-          tipo_contenido: idx % 2 === 0 ? 'Reel / Video' : 'Carrusel educativo',
-          idea: `Publicación ${dia}: contenido de valor y diferenciación`,
-          copy: 'Aprende cómo optimizar tus resultados y fortalecer tu posicionamiento de marca.',
-          hashtags: ['#Marketing', '#Negocios'],
-        }] : [],
-        sugerencia_engagement: 'Responder comentarios en los primeros 45 minutos tras publicar.',
-      })),
-    }));
-    return base;
-  }
+  if (!raw || typeof raw !== 'object') return base;
 
   const obj = raw as Record<string, any>;
   base.estrategia_tipo = ((obj.estrategia_tipo || '').toUpperCase() as TipoEstrategia) || 'PREMIUM';

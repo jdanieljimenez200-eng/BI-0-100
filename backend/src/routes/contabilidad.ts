@@ -39,18 +39,20 @@ import { dinero, MAX_DINERO } from '../utils/limitesNumericos';
 
 const CrearMovimientoContableSchema = z.object({
   tipo: z.enum(['ingreso', 'egreso'], { errorMap: () => ({ message: 'tipo debe ser ingreso o egreso' }) }),
-  descripcion: z.string().trim().min(1, 'descripcion es requerida'),
-  monto: z.number({ invalid_type_error: 'monto debe ser numérico' }).positive('monto debe ser un número positivo'),
+  // Topes = columnas de `movimientos_contables` (varchar(255), numeric(12,2),
+  // varchar(100)): un valor mayor era un 500 de Postgres en vez de un 400.
+  descripcion: z.string().trim().min(1, 'descripcion es requerida').max(255),
+  monto: dinero('monto').refine((m) => m > 0, 'monto debe ser un número positivo'),
   fecha: fechaISO('fecha inválida (YYYY-MM-DD)'),
-  categoria: z.string().optional(),
+  categoria: z.string().max(100).optional(),
   parent_movimiento_id: z.string().uuid().nullable().optional(),
   es_auto_generado: z.boolean().optional(),
   tiene_cfdi: z.boolean().optional(),
   // Campos de comisiones y canales
   canal_cobro_id: z.string().uuid().nullable().optional(),
-  institucion: z.string().optional(),
+  institucion: z.string().max(100).optional(),
   comision_porcentaje: z.number().min(0).max(1).optional(),
-  comision_fija: z.number().min(0).optional(),
+  comision_fija: z.number().min(0).max(MAX_DINERO).optional(),
   aplica_iva_comision: z.boolean().optional(),
   retencion_isr_porcentaje: z.number().min(0).max(1).optional(),
   retencion_iva_porcentaje: z.number().min(0).max(1).optional(),
@@ -62,7 +64,7 @@ const CanalCobroInputSchema = z.object({
   tipo_canal: z.enum(['terminal', 'delivery', 'pasarela_web', 'transferencia', 'efectivo', 'otro']),
   institucion: z.string().trim().min(1, 'institucion es requerida').max(100),
   comision_porcentaje: z.number().min(0).max(1).default(0),
-  comision_fija: z.number().min(0).default(0),
+  comision_fija: z.number().min(0).max(MAX_DINERO).default(0),
   aplica_iva_comision: z.boolean().default(true),
   retencion_isr_porcentaje: z.number().min(0).max(1).default(0),
   retencion_iva_porcentaje: z.number().min(0).max(1).default(0),
@@ -446,7 +448,9 @@ router.post('/:productoId', idempotente('contabilidad_mov'), requireHerramientaA
 // PATCH /api/contabilidad/movimiento/:id — inline edit
 const EditarMovimientoSchema = z.object({
   monto: dinero('monto').refine((m) => m > 0, 'monto debe ser mayor que 0').optional(),
-  descripcion: z.string().trim().min(1, 'descripcion no puede estar vacía').max(500).optional(),
+  // varchar(255): con .max(500), una descripción de 256 a 500 caracteres
+  // pasaba la validación y reventaba el UPDATE.
+  descripcion: z.string().trim().min(1, 'descripcion no puede estar vacía').max(255).optional(),
 });
 
 /**

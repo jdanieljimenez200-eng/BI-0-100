@@ -220,14 +220,12 @@ export function calcularTam(input: TamInput): TamResult {
 
   const advertencias: string[] = [];
 
-  // Un negocio de barrio no vende a todo el estado. No tenemos población por
-  // colonia, así que se dice de qué base salió el número en vez de presentarlo
-  // como si fuera el mercado de la puerta de al lado.
-  if (scope === 'local') {
-    advertencias.push(
-      `La base son los ${poblacionBase.toLocaleString('es-MX')} habitantes de ${ubicacion}, no los de tu zona inmediata: si atiendes solo un barrio, tu mercado real es una fracción de esto.`
-    );
-  }
+  // La población geográfica antes de cualquier recorte. El filtro NSE reasigna
+  // `poblacionBase`, así que el aviso de abajo se escribe DESPUÉS y con los dos
+  // números: decía «la base son los 8 348 151 habitantes de Jalisco» mientras
+  // `supuestos.poblacion_base` ya valía 1 168 741, y los dos salían en la misma
+  // pantalla contradiciéndose.
+  const poblacionGeografica = poblacionBase;
 
   // 2. Aplicar filtro NSE si se proporcionó.
   //    Solo donde existe una tabla real: NSE_PCT es la clasificación AMAI de
@@ -253,6 +251,18 @@ export function calcularTam(input: TamInput): TamResult {
       nseAplicado = nseKeys.map((key) => key.toUpperCase()).join(', ');
       pctMercadoNse = Math.round(pctNse * 100);
     }
+  }
+
+  // Un negocio de barrio no vende a todo el estado. No tenemos población por
+  // colonia, así que se dice de qué base salió el número en vez de presentarlo
+  // como si fuera el mercado de la puerta de al lado.
+  if (scope === 'local') {
+    const recorteNse = nseAplicado
+      ? ` De esos contamos ${poblacionBase.toLocaleString('es-MX')} por el filtro de nivel socioeconómico ${nseAplicado}.`
+      : '';
+    advertencias.push(
+      `La base son los ${poblacionGeografica.toLocaleString('es-MX')} habitantes de ${ubicacion}, no los de tu zona inmediata: si atiendes solo un barrio, tu mercado real es una fracción de esto.${recorteNse}`
+    );
   }
 
   // 3. Calcular escenarios

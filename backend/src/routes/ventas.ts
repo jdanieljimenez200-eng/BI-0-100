@@ -51,6 +51,9 @@ const contarAnalisisVentas = (usuarioId: string, productoId?: string): Promise<n
     },
   });
 
+/** Tope de la columna decimal(10,2) de `analisis_ventas.ticket_promedio`. */
+const TICKET_MAXIMO = 99_999_999.99;
+
 function parseInput(body: Record<string, unknown>): { input?: VentasAnalisisInput; error?: string } {
   const tipo_venta = String(body.tipo_venta ?? 'B2C_directo');
   const canal_principal = String(body.canal_principal ?? 'directo');
@@ -62,6 +65,12 @@ function parseInput(body: Record<string, unknown>): { input?: VentasAnalisisInpu
   if (!EQUIPOS.has(tamano_equipo)) return { error: 'tamano_equipo inválido' };
   if (!Number.isFinite(ticket_promedio) || ticket_promedio <= 0) {
     return { error: 'ticket_promedio debe ser mayor a 0' };
+  }
+  // `analisis_ventas.ticket_promedio` es decimal(10,2): sin tope, un dedazo
+  // (1000000000) llegaba a Postgres, reventaba el INSERT y el usuario veía un
+  // 500 en vez de un aviso de dato inválido.
+  if (ticket_promedio > TICKET_MAXIMO) {
+    return { error: `ticket_promedio no puede pasar de ${TICKET_MAXIMO.toLocaleString('es-MX')}` };
   }
 
   return {

@@ -53,3 +53,10 @@ if (motivo && !process.env.JEST_WORKER_ID) {
   );
   process.exit(1);
 }
+
+// Las columnas `timestamp` (sin zona) guardan la hora de pared del proceso que
+// escribe: node-postgres convierte cada Date a la hora local. Docker y
+// producción corren en UTC, igual que los `DEFAULT now()`; un seed lanzado desde
+// una terminal en Ciudad de México guardaba el mismo instante 6 horas antes
+// (12:30 en vez de 18:30). Dentro de Jest no se toca: la suite decide su zona.
+if (!process.env.JEST_WORKER_ID) process.env.TZ = 'UTC';

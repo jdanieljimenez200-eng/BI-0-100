@@ -674,4 +674,8 @@ async function seedFull4Weeks() {
   }
 }
 
-seedFull4Weeks().catch(console.error);
+// Código de salida 1 si falla: antes el error se imprimía pero el proceso salía con 0.
+seedFull4Weeks().catch((err) => {
+  console.error('❌', err instanceof Error ? err.message : err);
+  process.exitCode = 1;
+});

@@ -12,10 +12,12 @@ process.env.RATE_LIMIT_DISABLED = 'true';
 /**
  * La suite corre SIEMPRE contra el esquema de las migraciones, como en CI.
  *
- * `config/database.ts` activa synchronize fuera de producción salvo que llegue
- * TYPEORM_SYNCHRONIZE=false. Un `npm test` local sin esa variable sincronizaba
- * la base de test con las entidades: borraba las CHECK y rehacía las FK de las
- * migraciones, y los tests que las comprueban (roles de admin, purga de la
- * papelera) empezaban a fallar sin que el código hubiera cambiado.
+ * `config/database.ts` activaba synchronize fuera de producción salvo que
+ * llegara TYPEORM_SYNCHRONIZE=false. Un `npm test` local sin esa variable
+ * sincronizaba la base de test con las entidades: borraba las CHECK y rehacía
+ * las FK de las migraciones, y los tests que las comprueban (roles de admin,
+ * purga de la papelera) fallaban sin que el código hubiera cambiado. Desde el
+ * 2026-09-27 `synchronize` es `false` siempre; la variable se deja por si
+ * alguien reintroduce un interruptor.
  */
 process.env.TYPEORM_SYNCHRONIZE = 'false';

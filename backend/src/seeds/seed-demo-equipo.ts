@@ -59,9 +59,9 @@ async function seed() {
 
     await queryRunner.query(
       `INSERT INTO usuarios
-         (id, email, password_hash, nombre, plan, role,
+         (id, email, password_hash, nombre, plan,
           owner_id, account_role, analisis_disponibles, creditos_marketing, activo)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (email) DO NOTHING`,
       [
         uuidv4(),
@@ -69,7 +69,6 @@ async function seed() {
         ownerPasswordHash,
         'Dueño Demo',
         'business',     // business permite hasta 10 trabajadores
-        'user',
         null,           // owner_id = null -> es el dueño
         'owner',
         50,
@@ -94,7 +93,7 @@ async function seed() {
         categoria: 'Alimentos y Bebidas',
         precio_esperado: 320,
         pais: 'MX',
-        canal_venta: 'Tienda física y e-commerce',
+        canal_venta: 'mixto', // tienda física y e-commerce
         puv: 'Café trazable de pequeños productores con tueste fresco semanal.',
         cliente_ideal: 'Amantes del café de 25-45 años, NSE B/C+, urbanos',
         nse: 'B/C+',
@@ -112,7 +111,7 @@ async function seed() {
         categoria: 'Salud y Bienestar',
         precio_esperado: 499,
         pais: 'MX',
-        canal_venta: 'App móvil y web',
+        canal_venta: 'online', // app móvil y web
         puv: 'Bienestar integral guiado por expertos, accesible desde casa.',
         cliente_ideal: 'Profesionistas de 28-50 años que buscan equilibrio y rutina saludable',
         nse: 'A/B',
@@ -130,8 +129,8 @@ async function seed() {
       const productoId = uuidv4();
       await queryRunner.query(
         `INSERT INTO productos
-           (id, usuario_id, nombre, descripcion, tipo, categoria,
-            precio_esperado, pais, canal_venta, puv, cliente_ideal, nse,
+           (id, usuario_id, nombre, descripcion, tipo_actividad, categoria,
+            precio, pais, canal_venta, puv, cliente_ideal, nse,
             cobertura, radio_km, inversion_inicial, costos_fijos, tamano_equipo, status)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
         [
@@ -159,9 +158,9 @@ async function seed() {
     for (const t of trabajadores) {
       await queryRunner.query(
         `INSERT INTO usuarios
-           (id, email, password_hash, nombre, plan, role,
+           (id, email, password_hash, nombre, plan,
             owner_id, account_role, analisis_disponibles, creditos_marketing, activo)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (email) DO NOTHING`,
         [
           uuidv4(),
@@ -169,7 +168,6 @@ async function seed() {
           trabajadorPasswordHash,
           t.nombre,
           'business',        // hereda el contexto de la cuenta; el gate real usa la cuenta efectiva
-          'user',
           ownerId,           // apunta al dueño
           'trabajador',
           0,
@@ -220,4 +218,8 @@ async function seed() {
   }
 }
 
-seed().catch(console.error);
+// Código de salida 1 si falla: antes el error se imprimía pero el proceso salía con 0.
+seed().catch((err) => {
+  console.error('❌', err instanceof Error ? err.message : err);
+  process.exitCode = 1;
+});

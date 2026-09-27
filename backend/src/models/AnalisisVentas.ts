@@ -35,7 +35,7 @@ export class AnalisisVentas {
   @Column('decimal', { precision: 10, scale: 2, default: 0 })
   ticket_promedio!: number;
 
-  @Column({ type: 'varchar', default: 'solo_tu' })
+  @Column({ type: 'varchar', length: 20, default: 'solo_tu' })
   tamano_equipo!: string;
 
   @Column({ type: 'varchar', nullable: true })

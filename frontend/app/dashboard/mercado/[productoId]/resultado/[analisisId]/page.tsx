@@ -31,6 +31,20 @@ interface Factores {
   densidad?: number;
 }
 
+/**
+ * Lo que el backend guarda en la columna `viabilidad_factores`: el
+ * `ViabilidadResult` completo, no el mapa de factores
+ * (mercadoOrchestrator.ts → `analisis.viabilidad_factores = viabilidad`).
+ */
+interface ViabilidadGuardada {
+  score?: number;
+  estado?: string;
+  factores?: Factores;
+  confianza?: 'alta' | 'media' | 'baja';
+  cobertura_datos?: number;
+  factores_no_evaluados?: string[];
+}
+
 // Espejo de DensidadZonaResult (backend/src/services/mercado/types.ts).
 interface DensidadZona {
   es_evaluable: boolean;
@@ -91,7 +105,7 @@ interface Analisis {
   estado_analisis: 'procesando' | 'completado' | 'error';
   viabilidad_score: number;
   viabilidad_estado: string;
-  viabilidad_factores: Factores;
+  viabilidad_factores: ViabilidadGuardada;
   tendencias_data: { volumen_busquedas_mensual: number; crecimiento_porcentaje: number; tendencia: string; crecimiento_descripcion: string; datos_12_meses: { mes: string; volumen: number }[]; };
   competencia_data: { total_competidores: number; gap_detectado: string | null; competidores: Competidor[]; precio_mercado_promedio: number; fuente_disponible?: boolean; motivo_sin_fuente?: string | null; };
   densidad_data?: DensidadZona | null;
@@ -292,27 +306,37 @@ const FACTOR_LABELS: Record<string, string> = {
   densidad: 'Densidad de zona',
 };
 
-function FactorBar({ label, value }: { label: string; value: number }) {
+function FactorBar({ label, value, evaluado = true }: { label: string; value: number; evaluado?: boolean }) {
   const barRef = useRef<HTMLDivElement>(null);
   const cont   = useRef<HTMLDivElement>(null);
+  // Un factor sin fuente no puntúa en el score: su barra va vacía y dice «sin
+  // datos», porque un 0 pintado de rojo se lee como «lo medimos y salió mal».
+  const ancho = evaluado ? value : 0;
 
   useGSAP(() => {
     gsap.fromTo(barRef.current, { width: '0%' }, {
-      width: `${value}%`, duration: 1.5, ease: 'power3.out',
+      width: `${ancho}%`, duration: 1.5, ease: 'power3.out',
       scrollTrigger: { trigger: cont.current, start: 'top 90%', once: true }
     });
-  }, { scope: cont, dependencies: [value] });
+  }, { scope: cont, dependencies: [ancho] });
 
-  const color = value >= 75 ? '#4ade80' : value >= 50 ? '#60a5fa' : value >= 30 ? '#facc15' : '#f87171';
+  const color = !evaluado ? 'rgba(255,255,255,0.18)'
+    : value >= 75 ? '#4ade80' : value >= 50 ? '#60a5fa' : value >= 30 ? '#facc15' : '#f87171';
 
   return (
     <div ref={cont}>
       <div className="flex justify-between text-[11px] mb-1.5">
         <span className="capitalize font-semibold text-white/65">{FACTOR_LABELS[label] ?? label.replace(/_/g, ' ')}</span>
-        <span className="font-black" style={{ color }}>{value}</span>
+        {evaluado
+          ? <span className="font-black" style={{ color }}>{value}</span>
+          : <span className="font-bold text-white/30">sin datos</span>}
       </div>
       <div className="h-2 bg-white/6 rounded-full overflow-hidden">
-        <div ref={barRef} className="h-full rounded-full" style={{ background: color, boxShadow: `0 0 8px ${color}80` }} />
+        <div
+          ref={barRef}
+          className="h-full rounded-full"
+          style={{ background: color, boxShadow: evaluado ? `0 0 8px ${color}80` : 'none' }}
+        />
       </div>
     </div>
   );
@@ -1003,24 +1027,66 @@ type MercadoTab = 'resumen' | 'competencia' | 'tendencias' | 'dafo' | 'completo'
 
 // ─── Normalizadores de Mercado ──────────────────────────────────────────────
 
-function normalizeViabilidadFactores(raw: unknown): Factores {
-  const result: Record<string, number> = {
-    tendencia: 0,
-    competencia: 0,
-    margen: 0,
-    demanda: 0,
-    oportunidad: 0,
-  };
-  if (!raw || typeof raw !== 'object') return result as unknown as Factores;
+/** Los factores del modelo, en el orden en que se enseñan. */
+const FACTOR_ORDEN: string[] = [
+  'tendencia', 'competencia', 'margen', 'demanda', 'oportunidad', 'precio_relativo', 'densidad',
+];
 
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof v === 'number' && Number.isFinite(v)) {
-      result[k] = v;
-    } else if (v && typeof v === 'object' && 'score' in v && typeof (v as { score: unknown }).score === 'number') {
-      result[k] = (v as { score: number }).score;
-    }
+/** Claves del envoltorio `ViabilidadResult` que NO son factores. */
+const NO_ES_FACTOR = new Set([
+  'score', 'estado', 'confianza', 'cobertura_datos',
+  'factores', 'factores_positivos', 'factores_negativos', 'factores_no_evaluados',
+]);
+
+/** Acepta `82` y también `{ score: 82, label: '…' }` (forma de los seeds). */
+function valorDeFactor(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (v && typeof v === 'object') {
+    const s = (v as { score?: unknown }).score;
+    if (typeof s === 'number' && Number.isFinite(s)) return s;
   }
-  return result as unknown as Factores;
+  return null;
+}
+
+/**
+ * La columna guarda el `ViabilidadResult` completo, así que los factores están
+ * un nivel más abajo, en `.factores`. Recorrer el nivel de arriba dejaba los
+ * cinco factores en 0 y añadía dos barras que no son factores (`score` y
+ * `cobertura_datos`): el anillo marcaba 75 y las barras 0 a la vez.
+ */
+function normalizeViabilidad(raw: unknown): {
+  factores: { clave: string; valor: number; evaluado: boolean }[];
+  cobertura_pct: number | null;
+} {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  // Análisis viejos pudieron guardar el mapa plano: se acepta como respaldo.
+  const mapa = (r.factores && typeof r.factores === 'object'
+    ? r.factores
+    : r) as Record<string, unknown>;
+
+  const sinDatos = new Set(
+    Array.isArray(r.factores_no_evaluados) ? r.factores_no_evaluados.map(String) : []
+  );
+  const cobertura = r.cobertura_datos;
+  const cobertura_pct =
+    typeof cobertura === 'number' && Number.isFinite(cobertura)
+      ? Math.round(cobertura * 100)
+      : null;
+
+  // Los factores conocidos primero, y detrás cualquier otro que traiga el dato
+  // (los seeds de demo guardan alguno más, como `barreras`).
+  const claves = [
+    ...FACTOR_ORDEN.filter((k) => k in mapa),
+    ...Object.keys(mapa).filter((k) => !FACTOR_ORDEN.includes(k) && !NO_ES_FACTOR.has(k)),
+  ];
+
+  const factores = claves.flatMap((clave) => {
+    const valor = valorDeFactor(mapa[clave]);
+    if (valor === null) return [];
+    return [{ clave, valor: Math.round(valor), evaluado: !sinDatos.has(clave) }];
+  });
+
+  return { factores, cobertura_pct };
 }
 
 function normalizeTendencias(raw: unknown) {
@@ -1218,24 +1284,52 @@ function normalizeReporteBi(
     }
   }
 
-  const score = Number(r.score_viabilidad ?? analisis.viabilidad_score ?? 75);
+  // Sin score no se inventa uno: un 75 por defecto se leía como «viable».
+  const score = Number(r.score_viabilidad ?? analisis.viabilidad_score ?? 0);
   const dir = tend.tendencia === 'Creciente' ? 'Creciente' : tend.tendencia === 'Decreciente' ? 'Decreciente' : 'Estable';
   const precioFmt = comp.precio_mercado_promedio > 0 ? `$${comp.precio_mercado_promedio.toLocaleString('es-MX')}` : 'competitivo';
 
   const rawAm = (r.analisis_mercado && typeof r.analisis_mercado === 'object' ? r.analisis_mercado : {}) as Record<string, unknown>;
 
+  // Resumen de respaldo cuando la IA no escribió uno. Solo afirma lo que se
+  // midió: antes decía «identifica 0 competidores … demanda de 0 búsquedas …
+  // posición favorable con oportunidades claras» cuando ninguna fuente había
+  // respondido.
+  const medido: string[] = [];
+  if (comp.fuente_disponible && comp.total_competidores > 0) {
+    medido.push(`${comp.total_competidores} competidores en tu categoría`);
+  }
+  if (tend.volumen_busquedas_mensual > 0) {
+    medido.push(`una demanda mensual estimada de ${tend.volumen_busquedas_mensual.toLocaleString()} búsquedas con tendencia ${dir.toLowerCase()}`);
+  }
+  const resumenRespaldo = medido.length > 0
+    ? `El análisis del mercado identifica ${medido.join(' y ')}.${score > 0 ? ` Score de viabilidad: ${score}/100.` : ''}`
+    : `No se pudo rastrear competencia ni volumen de búsquedas para esta categoría y zona, así que el análisis se apoya solo en los datos que declaraste.${score > 0 ? ` Score parcial de viabilidad: ${score}/100.` : ''}`;
+
   return {
     resumen_ejecutivo: String(
       r.resumen_ejecutivo ||
       (analisis as unknown as Record<string, unknown>).resumen_ejecutivo ||
-      `El análisis del mercado identifica ${comp.total_competidores} competidores en tu categoría con una tendencia ${dir.toLowerCase()} y una demanda mensual estimada de ${tend.volumen_busquedas_mensual.toLocaleString()} búsquedas. El score de viabilidad de ${score}/100 sitúa tu proyecto en una posición favorable con oportunidades claras de diferenciación.`
+      resumenRespaldo
     ),
     grafica_tendencias: dir,
     score_viabilidad: score,
-    mapa_competencia: String(r.mapa_competencia || `${comp.total_competidores} competidores analizados en el área`),
+    mapa_competencia: String(
+      r.mapa_competencia ||
+      (comp.fuente_disponible && comp.total_competidores > 0
+        ? `${comp.total_competidores} competidores analizados en el área`
+        : 'No se pudo rastrear competencia en el área.')
+    ),
     alertas_ia: alertasIa,
     analisis_mercado: {
-      validacion_precio: String(rawAm.validacion_precio || `Precio promedio de mercado en ${precioFmt}`),
+      // Sin precio de mercado rastreado no se afirma que el precio esté validado:
+      // el texto salía como «Precio promedio de mercado en competitivo».
+      validacion_precio: String(
+        rawAm.validacion_precio ||
+        (comp.precio_mercado_promedio > 0
+          ? `Precio promedio de mercado en ${precioFmt}`
+          : 'No hay precio de mercado rastreado para comparar el tuyo.')
+      ),
       gap_oportunidad: String(rawAm.gap_oportunidad || comp.gap_detectado || 'Oportunidad de posicionarse por calidad superior y experiencia de cliente'),
       analisis_dafo_dinamico: String(rawAm.analisis_dafo_dinamico || 'Apalancar las fortalezas clave de la propuesta para contrarrestar la saturación de competidores genéricos.'),
       cruce_inversion_tam: String(rawAm.cruce_inversion_tam || `Mercado accesible anual (SAM) proyectado con espacio para captura sostenida.`),
@@ -1354,7 +1448,7 @@ export default function ResultadoMercadoPage() {
 
   const viabilidad_score = analisis.viabilidad_score ?? 0;
   const viabilidad_estado = analisis.viabilidad_estado ?? 'MODERADO';
-  const viabilidad_factores = normalizeViabilidadFactores(analisis.viabilidad_factores);
+  const viabilidad = normalizeViabilidad(analisis.viabilidad_factores);
   const tendencias_data = normalizeTendencias(analisis.tendencias_data);
   const competencia_data = normalizeCompetencia(analisis.competencia_data, analisis.precio_usuario);
   const dafo_data = normalizeDafo(analisis.dafo_data);
@@ -1461,7 +1555,14 @@ export default function ResultadoMercadoPage() {
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/35 mb-1">Análisis de Mercado · IA</p>
                 <h1 className="text-2xl font-black text-white tracking-tight">Estudio de Viabilidad</h1>
-                <p className="text-xs text-white/45 mt-1.5 max-w-xs leading-relaxed">Score calculado con datos reales de competencia, tendencias, precio y tamaño de mercado.</p>
+                {/* No se promete «datos reales de competencia y tendencias»
+                    cuando esas fuentes no respondieron: con cobertura baja el
+                    score sale de lo que declaraste, no de lo que se rastreó. */}
+                <p className="text-xs text-white/45 mt-1.5 max-w-xs leading-relaxed">
+                  {viabilidad.cobertura_pct !== null && viabilidad.cobertura_pct < 60
+                    ? 'Score parcial: varias fuentes de mercado no respondieron y esos factores no puntúan.'
+                    : 'Score calculado con datos reales de competencia, tendencias, precio y tamaño de mercado.'}
+                </p>
               </div>
               <div className="flex flex-col items-end gap-1.5">
                 {confianza_analisis && (
@@ -1493,14 +1594,22 @@ export default function ResultadoMercadoPage() {
               </div>
 
               {/* Factor bars */}
-              {viabilidad_factores && (
+              {viabilidad.factores.length > 0 && (
                 <div className="flex-1 w-full space-y-3.5">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-4">Factores evaluados</p>
-                  {Object.entries(viabilidad_factores)
-                    .filter(([, v]) => typeof v === 'number' && Number.isFinite(v))
-                    .map(([k, v]) => (
-                      <FactorBar key={k} label={k} value={v as number} />
-                    ))}
+                  {viabilidad.factores.map((f) => (
+                    <FactorBar key={f.clave} label={f.clave} value={f.valor} evaluado={f.evaluado} />
+                  ))}
+                  {/* Cuánto del modelo se pudo medir de verdad. Sin esto, un
+                      score sacado de un solo factor se leía igual que uno
+                      calculado con todas las señales. */}
+                  {viabilidad.cobertura_pct !== null && viabilidad.cobertura_pct < 100 && (
+                    <p className="text-[10px] text-white/40 leading-relaxed pt-1">
+                      Score calculado con el {viabilidad.cobertura_pct}% del modelo: los factores
+                      marcados «sin datos» no puntúan. Tómalo como una señal parcial, no como un
+                      diagnóstico cerrado.
+                    </p>
+                  )}
                 </div>
               )}
 

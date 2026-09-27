@@ -10,6 +10,7 @@ import { respuestaAnalisis } from '../services/billing/redactAnalisis';
 import { requireAnalisisLock } from '../middleware/idempotency';
 import { validateBody, exigirUuid } from '../middleware/validate';
 import { logger } from '../utils/logger';
+import { MAX_ENTERO } from '../utils/limitesNumericos';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
 
@@ -25,7 +26,7 @@ const AnalizarLegalSchema = z
     productoId: z.string().uuid().optional(),
     forma_juridica: z.string().min(1).max(100),
     tiene_empleados: z.boolean(),
-    numero_empleados: z.number().finite().int().nonnegative().optional().nullable(),
+    numero_empleados: z.number().finite().int().nonnegative().max(MAX_ENTERO).optional().nullable(),
     vende_en_linea: z.boolean(),
     exporta_importa: z.boolean(),
     giro_especifico: z.string().max(200).optional(),

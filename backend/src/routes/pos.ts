@@ -33,23 +33,25 @@ import { ah } from '../utils/asyncHandler';
 import { hoyDePeticion } from '../utils/fechaLocal';
 import { idempotente } from '../middleware/idempotency';
 import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
-import { cantidad, dinero, MAX_DINERO } from '../utils/limitesNumericos';
+import { cantidad, dinero, MAX_DINERO, MAX_ENTERO } from '../utils/limitesNumericos';
 import { r2 } from '../utils/dinero';
 
+// Topes = columnas de `items_pos`, `venta_items`, `ventas` y `clientes`. Un
+// texto más largo pasaba la validación y el INSERT respondía 500.
 const CrearItemPOSSchema = z.object({
-  nombre: z.string().trim().min(1, 'nombre es requerido'),
+  nombre: z.string().trim().min(1, 'nombre es requerido').max(255),
   descripcion: z.string().optional(),
   precio: dinero('precio'),
-  categoria: z.string().optional(),
-  imagen_url: z.string().optional(),
-  emoji: z.string().optional(),
+  categoria: z.string().max(100).optional(),
+  imagen_url: z.string().max(500).optional(),
+  emoji: z.string().refine((e) => [...e].length <= 8, 'emoji demasiado largo').optional(),
   negocio_id: z.string().uuid().nullable().optional(),
-  orden: z.number().int().optional(),
+  orden: z.number().int().min(-MAX_ENTERO).max(MAX_ENTERO).optional(),
 });
 
 const LineaCarritoSchema = z.object({
   item_pos_id: z.string().uuid().nullable().optional(),
-  nombre: z.string().min(1, 'nombre del item es requerido'),
+  nombre: z.string().min(1, 'nombre del item es requerido').max(255),
   precio_unitario: dinero('precio_unitario'),
   cantidad: cantidad('cantidad').refine((c) => c > 0, 'cantidad debe ser > 0'),
 });
@@ -60,16 +62,16 @@ const CrearVentaSchema = z.object({
   lineas: z.array(LineaCarritoSchema).min(1, 'El carrito debe tener al menos un producto'),
   metodo_pago: z.enum(['efectivo', 'tarjeta', 'transferencia', 'otro']).optional(),
   canal_cobro_id: z.string().uuid().nullable().optional(),
-  cliente_nombre: z.string().optional(),
-  cliente_telefono: z.string().optional(),
+  cliente_nombre: z.string().max(200).optional(),
+  cliente_telefono: z.string().max(30).optional(),
   // Vinculo con el CRM. Mutuamente excluyentes: o eliges un cliente que ya
   // existe, o lo das de alta en el momento. Sin ninguno de los dos, la venta
   // sigue funcionando como antes (publico general / texto libre).
   cliente_id: z.string().uuid().nullable().optional(),
   crear_cliente: z.object({
-    nombre: z.string().trim().min(1, 'El nombre del cliente es requerido'),
-    telefono: z.string().optional(),
-    email: z.string().email('Email invalido').optional(),
+    nombre: z.string().trim().min(1, 'El nombre del cliente es requerido').max(200),
+    telefono: z.string().max(30).optional(),
+    email: z.string().email('Email invalido').max(200).optional(),
   }).optional(),
   notas: z.string().optional(),
   aplicar_impuesto: z.boolean().optional(),
@@ -215,7 +217,8 @@ router.delete('/catalogo/:id', ah(async (req: AuthRequest, res: Response) => {
 const RecetaSchema = z.object({
   insumos: z.array(z.object({
     insumo_id: z.string().uuid('insumo_id debe ser un UUID valido'),
-    cantidad: z.number().positive('cantidad debe ser > 0'),
+    // item_pos_insumos.cantidad es numeric(12,3).
+    cantidad: cantidad('cantidad').refine((c) => c > 0, 'cantidad debe ser > 0'),
   })).max(50, 'Maximo 50 insumos por receta'),
 });
 

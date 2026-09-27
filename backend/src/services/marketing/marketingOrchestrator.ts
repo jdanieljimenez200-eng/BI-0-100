@@ -241,7 +241,11 @@ export async function orquestarMarketing(
 
     analisis.calendario_data = calendarioData as never;
     analisis.voz_marca = voz;
-    analisis.presupuesto_mensual = presupuesto;
+    // `presupuesto_mensual` es `integer`: un presupuesto con centavos (8500.50,
+    // que el formulario deja escribir) reventaba este guardado con «invalid
+    // input syntax for type integer» y el análisis acababa en error después de
+    // haber pagado todas las llamadas a la IA.
+    analisis.presupuesto_mensual = Math.round(presupuesto);
     analisis.meta_campana = payload.metaCampana ?? '';
 
     analisis.resultado_estimado = huboFallbackIA();

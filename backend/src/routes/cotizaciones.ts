@@ -22,27 +22,35 @@ import { hoyDePeticion } from '../utils/fechaLocal';
 import { idempotente } from '../middleware/idempotency';
 import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
 import { r2 } from '../utils/dinero';
+import { cantidad, dinero } from '../utils/limitesNumericos';
 
+// Los items viven en `cotizaciones.items` (jsonb), pero al convertir en venta
+// cada uno pasa a `venta_items` (nombre_snapshot varchar(255), cantidad
+// numeric(12,3), precio numeric(12,2)): los topes son los de ese destino, o la
+// cotización se guardaba bien y luego no había forma de convertirla.
 const CotizacionItemSchema = z.object({
-  descripcion: z.string().trim().min(1, 'descripción requerida'),
-  cantidad: z.number({ invalid_type_error: 'cantidad debe ser numérica' }).positive('cantidad debe ser > 0'),
-  precio_unitario: z.number({ invalid_type_error: 'precio_unitario debe ser numérico' }).min(0, 'precio_unitario debe ser >= 0'),
+  descripcion: z.string().trim().min(1, 'descripción requerida').max(255),
+  cantidad: cantidad('cantidad').refine((c) => c > 0, 'cantidad debe ser > 0'),
+  precio_unitario: dinero('precio_unitario'),
   subtotal: z.number().optional(),
 });
 
 const CrearCotizacionSchema = z.object({
-  cliente_nombre: z.string().trim().min(1, 'cliente_nombre es requerido'),
-  cliente_empresa: z.string().optional(),
-  cliente_email: z.string().optional(),
-  cliente_telefono: z.string().optional(),
+  cliente_nombre: z.string().trim().min(1, 'cliente_nombre es requerido').max(200),
+  cliente_empresa: z.string().max(200).optional(),
+  cliente_email: z.string().max(200).optional(),
+  cliente_telefono: z.string().max(30).optional(),
   // Vinculo opcional con el CRM; los campos cliente_* de arriba quedan como
   // snapshot para el PDF.
   cliente_id: z.string().uuid().nullable().optional(),
   items: z.array(CotizacionItemSchema).optional().default([]),
   descuento_pct: z.number().min(0).max(100).optional().default(0),
-  impuesto_tasa: z.number().min(0).optional().default(0),
-  impuesto_nombre: z.string().optional().default('IVA'),
-  moneda: z.string().optional(), // sin valor: la del país del producto (monedaDeCuenta)
+  // Porcentaje (16 = 16 %) en numeric(5,2): sin tope, 1000 reventaba el INSERT.
+  impuesto_tasa: z.number().min(0).max(100).optional().default(0),
+  impuesto_nombre: z.string().max(20).optional().default('IVA'),
+  // Código ISO de 3 letras. La columna admite 10, pero al convertir en venta
+  // se copia a `ventas.moneda`, que es varchar(3).
+  moneda: z.string().trim().max(3).optional(), // sin valor: la del país del producto (monedaDeCuenta)
   estado: z.enum(['borrador', 'enviada', 'aceptada', 'rechazada', 'vencida']).optional().default('borrador'),
   fecha_vencimiento: fechaISOOpcional('fecha_vencimiento inválida (YYYY-MM-DD)'),
   notas: z.string().optional(),

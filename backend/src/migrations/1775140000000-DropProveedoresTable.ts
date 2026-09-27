@@ -7,6 +7,12 @@ export class DropProveedoresTable1775140000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    // La tabla ya la había archivado ArchiveProveedoresModule1724004000000, y es
+    // su down quien la restaura CON sus datos desde `analisis_proveedores_archived`.
+    // Recrearla aquí vacía y con otras columnas hacía fallar ese restore
+    // («relation "analisis_proveedores" already exists») y cortaba el rollback.
+    if (await queryRunner.hasTable('analisis_proveedores_archived')) return;
+
     // Recrear tabla en caso de rollback
     await queryRunner.createTable(
       new Table({

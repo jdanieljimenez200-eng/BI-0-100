@@ -2,6 +2,7 @@ import 'dotenv/config';
 import 'reflect-metadata';
 
 import { AppDataSource } from '../config/database';
+import { migrarAlArrancar } from '../config/migracionesAlArrancar';
 import { verificarClaveAnthropic } from '../config/anthropic';
 import { verificarEntornoProduccion } from '../config/entorno';
 import { initRedis, redisClient } from '../config/redis';
@@ -39,6 +40,8 @@ async function arrancar(): Promise<void> {
   verificarClaveAnthropic();
   verificarEntornoProduccion();
 
+  // Mismo candado que la API: si arrancan a la vez, migra solo uno.
+  await migrarAlArrancar();
   await AppDataSource.initialize();
   await initRedis();
   // Sin el puente, los eventos del worker solo irían a clientes de ESTE proceso

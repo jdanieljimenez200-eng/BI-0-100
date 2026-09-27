@@ -161,6 +161,12 @@ export interface ViabilidadResult {
    * de presentar un número redondo como si fuera un diagnóstico completo.
    */
   cobertura_datos: number;
+  /**
+   * Nombres de los factores que no se pudieron medir. En `factores` van en 0
+   * por compatibilidad, y un 0 sin contexto se lee como «lo medimos y salió
+   * malísimo»: la pantalla usa esta lista para marcarlos «sin datos».
+   */
+  factores_no_evaluados: string[];
 }
 
 // ─── Densidad de competencia por km² ────────────────────────────────────────

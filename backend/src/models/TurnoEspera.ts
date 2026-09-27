@@ -93,9 +93,9 @@ export class TurnoEspera {
   @Column({ type: 'timestamptz', nullable: true })
   hora_liberado!: Date | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   fecha_creacion!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   fecha_actualizacion!: Date;
 }

@@ -53,9 +53,9 @@ export class LugarAtencion {
   @Column({ type: 'boolean', default: true })
   activo!: boolean;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   fecha_creacion!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   fecha_actualizacion!: Date;
 }

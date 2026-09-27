@@ -35,7 +35,7 @@ async function seed() {
 
     await queryRunner.query(
       `INSERT INTO usuarios
-         (id, email, password_hash, nombre, plan, role,
+         (id, email, password_hash, nombre, plan, account_role,
           analisis_disponibles, creditos_marketing, activo)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (email) DO NOTHING`,
@@ -45,7 +45,7 @@ async function seed() {
         passwordHash,
         'Carlos Mendoza',
         'business',
-        'user',
+        'owner', // la columna `role` ya no existe: el seed fallaba desde el Baseline
         50,
         200,
         true,
@@ -97,7 +97,7 @@ async function seed() {
         descripcion: 'Sedán premium con motor 2.0L turbo, pantalla iDrive 8, asientos de cuero y modo M Sport activo.',
         tipo: 'producto', categoria: 'Autos de Lujo',
         precio_esperado: 780000, pais: 'MX',
-        canal_venta: 'Concesionario físico y web',
+        canal_venta: 'mixto', // concesionario físico y web
         puv: 'El sedán ejecutivo más vendido en su segmento con tecnología Driving Assistant Pro.',
         cliente_ideal: 'Ejecutivos de 35-55 años, NSE A/B, CDMX y área metropolitana',
         nse: 'A/B', cobertura: 'Local', radio_km: 50,
@@ -110,7 +110,7 @@ async function seed() {
         descripcion: 'Sedán híbrido con autonomía extendida, 0-100 en 7.2s, pantalla 12.3" y 7 airbags de serie.',
         tipo: 'producto', categoria: 'Autos Híbridos',
         precio_esperado: 520000, pais: 'MX',
-        canal_venta: 'Concesionario físico y marketplace',
+        canal_venta: 'mixto', // concesionario físico y marketplace
         puv: 'Máximo ahorro en combustible sin sacrificar rendimiento ni confort.',
         cliente_ideal: 'Familias y profesionistas conscientes del medio ambiente, NSE B/C+',
         nse: 'B/C+', cobertura: 'Local', radio_km: 80,
@@ -123,7 +123,7 @@ async function seed() {
         descripcion: 'Lavado profundo, pulido, encerado cerámico y ozonización interior. Duración 6-8 horas.',
         tipo: 'servicio', categoria: 'Servicios Automotrices',
         precio_esperado: 4500, pais: 'MX',
-        canal_venta: 'WhatsApp, Instagram y web',
+        canal_venta: 'mixto', // WhatsApp, Instagram y web
         puv: 'Acabado showroom garantizado o segunda aplicación sin costo.',
         cliente_ideal: 'Dueños de autos de lujo y SUV premium que valoran la presentación de su vehículo',
         nse: 'A/B', cobertura: 'Local', radio_km: 30,
@@ -137,7 +137,7 @@ async function seed() {
         descripcion: 'Experiencia gastronómica de autor con insumos de temporada, maridaje de vinos nacionales y presentación de lujo.',
         tipo: 'servicio', categoria: 'Menú Especial',
         precio_esperado: 1850, pais: 'MX',
-        canal_venta: 'Reservaciones web, OpenTable e Instagram',
+        canal_venta: 'mixto', // reservaciones web, OpenTable e Instagram
         puv: 'La única degustación de cocina mexicana contemporánea en Polanco con ingredientes 100% locales.',
         cliente_ideal: 'Parejas y directivos de 30-60 años que buscan experiencias gastronómicas únicas',
         nse: 'A/B', cobertura: 'Local', radio_km: 15,
@@ -150,7 +150,7 @@ async function seed() {
         descripcion: 'Buffet curado de platillos mexicanos e internacionales, cocteles de autor incluidos, DJ en vivo, 12-4pm.',
         tipo: 'servicio', categoria: 'Brunch',
         precio_esperado: 650, pais: 'MX',
-        canal_venta: 'Instagram, Facebook y reservaciones telefónicas',
+        canal_venta: 'redes', // Instagram, Facebook y reservaciones telefónicas
         puv: 'El brunch más instagrameable de Polanco, con barra de champagne y estación de tacos gourmet.',
         cliente_ideal: 'Millennials y Gen-Z NSE A/B que buscan experiencias sociales de alto valor',
         nse: 'A/B', cobertura: 'Local', radio_km: 20,
@@ -163,7 +163,7 @@ async function seed() {
         descripcion: 'Servicio de alimentos para eventos de empresa: desayunos ejecutivos, comidas corporativas y cenas de gala.',
         tipo: 'servicio', categoria: 'Catering',
         precio_esperado: 350, pais: 'MX',
-        canal_venta: 'LinkedIn, correo corporativo y referidos',
+        canal_venta: 'mixto', // LinkedIn, correo corporativo y referidos
         puv: 'Cocina de restaurante 5 estrellas llevada a tu empresa sin costos de logística adicionales.',
         cliente_ideal: 'Directores de RH y asistentes ejecutivos de empresas medianas-grandes en CDMX',
         nse: 'B/C+', cobertura: 'Local', radio_km: 40,
@@ -177,7 +177,7 @@ async function seed() {
         descripcion: 'Sudadera oversize de algodón 380gsm, bordado frontal, tallas XS-3XL, colores: negro carbón, crema y sage.',
         tipo: 'producto', categoria: 'Hoodies & Sudaderas',
         precio_esperado: 1290, pais: 'MX',
-        canal_venta: 'TikTok Shop, Instagram Shopping y tienda física Roma Norte',
+        canal_venta: 'mixto', // TikTok Shop, Instagram Shopping y tienda física Roma Norte
         puv: 'La hoodie más pesada del mercado mexicano con diseño exclusivo de edición limitada.',
         cliente_ideal: 'Jóvenes de 16-28 años apasionados por la cultura streetwear, NSE C/C+',
         nse: 'C/C+', cobertura: 'Nacional', radio_km: null as any,
@@ -190,7 +190,7 @@ async function seed() {
         descripcion: 'Pantalón cargo de ripstop premium con 8 bolsillos funcionales, corte relaxed fit, elástico en cintura.',
         tipo: 'producto', categoria: 'Pantalones',
         precio_esperado: 980, pais: 'MX',
-        canal_venta: 'TikTok Shop, Instagram, tienda física',
+        canal_venta: 'mixto', // TikTok Shop, Instagram, tienda física
         puv: 'Comodidad táctica con estética urbana — el pantalón que no necesita cinturón.',
         cliente_ideal: 'Skaters, grafiteros y jóvenes creativos que viven en la calle',
         nse: 'C/C+', cobertura: 'Nacional', radio_km: null as any,
@@ -203,7 +203,7 @@ async function seed() {
         descripcion: 'Set de 3 camisetas de algodón peinado 200gsm, cuello redondo reforzado, colores neutros coordinados.',
         tipo: 'producto', categoria: 'Camisetas',
         precio_esperado: 699, pais: 'MX',
-        canal_venta: 'TikTok Shop, Mercado Libre y tienda física',
+        canal_venta: 'mixto', // TikTok Shop, Mercado Libre y tienda física
         puv: 'Básicos premium al precio de básicos normales — calidad que se siente al tocar.',
         cliente_ideal: 'Cualquier persona que quiera básicos de calidad a precio justo, 16-40 años',
         nse: 'C/C+/B', cobertura: 'Nacional', radio_km: null as any,
@@ -215,8 +215,8 @@ async function seed() {
     for (const p of productos) {
       await queryRunner.query(
         `INSERT INTO productos
-           (id, usuario_id, negocio_id, nombre, descripcion, tipo, categoria,
-            precio_esperado, pais, canal_venta, puv, cliente_ideal, nse,
+           (id, usuario_id, negocio_id, nombre, descripcion, tipo_actividad, categoria,
+            precio, pais, canal_venta, puv, cliente_ideal, nse,
             cobertura, radio_km, inversion_inicial, costos_fijos, tamano_equipo, status)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
         [
@@ -247,4 +247,8 @@ async function seed() {
   }
 }
 
-seed().catch(console.error);
+// Código de salida 1 si falla: antes el error se imprimía pero el proceso salía con 0.
+seed().catch((err) => {
+  console.error('❌', err instanceof Error ? err.message : err);
+  process.exitCode = 1;
+});

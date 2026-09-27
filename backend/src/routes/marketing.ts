@@ -11,6 +11,7 @@ import { getPlanGate } from '../services/billing/gatingAnalisis';
 import { requireAnalisisLock } from '../middleware/idempotency';
 import { validateBody, exigirUuid } from '../middleware/validate';
 import { logger } from '../utils/logger';
+import { MAX_ENTERO } from '../utils/limitesNumericos';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, conCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
 import { recibirReporteAds } from '../middleware/upload';
@@ -50,8 +51,10 @@ const AnalizarMarketingSchema = z
     voz_marca: z.enum(['Profesional', 'Divertido', 'Urgente', 'Empático']),
     meta_campana: z.enum(['Lanzamiento', 'Crecimiento']).optional(),
     metaCampana: z.enum(['Lanzamiento', 'Crecimiento']).optional(),
-    presupuesto_mensual: z.number().finite().positive(),
-    presupuestoMensual: z.number().finite().positive().optional(),
+    // La columna es `integer`: se aceptan centavos (el worker redondea al
+    // guardar) pero no un número que no quepa.
+    presupuesto_mensual: z.number().finite().positive().max(MAX_ENTERO),
+    presupuestoMensual: z.number().finite().positive().max(MAX_ENTERO).optional(),
     capacidad_contenido: z.enum(['1-2/semana', '3-4/semana', 'diario']),
     capacidadContenido: z.enum(['1-2/semana', '3-4/semana', 'diario']).optional(),
     plataformas: z.array(z.enum(PLATAFORMAS)).min(1).max(12),

@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { AppDataSource } from './config/database';
+import { migrarAlArrancar } from './config/migracionesAlArrancar';
 import { logger } from './utils/logger';
 import { verificarClaveAnthropic } from './config/anthropic';
 import { verificarEntornoProduccion } from './config/entorno';
@@ -216,7 +217,7 @@ app.use('/api/network', networkRoutes);
 // Retirados en la auditoría de 2026-09: /api/metas, /api/perfiles y
 // /api/analytics eran 1.039 líneas de rutas que NINGUNA pantalla llamaba, sin
 // tests y sin uso interno. Sus tablas (metas_negocio, perfiles_analiticos,
-// perfiles_video) y sus entidades siguen intactas: volver a montarlos es
+// perfil_videos) y sus entidades siguen intactas: volver a montarlos es
 // reimportar la ruta si algún día se construye la interfaz.
 app.use('/api/cotizaciones', cotizacionesRoutes);
 app.use('/api/inventario', inventarioRoutes);
@@ -264,6 +265,10 @@ export async function initializeApp(): Promise<void> {
     // Almacenamiento, Stripe y panel de admin: sin sus variables, producción
     // arrancaría "sana" y fallaría al primer cliente (ver config/entorno.ts).
     verificarEntornoProduccion();
+
+    // Migraciones pendientes (solo con TYPEORM_MIGRATIONS_RUN=true), bajo un
+    // candado compartido con el worker, antes de abrir el pool de la app.
+    await migrarAlArrancar();
 
     // Initialize Database
     await AppDataSource.initialize();

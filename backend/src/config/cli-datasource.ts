@@ -4,12 +4,14 @@ import { AppDataSource } from './database';
 /**
  * DataSource EXCLUSIVO para la CLI de TypeORM (migration:show / run / revert).
  *
- * Motivo de existir: `AppDataSource` tiene `synchronize: true` en desarrollo, y
- * la CLI llama a `DataSource.initialize()` antes de ejecutar cualquier comando.
- * Eso significa que incluso un comando de solo lectura como `migration:show`
- * crearía las tablas a partir de las entidades (con nombres de índice y FK
- * autogenerados, FK_<hash> / IDX_<hash>) ANTES de mostrar el estado, dejando el
- * esquema en un punto intermedio que ninguna migración registró.
+ * Motivo de existir: la CLI llama a `DataSource.initialize()` antes de ejecutar
+ * cualquier comando, y con `synchronize` activo hasta un `migration:show` de
+ * solo lectura crearía tablas desde las entidades (FK_<hash> / IDX_<hash>)
+ * antes de mostrar el estado. `AppDataSource` ya no sincroniza nunca, pero la
+ * CLI lo sigue anulando aquí: es la puerta por la que pasan las migraciones en
+ * producción y no debe depender de lo que diga otro archivo.
+ *
+ * Además quita el `statement_timeout` de la app (ver `extra` abajo).
  *
  * Reutiliza `AppDataSource.options` en lugar de duplicar la configuración: así
  * la lista de entidades, el glob de migraciones y la URL de conexión son

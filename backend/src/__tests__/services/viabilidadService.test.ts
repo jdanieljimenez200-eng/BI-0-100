@@ -435,3 +435,32 @@ describe('viabilidadService.calcularViabilidad — narrativa y confianza', () =>
     expect(sinTendencias.cobertura_datos).toBeGreaterThan(0);
   });
 });
+describe('viabilidadService.calcularViabilidad — qué no se pudo medir', () => {
+  it('nombra en factores_no_evaluados los factores sin fuente', () => {
+    const r = calcularViabilidad(
+      tendencias({ fuente_disponible: false }),
+      competencia({ fuente_disponible: false, precio_mercado_promedio: 0 }),
+      60,
+      100,
+    );
+
+    // En `factores` van en 0 por compatibilidad; la lista es la que permite a la
+    // pantalla escribir «sin datos» en vez de pintar un 0 que se lee como
+    // «lo medimos y salió malísimo».
+    expect(r.factores_no_evaluados).toEqual(
+      expect.arrayContaining(['tendencia', 'competencia', 'demanda', 'oportunidad', 'precio_relativo']),
+    );
+    expect(r.factores_no_evaluados).not.toContain('margen');
+    expect(r.cobertura_datos).toBeLessThan(1);
+  });
+
+  it('con las dos fuentes disponibles no marca ningún factor de mercado como no evaluado', () => {
+    const r = calcularViabilidad(tendencias(), competencia(), 60, 100);
+
+    expect(r.factores_no_evaluados).not.toContain('tendencia');
+    expect(r.factores_no_evaluados).not.toContain('competencia');
+    expect(r.factores_no_evaluados).not.toContain('demanda');
+    expect(r.factores_no_evaluados).not.toContain('oportunidad');
+    expect(r.cobertura_datos).toBe(1);
+  });
+});

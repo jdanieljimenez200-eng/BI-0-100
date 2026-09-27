@@ -43,8 +43,6 @@ import { CanalCobro } from '../models/CanalCobro';
 import { ConexionGoogleCalendar } from '../models/ConexionGoogleCalendar';
 import { AuditoriaDinero } from '../models/AuditoriaDinero';
 
-const isProd = process.env.NODE_ENV === 'production';
-
 function buildDataSourceOptions() {
   const databaseUrl = process.env.DATABASE_URL;
 
@@ -95,10 +93,18 @@ function buildDataSourceOptions() {
       AuditoriaDinero,
     ],
     migrations: [__dirname + '/../migrations/*.{js,ts}'],
-    // synchronize SOLO en dev, y desactivable con TYPEORM_SYNCHRONIZE=false
-    synchronize: !isProd && process.env.TYPEORM_SYNCHRONIZE !== 'false',
-    // Ejecutar migraciones automáticamente al arrancar si se habilita
-    migrationsRun: process.env.TYPEORM_MIGRATIONS_RUN === 'true',
+    // NUNCA. El esquema lo definen solo las migraciones (CLAUDE.md, regla 1).
+    // Antes era `!isProd && TYPEORM_SYNCHRONIZE !== 'false'`: sin la variable,
+    // cualquier proceso fuera de Docker —`npm run seed:demo`, `seed:alertas`,
+    // un `npm run dev` local, un script— sincronizaba al conectar y borraba los
+    // índices, FK y CHECK que solo crean las migraciones. Así quedó dañada
+    // `bi0a100_db`: le faltaban exactamente los 31 índices, 5 FK y 4 CHECK que
+    // la entidad no declara (auditoría de base de datos, 2026-09-27).
+    synchronize: false,
+    // Nunca desde aquí: con TYPEORM_MIGRATIONS_RUN=true las aplica
+    // `migrarAlArrancar()` (config/migracionesAlArrancar.ts) bajo un candado,
+    // porque la API y el worker arrancan a la vez y migraban en paralelo.
+    migrationsRun: false,
     logging: false,
     // SSL solo si se habilita explícitamente; rejectUnauthorized configurable
     // para BD administradas con CA propia (DB_SSL_REJECT_UNAUTHORIZED=false)

@@ -345,6 +345,17 @@ export function calcularViabilidad(
   const pesoTotalPosible = PESO_BASE + PESOS.precio_relativo + (densidad ? PESO_DENSIDAD : 0);
   const cobertura_datos = Number((pesoAplicado / pesoTotalPosible).toFixed(2));
 
+  // Qué no se pudo medir. En `factores` esos valores van en 0 para no romper a
+  // los consumidores viejos, pero un 0 a secas se lee como «lo medimos y salió
+  // malísimo»: con esta lista la pantalla escribe «sin datos».
+  const factores_no_evaluados: string[] = [];
+  if (ft === null) factores_no_evaluados.push('tendencia');
+  if (fc === null) factores_no_evaluados.push('competencia');
+  if (fd === null) factores_no_evaluados.push('demanda');
+  if (fo === null) factores_no_evaluados.push('oportunidad');
+  if (fprEvaluado === null) factores_no_evaluados.push('precio_relativo');
+  if (densidad && fdenEvaluado === null) factores_no_evaluados.push('densidad');
+
   return {
     score,
     estado,
@@ -353,5 +364,6 @@ export function calcularViabilidad(
     factores_negativos: negativos,
     confianza,
     cobertura_datos,
+    factores_no_evaluados,
   };
 }

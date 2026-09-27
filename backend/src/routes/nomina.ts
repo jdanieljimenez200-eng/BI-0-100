@@ -12,15 +12,20 @@ import { ah } from '../utils/asyncHandler';
 import { monedaDeCuenta } from '../utils/monedaCuenta';
 import { idempotente } from '../middleware/idempotency';
 import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
+import { dinero } from '../utils/limitesNumericos';
 
+// Topes = columnas de `empleados`. El salario se acota con `dinero()`
+// (numeric(12,2)) y no con los 14 dígitos de `empleados.salario`: cada pago
+// genera un egreso en `movimientos_contables.monto`, que es numeric(12,2), y un
+// salario mayor reventaba ese INSERT con el pago ya a medias.
 const CrearEmpleadoSchema = z.object({
-  nombre: z.string().trim().min(1, 'nombre es requerido'),
-  cargo: z.string().optional(),
-  salario: z.number({ invalid_type_error: 'salario debe ser numérico' }).positive('salario debe ser mayor a 0'),
+  nombre: z.string().trim().min(1, 'nombre es requerido').max(200),
+  cargo: z.string().max(100).optional(),
+  salario: dinero('salario').refine((s) => s > 0, 'salario debe ser mayor a 0'),
   tipo_pago: z.enum(['semanal', 'quincenal', 'mensual', 'por_hora', 'honorarios']).optional().default('mensual'),
-  moneda: z.string().optional(), // sin valor: la del país del producto (monedaDeCuenta)
-  telefono: z.string().optional(),
-  email: z.string().optional(),
+  moneda: z.string().max(10).optional(), // sin valor: la del país del producto (monedaDeCuenta)
+  telefono: z.string().max(30).optional(),
+  email: z.string().max(200).optional(),
   fecha_inicio: fechaISOOpcional('fecha_inicio inválida (YYYY-MM-DD)'),
   notas: z.string().optional(),
   negocio_id: z.string().uuid().nullable().optional(),
@@ -29,7 +34,7 @@ const CrearEmpleadoSchema = z.object({
 
 const CrearPagoNominaSchema = z.object({
   empleado_id: z.string().uuid('empleado_id debe ser un UUID válido'),
-  monto: z.number({ invalid_type_error: 'monto debe ser numérico' }).positive('monto debe ser mayor a 0').optional(),
+  monto: dinero('monto').refine((m) => m > 0, 'monto debe ser mayor a 0').optional(),
   periodo_inicio: fechaISO('periodo_inicio inválido (YYYY-MM-DD)'),
   periodo_fin: fechaISO('periodo_fin inválido (YYYY-MM-DD)'),
   fecha_pago: fechaISO('fecha_pago inválida (YYYY-MM-DD)'),

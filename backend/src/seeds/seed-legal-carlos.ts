@@ -32,6 +32,7 @@ async function seed() {
     if (userRow.length === 0) {
       console.log('❌ Usuario carlos.mendoza@business.com no encontrado. Asegúrate de correr primero el seed de negocios.');
       await queryRunner.rollbackTransaction();
+      process.exitCode = 1;
       return;
     }
 
@@ -46,7 +47,7 @@ async function seed() {
 
     // Obtener los productos de Carlos Mendoza
     const productos = await queryRunner.query(
-      `SELECT id, nombre, categoria, tipo, pais FROM productos WHERE usuario_id = $1`,
+      `SELECT id, nombre, categoria, tipo_actividad, pais FROM productos WHERE usuario_id = $1`,
       [userId]
     );
 
@@ -401,10 +402,15 @@ async function seed() {
   } catch (err) {
     console.error('❌ Error al sembrar análisis legales:', err);
     await queryRunner.rollbackTransaction();
+    process.exitCode = 1;
   } finally {
     await queryRunner.release();
     await AppDataSource.destroy();
   }
 }
 
-seed().catch(console.error);
+// Código de salida 1 si falla: antes el error se imprimía pero el proceso salía con 0.
+seed().catch((err) => {
+  console.error('❌', err instanceof Error ? err.message : err);
+  process.exitCode = 1;
+});

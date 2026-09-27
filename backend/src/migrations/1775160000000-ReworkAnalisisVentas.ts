@@ -98,8 +98,11 @@ export class ReworkAnalisisVentas1775160000000 implements MigrationInterface {
          ADD COLUMN IF NOT EXISTS "resultado_json" jsonb NULL`
     );
 
+    // El default 'solo_tu' no se puede convertir a integer: sin quitarlo antes,
+    // el cambio de tipo fallaba y este down no se podía ejecutar.
     await queryRunner.query(
       `ALTER TABLE "analisis_ventas"
+         ALTER COLUMN "tamano_equipo" DROP DEFAULT,
          ALTER COLUMN "tamano_equipo" TYPE integer USING 1,
          ALTER COLUMN "tamano_equipo" SET DEFAULT 1`
     );

@@ -349,3 +349,19 @@ describe('calcularTam — hasta dónde llegan nuestras tablas', () => {
     expect(r.supuestos.penetracion_pct).toEqual({ pesimista: 0.1, realista: 0.25, optimista: 0.5 });
   });
 });
+describe('tamService.calcularTam — el aviso y la base no se contradicen', () => {
+  it('con filtro NSE el aviso declara la población del estado y la ya recortada', () => {
+    const local = calcularTam({
+      ...inputBase, scope: 'local', region: 'Jalisco', nseTarget: 'C+',
+    });
+    const aviso = local.supuestos.advertencias.join(' ');
+
+    // El recorte por NSE sí se aplica: la base guardada no es la del estado…
+    expect(local.supuestos.poblacion_base).toBeLessThan(POBLACION_JALISCO);
+    // …y el aviso nombra los dos números. Antes solo decía el de antes del
+    // recorte, así que la misma pantalla enseñaba 8 348 151 en el texto y
+    // 1 168 741 en `poblacion_base`.
+    expect(aviso).toContain(POBLACION_JALISCO.toLocaleString('es-MX'));
+    expect(aviso).toContain(local.supuestos.poblacion_base.toLocaleString('es-MX'));
+  });
+});

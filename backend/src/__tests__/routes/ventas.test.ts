@@ -61,6 +61,45 @@ describeWithDb('Ventas routes', () => {
     await closeTestDb();
   });
 
+  describe('POST /api/ventas/analizar — validación de entrada', () => {
+    it('un ticket fuera del rango de la columna responde 400, no 500', async () => {
+      // `ticket_promedio` es decimal(10,2): 1e9 reventaba el INSERT en Postgres.
+      const producto = await crearProductoDeUsuario(userId);
+      const res = await request
+        .default(app)
+        .post('/api/ventas/analizar')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          producto_id: producto.id,
+          tipo_venta: 'B2C_directo',
+          canal_principal: 'directo',
+          tamano_equipo: 'solo_tu',
+          ticket_promedio: 1_000_000_000,
+        });
+
+      expect(res.status).toBe(400);
+      expect(String(res.body.error)).toMatch(/ticket_promedio/);
+    });
+
+    it('un ticket válido se acepta y encola', async () => {
+      const producto = await crearProductoDeUsuario(userId);
+      const res = await request
+        .default(app)
+        .post('/api/ventas/analizar')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          producto_id: producto.id,
+          tipo_venta: 'B2C_directo',
+          canal_principal: 'directo',
+          tamano_equipo: 'solo_tu',
+          ticket_promedio: 450,
+        });
+
+      expect(res.status).toBe(202);
+      expect(res.body.analisis_id).toBeTruthy();
+    });
+  });
+
   describe('PATCH /api/ventas/:id/perfil', () => {
     it('rechaza un patch que rompe la forma del ICP (objeciones_tipicas no es array) con 400, no 500', async () => {
       const res = await request
