@@ -8,7 +8,7 @@ import { Producto } from '../models/Producto';
 import { AnalisisBrief } from '../models/AnalisisBrief';
 import { authenticate } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
-import { requireCanRunAnalisis, getPlanFromDB } from '../middleware/requirePlan';
+import { requireCanRunAnalisis, getPlanFromDB, requireModuloAcceso } from '../middleware/requirePlan';
 import { requireAnalisisLock } from '../middleware/idempotency';
 import { respuestaAnalisis } from '../services/billing/redactAnalisis';
 import { generarHistoriaMock, generarTipsMock, generarRebatidas, generarFollowUps, generarPalabrasClaveAds } from '../services/ventas/ventasService';
@@ -25,6 +25,8 @@ import type { TipNegociacion, VentasAnalisisInput } from '../services/ventas/typ
 
 const router = Router();
 exigirUuid(router, 'id', 'productoId');
+// Dueño, o trabajador con el permiso del módulo sobre la cuenta del dueño.
+const acceso = [authenticate, requireModuloAcceso('ventas')];
 
 const TIPOS_VENTA = new Set(['B2C_directo', 'B2B', 'hibrido', 'servicios']);
 const CANALES = new Set(['directo', 'marketplace', 'redes_sociales', 'telefono', 'combinado']);
@@ -90,7 +92,7 @@ function parseInput(body: Record<string, unknown>): { input?: VentasAnalisisInpu
 // ─── Rutas estáticas PRIMERO (evita sombreado por '/:id') ───────────────────
 
 // GET /api/ventas/tips — tips rápidos de catálogo (sin coste de IA).
-router.get('/tips', authenticate, async (_req: AuthRequest, res: Response) => {
+router.get('/tips', ...acceso,async (_req: AuthRequest, res: Response) => {
   const tips: TipNegociacion[] = generarTipsMock({
     tipo_venta: 'B2C_directo',
     canal_principal: 'directo',
@@ -103,7 +105,7 @@ router.get('/tips', authenticate, async (_req: AuthRequest, res: Response) => {
 // GET /api/ventas/historias/diaria?productoId=… — "la historia del día".
 // Determinista por fecha y categoría (coste 0); las historias personalizadas
 // por IA viven dentro del análisis completo.
-router.get('/historias/diaria', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/historias/diaria', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const productoId = String(req.query.productoId ?? '');
     const fechaISO = new Date().toISOString().slice(0, 10);
@@ -212,7 +214,7 @@ function normalizarIdioma(raw: unknown): string | undefined {
  */
 router.post(
   '/transcribir',
-  authenticate,
+  ...acceso,
   recibirAudio,
   async (req: AuthRequest, res: Response) => {
     if (!isTranscripcionAvailable()) {
@@ -244,7 +246,7 @@ router.post(
 // POST /api/ventas/analizar
 router.post(
   '/analizar',
-  authenticate,
+  ...acceso,
   requireAnalisisLock('ventas'),
   requireCanRunAnalisis(contarAnalisisVentas),
   async (req: AuthRequest, res: Response) => {
@@ -345,7 +347,7 @@ router.post(
 // que otros módulos, ej. Marketing, consulten el ICP sin retipear nada).
 // Ruta estática: debe registrarse antes de `/:id` o "producto" se
 // interpretaría como un id de análisis.
-router.get('/producto/:productoId', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/producto/:productoId', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const producto = await AppDataSource.getRepository(Producto).findOne({
       where: { id: req.params.productoId, usuario_id: req.userId },
@@ -374,7 +376,7 @@ router.get('/producto/:productoId', authenticate, async (req: AuthRequest, res: 
 });
 
 // GET /api/ventas/:id — detalle completo con recorte por plan
-router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/:id', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const fila = await AppDataSource.getRepository(AnalisisVentas).findOne({
       where: { id: req.params.id, usuario_id: req.userId },
@@ -393,7 +395,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 });
 
 // GET /api/ventas/:id/status — polling ligero
-router.get('/:id/status', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/:id/status', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const analisis = await AppDataSource.getRepository(AnalisisVentas).findOne({
       where: { id: req.params.id, usuario_id: req.userId },
@@ -440,7 +442,7 @@ import { v4 as uuidv4 } from 'uuid';
  * Edita el ICP del análisis. El body puede ser un perfil completo (reemplaza)
  * o campos parciales (merge). Solo el usuario owner puede editarlo.
  */
-router.patch('/:id/perfil', authenticate, async (req: AuthRequest, res: Response) => {
+router.patch('/:id/perfil', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const repo = AppDataSource.getRepository(AnalisisVentas);
     const analisis = await repo.findOne({ where: { id: req.params.id, usuario_id: req.userId } });
@@ -502,7 +504,7 @@ function inputDesdeAnalisis(analisis: AnalisisVentas): import('../services/venta
  * GET /api/ventas/:id/objeciones — rebatidas sugeridas para las objeciones del
  * ICP. Se genera una sola vez y se cachea en la fila (no en cada vista).
  */
-router.get('/:id/objeciones', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/:id/objeciones', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const repo = AppDataSource.getRepository(AnalisisVentas);
     const analisis = await repo.findOne({ where: { id: req.params.id, usuario_id: req.userId } });
@@ -536,7 +538,7 @@ router.get('/:id/objeciones', authenticate, async (req: AuthRequest, res: Respon
  * GET /api/ventas/:id/palabras-clave-ads — keywords de Google Ads e intereses
  * de Meta Ads, derivados del ICP. Se genera una sola vez y se cachea.
  */
-router.get('/:id/palabras-clave-ads', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/:id/palabras-clave-ads', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const repo = AppDataSource.getRepository(AnalisisVentas);
     const analisis = await repo.findOne({ where: { id: req.params.id, usuario_id: req.userId } });
@@ -576,7 +578,7 @@ async function cargarTonoBrief(usuarioId: string, productoId: string): Promise<s
  * (inmediato/48h/1 semana), en el tono de marca del Brief si existe. Se
  * genera una sola vez y se cachea en la fila.
  */
-router.get('/:id/followups', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/:id/followups', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const repo = AppDataSource.getRepository(AnalisisVentas);
     const analisis = await repo.findOne({ where: { id: req.params.id, usuario_id: req.userId } });
@@ -614,7 +616,7 @@ router.get('/:id/followups', authenticate, async (req: AuthRequest, res: Respons
  */
 router.post(
   '/:id/guion',
-  authenticate,
+  ...acceso,
   recibirGuionArchivos,
   async (req: AuthRequest, res: Response) => {
     try {
@@ -760,7 +762,7 @@ router.post(
 /**
  * GET /api/ventas/:id/guiones — historial de evaluaciones
  */
-router.get('/:id/guiones', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/:id/guiones', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const analisis = await AppDataSource.getRepository(AnalisisVentas).findOne({
       where: { id: req.params.id, usuario_id: req.userId },
@@ -789,7 +791,7 @@ router.get('/:id/guiones', authenticate, async (req: AuthRequest, res: Response)
  */
 router.post(
   '/:id/competidores',
-  authenticate,
+  ...acceso,
   recibirCompetidorArchivos,
   async (req: AuthRequest, res: Response) => {
     let cobroCompetidor: string | null = null;
@@ -909,7 +911,7 @@ router.post(
 /**
  * GET /api/ventas/:id/competidores — lista de competidores + comparativa
  */
-router.get('/:id/competidores', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/:id/competidores', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const analisis = await AppDataSource.getRepository(AnalisisVentas).findOne({
       where: { id: req.params.id, usuario_id: req.userId },
@@ -936,7 +938,7 @@ router.get('/:id/competidores', authenticate, async (req: AuthRequest, res: Resp
  * DELETE /api/ventas/:id/competidores/:compId
  * Elimina un competidor y regenera la comparativa.
  */
-router.delete('/:id/competidores/:compId', authenticate, async (req: AuthRequest, res: Response) => {
+router.delete('/:id/competidores/:compId', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const repo = AppDataSource.getRepository(AnalisisVentas);
     const analisis = await repo.findOne({ where: { id: req.params.id, usuario_id: req.userId } });

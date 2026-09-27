@@ -12,6 +12,22 @@
         "3100"
       ],
       "port": 3100
+    },
+    {
+      "name": "backend-e2e",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/jorge/AppData/Local/Temp/claude/J--Bi0a100/0ccdedd2-130d-46d4-98f3-076e488b4566/scratchpad/e2e/backend-e2e.js"
+      ],
+      "port": 3101
+    },
+    {
+      "name": "frontend-e2e",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/jorge/AppData/Local/Temp/claude/J--Bi0a100/0ccdedd2-130d-46d4-98f3-076e488b4566/scratchpad/e2e/frontend-e2e.js"
+      ],
+      "port": 3102
     }
   ]
 }

@@ -330,6 +330,79 @@ export function requireToolCapability(herramientaName: string) {
   };
 }
 
+/**
+ * Acceso a un módulo de análisis (mercado, marketing, ventas, brief, finanzas,
+ * legal) para quien hace la petición.
+ *
+ * Los módulos no dependen del plan como las herramientas (su cupo lo controla
+ * `requireCanRunAnalisis`), pero un trabajador opera sobre la cuenta del dueño y
+ * necesita el permiso del módulo, igual que en `resolverAcceso`. Antes las rutas
+ * de los módulos solo llevaban `authenticate`: para un trabajador `req.userId` era
+ * su propio id, no encontraba ningún producto ni análisis de la cuenta y todo
+ * respondía 404, aunque el menú le mostrara el módulo.
+ *
+ * Para el dueño no cambia nada. Va SIEMPRE después de `authenticate` (que fija
+ * `req.userId` desde el token y desharía el cambio de cuenta si corriera detrás).
+ */
+export function requireModuloAcceso(modulo: CapabilityKey) {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const usuario = await getUsuarioOr401(req, res);
+      if (!usuario) return;
+      if (usuario.account_role === 'trabajador' && usuario.owner_id) {
+        const permisos = await cargarPermisosTrabajador(req, usuario.id, usuario.owner_id);
+        if (permisos[modulo] !== true) {
+          res.status(403).json({ error: `No tienes permisos para el módulo '${modulo}'`, capability: modulo });
+          return;
+        }
+        // Si la petición nombra un producto, tiene que ser uno de los asignados:
+        // la lista de productos del trabajador ya solo muestra esos.
+        const productoId = req.params?.productoId ?? req.body?.productoId ?? req.body?.producto_id ?? req.query?.producto_id;
+        if (typeof productoId === 'string' && productoId) {
+          const asignados = await memo(req, `pa:${usuario.id}:${usuario.owner_id}`, async () =>
+            (await AppDataSource.getRepository(AsignacionTrabajador).find({
+              select: ['producto_id'],
+              where: { trabajador_id: usuario.id, cuenta_id: usuario.owner_id!, activo: true },
+            })).map((a) => a.producto_id)
+          );
+          if (!asignados.includes(productoId)) {
+            res.status(404).json({ error: 'Producto no encontrado' });
+            return;
+          }
+        }
+        req.trabajadorRealId = usuario.id;
+        req.cuentaEfectivaId = usuario.owner_id;
+        req.userId = usuario.owner_id;
+      } else {
+        req.cuentaEfectivaId = usuario.id;
+      }
+      next();
+    } catch (err) {
+      logger.error('requireModuloAcceso error:', err);
+      res.status(500).json({ error: 'Error validando el acceso al módulo' });
+    }
+  };
+}
+
+/**
+ * Ids de los productos de la cuenta que un trabajador tiene asignados (activos),
+ * o `null` si quien pregunta es el dueño (ve todos los suyos).
+ */
+export async function productosAsignados(usuarioId: string): Promise<{ cuentaId: string; ids: string[] | null }> {
+  const usuario = await AppDataSource.getRepository(Usuario).findOne({
+    select: ['id', 'account_role', 'owner_id'],
+    where: { id: usuarioId },
+  });
+  if (!usuario || usuario.account_role !== 'trabajador' || !usuario.owner_id) {
+    return { cuentaId: usuarioId, ids: null };
+  }
+  const asignaciones = await AppDataSource.getRepository(AsignacionTrabajador).find({
+    select: ['producto_id'],
+    where: { trabajador_id: usuario.id, cuenta_id: usuario.owner_id, activo: true },
+  });
+  return { cuentaId: usuario.owner_id, ids: asignaciones.map((a) => a.producto_id).filter(Boolean) as string[] };
+}
+
 const movimientosIlimitados = (plan: Plan) => getMaxMovimientosHerramienta(plan) === -1;
 
 /**

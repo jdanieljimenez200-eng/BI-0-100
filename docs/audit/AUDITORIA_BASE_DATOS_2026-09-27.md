@@ -217,3 +217,104 @@ entidades; la base no cambia.
 | Rollback completo | ✅ 62/62 |
 | Reparación de dev ensayada en copia | ✅ esquema = producción, filas intactas |
 | Reparación aplicada a `bi0a100_db` | ✅ 52/52 tablas con las mismas filas; 0 diferencias de esquema con producción |
+
+---
+
+## Segunda pasada: listas para el deploy y las pruebas reales
+
+Hecha a petición del usuario, después de reparar `bi0a100_db`.
+
+### Todas las bases, contra la ruta real de producción
+
+La referencia ya no es TypeScript: se compiló `dist/` y se ejecutó **exactamente** el
+`preDeployCommand` de Railway (`npm run migration:run:prod`, `NODE_ENV=production`)
+sobre una base vacía: **62 de 62**. Contra ella, por significado:
+
+| Base | Tablas | Columnas | FK | CHECK | UNIQUE | Índices | Diferencias |
+|---|---|---|---|---|---|---|---|
+| Ruta de Railway (`dist/`) | 52 | 777 | 104 | 25 | 5 | 204 | — |
+| `bi0a100_db` (desarrollo) | 52 | 777 | 104 | 25 | 5 | 204 | **0** |
+| `bi0a100_test` | 52 | 777 | 104 | 25 | 5 | 204 | **0** |
+| Arranque del compose de producción | 52 | 777 | 104 | 25 | 5 | 204 | **0** |
+
+Entidades frente a esquema: las 45 FK que declara el código existen con el mismo
+`ON DELETE`; ya no queda ninguna columna que TypeORM quiera recrear; lo que resta son
+nombres distintos, índices de rendimiento que solo crean las migraciones y defaults
+escritos de otra forma.
+
+### 9. La API y el worker migraban a la vez · P1 · corregido
+
+`.env.production.template` pone `TYPEORM_MIGRATIONS_RUN=true` y `docker-compose.prod.yml`
+la carga en la API **y** en el worker, que arrancan casi a la vez. Reproducido con el
+código compilado: sobre una base vacía la API se cayó con `duplicate key value violates
+unique constraint "pg_class_relname_nsp_index"`, y con una sola migración pendiente se
+cayó el worker. `restart: always` los levantaba, pero cada deploy con migraciones
+empezaba con una caída, y una migración de datos no idempotente podía aplicarse dos
+veces.
+
+**Corrección:** `migrationsRun` es `false` fijo y
+[`migracionesAlArrancar.ts`](../../backend/src/config/migracionesAlArrancar.ts) aplica
+lo pendiente bajo `pg_advisory_lock`, en un DataSource propio sin el `statement_timeout`
+de 30 s de la app. La API y el worker lo llaman antes de abrir su pool. Probado con
+**tres procesos a la vez**: sobre base vacía uno aplica las 62 y los otros dos 0; con una
+pendiente, uno la aplica y los otros esperan; los tres arrancan, sin registros duplicados
+ni candados colgados. Sin la variable no toca nada. Railway no cambia: sigue migrando en
+`preDeployCommand`.
+
+### 10. Cuatro seeds estaban rotos y fallaban en silencio · P2 · corregido
+
+Hasta hoy los seeds corrían con `synchronize` activo; nunca se habían probado contra el
+esquema puro de migraciones. Resultado sobre una base limpia cada uno:
+
+| Seed | Antes | Ahora |
+|---|---|---|
+| `seed:demo`, `seed:alertas` | ✅ | ✅ |
+| `seed-usuario-completo` → `seed-herramientas-data` | ✅ | ✅ |
+| `seed-valeria-super-completo`, `seed-full-4weeks-demo` | ✅ | ✅ |
+| `seed-demo-business` | ❌ columnas `role`, `tipo`, `precio_esperado` que no existen desde el Baseline; `canal_venta` en texto libre de hasta 58 caracteres en un varchar(40) | ✅ 1 cuenta business, 3 negocios, 9 productos |
+| `seed-legal-carlos` | ❌ dependía del anterior y leía `productos.tipo` | ✅ 9 análisis legales |
+| `seed-demo-equipo` | ❌ `role`, `tipo`, `precio_esperado` | ✅ dueño y 2 trabajadores |
+
+Además **salían con código 0 aunque fallaran** (imprimían el error y seguían); ahora salen
+con 1. Los valores de `canal_venta` se pasan a los códigos que usa la app (`mixto`,
+`redes`, `online`…). Los demás seeds manuales siguen guardando `canal_venta` en texto
+libre: funciona, solo que la pantalla lo mostrará tal cual.
+
+### 11. El contrato de producción no exigía la conexión · P2 · corregido
+
+Sin `DATABASE_URL` el backend caía a `postgres:postgres@postgres/bi0a100` (los valores
+de desarrollo) y fallaba con un `ECONNREFUSED` que no decía qué faltaba. Ahora
+[`entorno.ts`](../../backend/src/config/entorno.ts) exige `DATABASE_URL` (o `DB_HOST`) y
+`REDIS_URL` (o `REDIS_HOST`), y avisa si la base es remota y va sin TLS.
+
+Comprobado contra un Postgres sin SSL: `?sslmode=require` en la URL **sí** activa TLS
+aunque `config/database.ts` ponga `ssl: false` (node-postgres mezcla la URL encima). Pero
+`pg` avisa de que en su próxima versión mayor `require` dejará de verificar el
+certificado: la plantilla pasa a `sslmode=verify-full` y el contrato avisa si alguien usa
+`require`.
+
+### Arranque real y prueba de humo
+
+- `docker compose restart backend`: sano en 18 s, arranque limpio (base, Redis, servidor).
+- Con la cuenta demo de `seed:demo` contra `bi0a100_db` reparada: **22 de 22**. Sesión,
+  productos, dashboard, facturación, clientes, calendario (lugares y fila), mantenimientos,
+  reportes, contabilidad, tracción de Mercado y calibración de Finanzas.
+- Las herramientas que la cuenta demo no eligió (POS, Cotizaciones, Inventario, Nómina)
+  responden 403, que es lo correcto: `pro_plus` trae 4 a elegir. El seed decía «todo
+  desbloqueado» desde antes del cambio de precios; corregido el texto. **Para probar todas
+  las herramientas hace falta una cuenta business**: `seed-demo-business`.
+- Una descripción de 300 caracteres en Contabilidad responde 400 (antes 500): el
+  contenedor ya ejecuta el código nuevo.
+
+### Redis
+
+Redis 7.4.8 con AOF activo (`everysec`) y `maxmemory-policy noeviction`, que es lo que
+exige BullMQ para no perder trabajos. Las colas `analysis-queue` y `calendar-sync` están
+creadas. La cola lee `REDIS_URL` antes que las variables sueltas, así que el `rediss://`
+de Upstash de la plantilla funciona. **En Upstash, comprueba en su panel que la expulsión
+de claves (eviction) esté desactivada**: no se puede ver desde aquí.
+
+### Lo que no se puede comprobar desde aquí
+
+La base y el Redis de producción reales (credenciales del hosting), sus copias de
+seguridad y la política de expulsión de Upstash.

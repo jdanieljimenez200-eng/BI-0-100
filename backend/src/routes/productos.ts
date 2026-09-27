@@ -4,7 +4,8 @@ import multer from 'multer';
 import { AppDataSource } from '../config/database';
 import { Producto } from '../models/Producto';
 import { authenticate } from '../middleware/auth';
-import { requireCanAddProducto } from '../middleware/requirePlan';
+import { requireCanAddProducto, productosAsignados } from '../middleware/requirePlan';
+import { FindOptionsWhere, In } from 'typeorm';
 import { logger } from '../utils/logger';
 import { upload, recibirVideo } from '../middleware/upload';
 import { StorageService } from '../services/StorageService';
@@ -116,14 +117,25 @@ router.post('/', authenticate, requireCanAddProducto(), upload.single('image'), 
   }
 });
 
+/**
+ * Un trabajador ve los productos de la cuenta que tiene asignados; el dueño, los
+ * suyos. Antes se filtraba siempre por `req.userId`, y para un trabajador ese es
+ * su propio id: la lista salía vacía y toda la app (que toma el producto activo
+ * de aquí) le quedaba inutilizable aunque el dueño le hubiera dado acceso.
+ */
+async function alcanceProductos(usuarioId: string): Promise<FindOptionsWhere<Producto> | null> {
+  const { cuentaId, ids } = await productosAsignados(usuarioId);
+  if (ids === null) return { usuario_id: usuarioId };
+  if (!ids.length) return null; // trabajador sin asignaciones activas
+  return { usuario_id: cuentaId, id: In(ids) };
+}
+
 router.get('/', authenticate, async (req: any, res: Response) => {
   try {
-    const usuarioId = req.userId;
-
-    const productos = await AppDataSource.getRepository(Producto).find({
-      where: { usuario_id: usuarioId },
-      order: { created_at: 'DESC' },
-    });
+    const alcance = await alcanceProductos(req.userId);
+    const productos = alcance
+      ? await AppDataSource.getRepository(Producto).find({ where: alcance, order: { created_at: 'DESC' } })
+      : [];
 
     res.json(productos);
   } catch (err) {
@@ -134,11 +146,8 @@ router.get('/', authenticate, async (req: any, res: Response) => {
 
 router.get('/count', authenticate, async (req: any, res: Response) => {
   try {
-    const usuarioId = req.userId;
-
-    const count = await AppDataSource.getRepository(Producto).count({
-      where: { usuario_id: usuarioId },
-    });
+    const alcance = await alcanceProductos(req.userId);
+    const count = alcance ? await AppDataSource.getRepository(Producto).count({ where: alcance }) : 0;
 
     res.json({ count });
   } catch (err) {
@@ -150,13 +159,15 @@ router.get('/count', authenticate, async (req: any, res: Response) => {
 // GET /:id — declarado DESPUÉS de /count para que Express no lo sombree
 router.get('/:id', authenticate, async (req: any, res: Response) => {
   try {
-    const id = req.params.id;
-    const usuarioId = req.userId;
+    const { cuentaId, ids } = await productosAsignados(req.userId);
+    // Un trabajador solo abre un producto de la cuenta que tenga asignado.
+    if (ids !== null && !ids.includes(req.params.id)) {
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
 
     const producto = await AppDataSource.getRepository(Producto).findOne({
-      where: { id, usuario_id: usuarioId },
+      where: { id: req.params.id, usuario_id: cuentaId },
     });
-
     if (!producto) {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }

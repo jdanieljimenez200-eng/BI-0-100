@@ -1,7 +1,9 @@
 /**
  * Seed DEMO completo — SOLO desarrollo local.
  *
- * Crea la cuenta demo@bi0a100.com (plan pro_plus, todo desbloqueado) con
+ * Crea la cuenta demo@bi0a100.com (plan pro_plus: los 6 análisis y 4
+ * herramientas a elegir en /dashboard/herramientas; para probar TODAS las
+ * herramientas, `src/seeds/seed-demo-business.ts` crea una cuenta business) con
  * 2 productos y análisis COMPLETADOS en los 6 módulos. No encola jobs: invoca
  * los orquestadores reales directamente, así que los datos tienen EXACTAMENTE
  * el mismo shape que produce producción (sin ANTHROPIC_API_KEY usan los mocks
@@ -312,7 +314,7 @@ async function main() {
   console.log('✅ DEMO LISTA');
   console.log(`   Correo:     ${EMAIL}`);
   console.log(`   Contraseña: ${PASSWORD}`);
-  console.log('   Plan:       pro_plus (todo desbloqueado)');
+  console.log('   Plan:       pro_plus (6 análisis + 4 herramientas a elegir)');
   console.log('   URL login:  http://localhost:3000/auth/login');
   console.log('────────────────────────────────────────────────────');
 

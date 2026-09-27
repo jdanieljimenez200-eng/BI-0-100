@@ -5,7 +5,7 @@ import { AppDataSource } from '../config/database';
 import { AnalisisLegal } from '../models/AnalisisLegal';
 import { Producto } from '../models/Producto';
 import { authenticate } from '../middleware/auth';
-import { requireCanRunAnalisis, getPlanFromDB, requirePlanFeature } from '../middleware/requirePlan';
+import { requireCanRunAnalisis, getPlanFromDB, requirePlanFeature, requireModuloAcceso } from '../middleware/requirePlan';
 import { respuestaAnalisis } from '../services/billing/redactAnalisis';
 import { requireAnalisisLock } from '../middleware/idempotency';
 import { validateBody, exigirUuid } from '../middleware/validate';
@@ -16,6 +16,8 @@ import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuf
 
 const router = Router();
 exigirUuid(router, 'id');
+// Dueño, o trabajador con el permiso del módulo sobre la cuenta del dueño.
+const acceso = [authenticate, requireModuloAcceso('legal')];
 
 // El body real que manda el formulario (frontend/app/dashboard/legal/[productoId]/page.tsx).
 // `forma_juridica` depende del país del producto (lista curada en el frontend, no un
@@ -53,7 +55,7 @@ const contarAnalisisLegal = (usuarioId: string, productoId?: string): Promise<nu
 // POST /api/legal/analizar
 router.post(
   '/analizar',
-  authenticate,
+  ...acceso,
   // Legal usa el modelo más caro (Opus 5): solo planes con legal_analisis.
   requirePlanFeature('legal_analisis', 'El análisis Legal-Fiscal'),
   requireAnalisisLock('legal'),
@@ -138,7 +140,7 @@ router.post(
 );
 
 // GET /api/legal/:id — detalle completo del análisis (scoped al dueño)
-router.get('/:id', authenticate, async (req: any, res: Response) => {
+router.get('/:id', ...acceso,async (req: any, res: Response) => {
   try {
     const analisis = await AppDataSource.getRepository(AnalisisLegal).findOne({
       where: { id: req.params.id, usuario_id: req.userId },
@@ -155,7 +157,7 @@ router.get('/:id', authenticate, async (req: any, res: Response) => {
 });
 
 // GET /api/legal/:id/status
-router.get('/:id/status', authenticate, async (req: any, res: Response) => {
+router.get('/:id/status', ...acceso,async (req: any, res: Response) => {
   try {
     const analisis = await AppDataSource.getRepository(AnalisisLegal).findOne({
       where: { id: req.params.id, usuario_id: req.userId },

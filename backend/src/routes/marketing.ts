@@ -5,7 +5,7 @@ import { AppDataSource } from '../config/database';
 import { AnalisisMarketing } from '../models/AnalisisMarketing';
 import { Producto } from '../models/Producto';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { requireCanRunAnalisis, getPlanFromDB } from '../middleware/requirePlan';
+import { requireCanRunAnalisis, getPlanFromDB, requireModuloAcceso } from '../middleware/requirePlan';
 import { respuestaAnalisis } from '../services/billing/redactAnalisis';
 import { getPlanGate } from '../services/billing/gatingAnalisis';
 import { requireAnalisisLock } from '../middleware/idempotency';
@@ -24,6 +24,8 @@ import {
 
 const router = Router();
 exigirUuid(router, 'id', 'productoId');
+// Dueño, o trabajador con el permiso del módulo sobre la cuenta del dueño.
+const acceso = [authenticate, requireModuloAcceso('marketing')];
 
 // El body real que manda el formulario (frontend/app/dashboard/marketing/[productoId]/page.tsx).
 // Antes un comentario en el frontend afirmaba que un id de plataforma fuera de
@@ -102,7 +104,7 @@ const contarAnalisisMarketing = (usuarioId: string, productoId?: string): Promis
 // POST /api/marketing/analizar
 router.post(
   '/analizar',
-  authenticate,
+  ...acceso,
   requireAnalisisLock('marketing'),
   requireCanRunAnalisis(contarAnalisisMarketing),
   validateBody(AnalizarMarketingSchema),
@@ -206,7 +208,7 @@ router.post(
 );
 
 // GET /api/marketing/producto/:productoId — ultimo analisis del producto (para vincular modulos)
-router.get('/producto/:productoId', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/producto/:productoId', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     // Verificar que el producto pertenezca al usuario
     const producto = await AppDataSource.getRepository(Producto).findOne({
@@ -238,7 +240,7 @@ router.get('/producto/:productoId', authenticate, async (req: AuthRequest, res: 
 // POST /api/marketing/metricas-pasadas/parse — parseo e interpretación de reportes de anuncios (Pro+)
 router.post(
   '/metricas-pasadas/parse',
-  authenticate,
+  ...acceso,
   async (req: AuthRequest, res: Response, next) => {
     try {
       const plan = await getPlanFromDB(req.userId!);
@@ -297,7 +299,7 @@ router.post(
 );
 
 // GET /api/marketing/:id — detalle completo del analisis (scoped al dueno)
-router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/:id', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const analisis = await AppDataSource.getRepository(AnalisisMarketing).findOne({
       where: { id: req.params.id, usuario_id: req.userId },
@@ -315,7 +317,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 });
 
 // GET /api/marketing/:id/status
-router.get('/:id/status', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/:id/status', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const analisis = await AppDataSource.getRepository(AnalisisMarketing).findOne({
       where: { id: req.params.id, usuario_id: req.userId },

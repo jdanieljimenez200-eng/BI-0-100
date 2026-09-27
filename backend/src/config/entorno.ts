@@ -30,6 +30,31 @@ const CATEGORIAS_PATROCINIO = ['LEGAL', 'MARKETING', 'VENTAS'] as const;
 
 const definida = (env: Entorno, nombre: string): boolean => Boolean(env[nombre]?.trim());
 
+const HOSTS_LOCALES = new Set(['localhost', '127.0.0.1', '::1', 'postgres', 'db']);
+
+/**
+ * Cómo irá cifrada la conexión a Postgres. `sslmode` de la URL manda sobre
+ * `ssl: false` de config/database.ts (node-postgres mezcla la URL encima de las
+ * opciones; comprobado contra un Postgres sin SSL el 2026-09-27).
+ */
+function tlsDePostgres(env: Entorno): 'ok' | 'debil' | 'ninguno' | 'no_aplica' {
+  const url = env.DATABASE_URL?.trim();
+  if (!url) return 'no_aplica';
+  let host = '';
+  let sslmode: string | null = null;
+  try {
+    const u = new URL(url);
+    host = u.hostname.replace(/^\[|\]$/g, '');
+    sslmode = u.searchParams.get('sslmode');
+  } catch {
+    return 'no_aplica';
+  }
+  if (HOSTS_LOCALES.has(host)) return 'no_aplica';
+  if (sslmode === 'verify-full' || env.DB_SSL === 'true') return 'ok';
+  if (sslmode === 'require' || sslmode === 'prefer' || sslmode === 'verify-ca') return 'debil';
+  return 'ninguno';
+}
+
 export function revisarEntornoProduccion(env: Entorno = process.env): RevisionEntorno {
   const faltantes: string[] = [];
   const avisos: string[] = [];
@@ -37,6 +62,26 @@ export function revisarEntornoProduccion(env: Entorno = process.env): RevisionEn
   const exigir = (nombre: string, motivo: string): void => {
     if (!definida(env, nombre)) faltantes.push(`${nombre} (${motivo})`);
   };
+
+  // ── Base de datos y Redis (config/database.ts, config/redis.ts) ──────────
+  // Sin DATABASE_URL la conexión cae a `postgres:postgres@postgres:5432/bi0a100`
+  // y sin REDIS_URL a `redis:6379`, los valores del compose de desarrollo: el
+  // arranque fallaba con un ECONNREFUSED que no decía qué variable faltaba.
+  if (!definida(env, 'DATABASE_URL') && !definida(env, 'DB_HOST')) {
+    faltantes.push('DATABASE_URL (conexión a PostgreSQL)');
+  }
+  if (!definida(env, 'REDIS_URL') && !definida(env, 'REDIS_HOST')) {
+    faltantes.push('REDIS_URL (colas, sesiones revocadas y límites de peticiones)');
+  }
+  const tls = tlsDePostgres(env);
+  if (tls === 'ninguno') {
+    avisos.push('DATABASE_URL apunta a un host remoto sin TLS: añade ?sslmode=verify-full o DB_SSL=true');
+  } else if (tls === 'debil') {
+    avisos.push(
+      'DATABASE_URL usa sslmode=require/prefer/verify-ca: hoy node-postgres lo trata como verify-full, ' +
+        'pero en su próxima versión mayor dejará de verificar el certificado. Usa sslmode=verify-full'
+    );
+  }
 
   // ── Sesiones ──────────────────────────────────────────────────────────────
   for (const nombre of ['JWT_SECRET', 'JWT_REFRESH_SECRET']) {

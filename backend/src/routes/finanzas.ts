@@ -9,7 +9,7 @@ import { ah } from '../utils/asyncHandler';
 import { esUuid } from '../middleware/validate';
 import { calcularCalibracionMensual } from '../services/contabilidad/calibracionService';
 import { agregadoMensual } from '../services/contabilidad/consultasContables';
-import { requireCanRunAnalisis, getPlanFromDB } from '../middleware/requirePlan';
+import { requireCanRunAnalisis, getPlanFromDB, requireModuloAcceso } from '../middleware/requirePlan';
 import { requirePlanFeature } from '../middleware/requirePlan';
 import { respuestaAnalisis } from '../services/billing/redactAnalisis';
 import { requireAnalisisLock } from '../middleware/idempotency';
@@ -20,6 +20,8 @@ import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuf
 
 const router = Router();
 exigirUuid(router, 'id');
+// Dueño, o trabajador con el permiso del módulo sobre la cuenta del dueño.
+const acceso = [authenticate, requireModuloAcceso('finanzas')];
 
 // El body real que manda el formulario (frontend/app/dashboard/finanzas/[productoId]/page.tsx):
 // 5 números no-negativos + producto_id. Antes no se validaba nada server-side —
@@ -63,7 +65,7 @@ const contarAnalisisFinanzas = (usuarioId: string, productoId?: string): Promise
 // POST /api/finanzas/analizar
 router.post(
   '/analizar',
-  authenticate,
+  ...acceso,
   requireAnalisisLock('finanzas'),
   requireCanRunAnalisis(contarAnalisisFinanzas),
   validateBody(AnalizarFinanzasSchema),
@@ -150,7 +152,7 @@ router.post(
 // o sobre el :id recibido; persiste en overrides_data y la UI recalcula local.
 router.patch(
   '/:id/overrides',
-  authenticate,
+  ...acceso,
   requirePlanFeature('centro_mando', 'Edición de supuestos (Centro de Mando)'),
   async (req: any, res: Response) => {
     try {
@@ -204,7 +206,7 @@ router.patch(
  * decide si los usa. Va ANTES de `/:id` o `exigirUuid` responde 400 al ver la
  * palabra «calibracion» donde espera un UUID.
  */
-router.get('/calibracion/:productoId', authenticate, ah(async (req: AuthRequest, res: Response) => {
+router.get('/calibracion/:productoId', ...acceso,ah(async (req: AuthRequest, res: Response) => {
   const productoId = req.params.productoId;
   if (!esUuid(productoId)) {
     res.status(400).json({ error: 'El parámetro productoId no es un identificador válido' });
@@ -226,7 +228,7 @@ router.get('/calibracion/:productoId', authenticate, ah(async (req: AuthRequest,
 }));
 
 // GET /api/finanzas/:id — detalle completo (recortado por plan server-side)
-router.get('/:id', authenticate, async (req: any, res: Response) => {
+router.get('/:id', ...acceso,async (req: any, res: Response) => {
   try {
     const analisis = await AppDataSource.getRepository(AnalisisFinanzas).findOne({
       where: { id: req.params.id, usuario_id: req.userId },
@@ -243,7 +245,7 @@ router.get('/:id', authenticate, async (req: any, res: Response) => {
 });
 
 // GET /api/finanzas/:id/status
-router.get('/:id/status', authenticate, async (req: any, res: Response) => {
+router.get('/:id/status', ...acceso,async (req: any, res: Response) => {
   try {
     const analisis = await AppDataSource.getRepository(AnalisisFinanzas).findOne({
       where: { id: req.params.id, usuario_id: req.userId },

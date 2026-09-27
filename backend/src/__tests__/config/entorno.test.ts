@@ -5,6 +5,8 @@ const SECRETO = 'x'.repeat(64);
 /** Producción completa y válida: cada test rompe una sola cosa. */
 const entornoCompleto = (): Record<string, string | undefined> => ({
   NODE_ENV: 'production',
+  DATABASE_URL: 'postgresql://app:secreto@ep-prod.neon.tech/bi0a100?sslmode=verify-full',
+  REDIS_URL: 'rediss://:token@prod.upstash.io:6379',
   JWT_SECRET: SECRETO,
   JWT_REFRESH_SECRET: SECRETO,
   ADMIN_TOTP_KEY: SECRETO,
@@ -30,6 +32,35 @@ const entornoCompleto = (): Record<string, string | undefined> => ({
 describe('config/entorno — contrato de variables de producción', () => {
   it('un entorno completo no tiene faltantes', () => {
     expect(revisarEntornoProduccion(entornoCompleto()).faltantes).toEqual([]);
+  });
+
+  it('sin DATABASE_URL ni DB_HOST no arranca (caería a postgres:postgres@postgres)', () => {
+    const env = { ...entornoCompleto(), DATABASE_URL: undefined };
+    expect(revisarEntornoProduccion(env).faltantes.join(' ')).toMatch(/DATABASE_URL/);
+    expect(revisarEntornoProduccion({ ...env, DB_HOST: 'db.interna' }).faltantes.join(' ')).not.toMatch(/DATABASE_URL/);
+  });
+
+  it('sin REDIS_URL ni REDIS_HOST no arranca', () => {
+    const env = { ...entornoCompleto(), REDIS_URL: undefined };
+    expect(revisarEntornoProduccion(env).faltantes.join(' ')).toMatch(/REDIS_URL/);
+  });
+
+  it.each([
+    ['base remota sin TLS', 'postgresql://a:b@db.remota.com/x', undefined, /sin TLS/],
+    ['sslmode=require (se debilitará en pg 9)', 'postgresql://a:b@db.remota.com/x?sslmode=require', undefined, /verify-full/],
+  ])('avisa: %s', (_caso, url, dbSsl, patron) => {
+    const { avisos, faltantes } = revisarEntornoProduccion({ ...entornoCompleto(), DATABASE_URL: url, DB_SSL: dbSsl });
+    expect(avisos.join(' ')).toMatch(patron);
+    expect(faltantes).toEqual([]);
+  });
+
+  it.each([
+    ['sslmode=verify-full', 'postgresql://a:b@db.remota.com/x?sslmode=verify-full', undefined],
+    ['DB_SSL=true', 'postgresql://a:b@db.remota.com/x', 'true'],
+    ['host local', 'postgresql://a:b@postgres:5432/x', undefined],
+  ])('no avisa de TLS con %s', (_caso, url, dbSsl) => {
+    const { avisos } = revisarEntornoProduccion({ ...entornoCompleto(), DATABASE_URL: url, DB_SSL: dbSsl });
+    expect(avisos.join(' ')).not.toMatch(/TLS|verify-full/);
   });
 
   it('fuera de producción no exige nada', () => {

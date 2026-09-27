@@ -5,7 +5,7 @@ import { AppDataSource } from '../config/database';
 import { AnalisisMercado } from '../models/AnalisisMercado';
 import { Producto } from '../models/Producto';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { requireCanRunAnalisis, getPlanFromDB } from '../middleware/requirePlan';
+import { requireCanRunAnalisis, getPlanFromDB, requireModuloAcceso } from '../middleware/requirePlan';
 import { respuestaAnalisis } from '../services/billing/redactAnalisis';
 import { requireAnalisisLock } from '../middleware/idempotency';
 import { validateBody, exigirUuid } from '../middleware/validate';
@@ -17,6 +17,8 @@ import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuf
 
 const router = Router();
 exigirUuid(router, 'id', 'productoId');
+// Dueño, o trabajador con el permiso del módulo sobre la cuenta del dueño.
+const acceso = [authenticate, requireModuloAcceso('mercado')];
 
 // El body real que manda el formulario (frontend/app/dashboard/mercado/[productoId]/page.tsx).
 // `nse_target`/`canal_adquisicion`/`competidores_conocidos` son texto libre de un
@@ -88,7 +90,7 @@ const contarAnalisisMercado = (usuarioId: string, productoId?: string): Promise<
 // POST /api/mercado/analizar
 router.post(
   '/analizar',
-  authenticate,
+  ...acceso,
   requireAnalisisLock('mercado'),
   requireCanRunAnalisis(contarAnalisisMercado),
   validateBody(AnalizarMercadoSchema),
@@ -176,7 +178,7 @@ router.post(
 );
 
 // GET /api/mercado/producto/:productoId — ultimo analisis del producto (para vincular modulos)
-router.get('/producto/:productoId', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/producto/:productoId', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     // Verificar que el producto pertenezca al usuario
     const producto = await AppDataSource.getRepository(Producto).findOne({
@@ -213,7 +215,7 @@ router.get('/producto/:productoId', authenticate, async (req: AuthRequest, res: 
  * precargarlos. Va ANTES de `/:id` o `exigirUuid` respondería 400 al ver la
  * palabra «traccion» donde espera un UUID.
  */
-router.get('/traccion/:productoId', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/traccion/:productoId', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     // `exigirUuid(router, 'id', 'productoId')` ya rechaza con 400 un id mal
     // formado antes de llegar aquí.
@@ -235,7 +237,7 @@ router.get('/traccion/:productoId', authenticate, async (req: AuthRequest, res: 
 });
 
 // GET /api/mercado/:id — detalle completo del analisis (scoped al dueno)
-router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/:id', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const analisis = await AppDataSource.getRepository(AnalisisMercado).findOne({
       where: { id: req.params.id, usuario_id: req.userId },
@@ -252,7 +254,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 });
 
 // GET /api/mercado/:id/status
-router.get('/:id/status', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/:id/status', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const analisis = await AppDataSource.getRepository(AnalisisMercado).findOne({
       where: { id: req.params.id, usuario_id: req.userId },

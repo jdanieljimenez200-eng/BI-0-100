@@ -5,7 +5,7 @@ import { AppDataSource } from '../config/database';
 import { AnalisisBrief } from '../models/AnalisisBrief';
 import { Producto } from '../models/Producto';
 import { authenticate } from '../middleware/auth';
-import { requireCanRunAnalisis, getPlanFromDB } from '../middleware/requirePlan';
+import { requireCanRunAnalisis, getPlanFromDB, requireModuloAcceso } from '../middleware/requirePlan';
 import { respuestaAnalisis } from '../services/billing/redactAnalisis';
 import { requireAnalisisLock } from '../middleware/idempotency';
 import { validateBody, exigirUuid } from '../middleware/validate';
@@ -15,6 +15,8 @@ import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuf
 
 const router = Router();
 exigirUuid(router, 'id', 'productoId');
+// Dueño, o trabajador con el permiso del módulo sobre la cuenta del dueño.
+const acceso = [authenticate, requireModuloAcceso('brief')];
 
 // El body real que manda el formulario (frontend/app/dashboard/marca/page.tsx).
 // La mayoría de los campos son texto libre por diseño (el formulario permite
@@ -70,7 +72,7 @@ const contarAnalisisBrief = (usuarioId: string, _productoId?: string): Promise<n
 // POST /api/brief/analizar
 router.post(
   '/analizar',
-  authenticate,
+  ...acceso,
   // La cuota de brief es por cuenta: el candado también, o se podía lanzar a la
   // vez sobre varios productos y pasar todos el conteo antes del primer insert.
   requireAnalisisLock('brief', { porCuenta: true }),
@@ -155,7 +157,7 @@ router.post(
 );
 
 // GET /api/brief/recientes — últimos 20 completados del usuario (recortados por plan)
-router.get('/recientes', authenticate, async (req: any, res: Response) => {
+router.get('/recientes', ...acceso,async (req: any, res: Response) => {
   try {
     const lista = await AppDataSource.getRepository(AnalisisBrief).find({
       where: { usuario_id: req.userId, estado_analisis: 'completado' },
@@ -171,7 +173,7 @@ router.get('/recientes', authenticate, async (req: any, res: Response) => {
 });
 
 // GET /api/brief/producto/:productoId — último análisis del producto (para vincular módulos)
-router.get('/producto/:productoId', authenticate, async (req: any, res: Response) => {
+router.get('/producto/:productoId', ...acceso,async (req: any, res: Response) => {
   try {
     // Verificar que el producto pertenezca al usuario
     const producto = await AppDataSource.getRepository(Producto).findOne({
@@ -201,7 +203,7 @@ router.get('/producto/:productoId', authenticate, async (req: any, res: Response
 });
 
 // GET /api/brief/:id — detalle completo del análisis (scoped al dueño)
-router.get('/:id', authenticate, async (req: any, res: Response) => {
+router.get('/:id', ...acceso,async (req: any, res: Response) => {
   try {
     const analisis = await AppDataSource.getRepository(AnalisisBrief).findOne({
       where: { id: req.params.id, usuario_id: req.userId },
@@ -218,7 +220,7 @@ router.get('/:id', authenticate, async (req: any, res: Response) => {
 });
 
 // GET /api/brief/:id/status
-router.get('/:id/status', authenticate, async (req: any, res: Response) => {
+router.get('/:id/status', ...acceso,async (req: any, res: Response) => {
   try {
     const analisis = await AppDataSource.getRepository(AnalisisBrief).findOne({
       where: { id: req.params.id, usuario_id: req.userId },
