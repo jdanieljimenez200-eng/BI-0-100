@@ -22,7 +22,7 @@ import InputField from '@/components/auth/InputField';
 import PasswordStrength from '@/components/auth/PasswordStrength';
 import AuthBackground from '@/components/auth/AuthBackground';
 import { validateEmail, getPasswordStrength, getEmailError, getPasswordError } from '@/components/auth/AuthValidation';
-import { MOTION_DURATIONS, MOTION_EASINGS } from '@/lib/motion/tokens';
+import { ENTRADA_SEGURA, MOTION_DURATIONS, MOTION_EASINGS } from '@/lib/motion/tokens';
 
 const PROGRAM_AREAS = [
   {
@@ -220,6 +220,7 @@ export default function SignupPage() {
         {/* Contenido Editorial Central con Gancho Maestro y Módulos del Programa */}
         <div className="relative z-10 max-w-lg my-auto py-6 space-y-6">
           <motion.div
+            {...ENTRADA_SEGURA}
             initial={shouldReduce ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: MOTION_DURATIONS.deliberate, ease: MOTION_EASINGS.easeOutQuart }}
@@ -234,6 +235,7 @@ export default function SignupPage() {
 
           {/* Tarjeta Interactiva del Ecosistema de Módulos */}
           <motion.div
+            {...ENTRADA_SEGURA}
             initial={shouldReduce ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: MOTION_DURATIONS.deliberate, delay: 0.1, ease: MOTION_EASINGS.easeOutQuart }}
@@ -281,6 +283,7 @@ export default function SignupPage() {
               <AnimatePresence mode="wait">
                 <motion.div
                   key={currentArea.id}
+                  {...ENTRADA_SEGURA}
                   initial={shouldReduce ? false : { opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
@@ -338,6 +341,7 @@ export default function SignupPage() {
       {/* ── PANEL DERECHO: Formulario de Registro Solid Studio ── */}
       <div className="flex-1 flex relative items-center justify-center p-6 sm:p-10 lg:p-12 overflow-y-auto bg-[#0A0A0C]">
         <motion.div
+          {...ENTRADA_SEGURA}
           initial={shouldReduce ? false : { opacity: 0, y: 22, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: MOTION_DURATIONS.deliberate, ease: MOTION_EASINGS.easeOutQuart }}

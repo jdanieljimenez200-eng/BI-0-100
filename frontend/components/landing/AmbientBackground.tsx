@@ -103,33 +103,38 @@ export default function AmbientBackground() {
       farBuildings = [];
       nearBuildings = [];
 
-      // 1. Capa Lejana (Edificios más altos y anchos, siluetas distantes)
+      // 1. Capa Lejana (Rascacielos imponentes de fondo con siluetas nítidas)
       let currentX = -60;
       const targetWidth = width + 120;
 
       while (currentX < targetWidth) {
-        const bWidth = 55 + Math.random() * 75;
-        const bHeight = 220 + Math.random() * 240;
-        const hasSpire = Math.random() < 0.45;
-        const spireHeight = hasSpire ? 30 + Math.random() * 55 : 0;
+        const bWidth = 65 + Math.random() * 85;
+        const bHeight = 360 + Math.random() * 320; // 360px a 680px de altura
+        const hasSpire = Math.random() < 0.6;
+        const spireHeight = hasSpire ? 45 + Math.random() * 80 : 0;
 
-        const color = "rgb(12, 19, 32)";
-        const strokeColor = "rgba(255, 255, 255, 0.05)";
+        const color = "rgb(14, 22, 36)";
+        const strokeColor = "rgba(148, 163, 184, 0.12)";
 
         const windows: WindowPoint[] = [];
-        const cols = Math.floor(bWidth / 11);
-        const rows = Math.floor((bHeight - 30) / 15);
+        const cols = Math.floor(bWidth / 10);
+        const rows = Math.floor((bHeight - 35) / 14);
 
         for (let c = 1; c < cols; c++) {
           for (let r = 1; r < rows; r++) {
-            if (Math.random() < 0.32) {
-              const isWarm = Math.random() < 0.6;
+            if (Math.random() < 0.42) {
+              const rand = Math.random();
+              const winColor =
+                rand < 0.65
+                  ? "rgba(251, 191, 36, 0.85)"
+                  : rand < 0.90
+                  ? "rgba(186, 230, 253, 0.85)"
+                  : "rgba(52, 211, 153, 0.80)";
+
               windows.push({
                 relX: (c / cols) * bWidth,
-                relY: (r / rows) * (bHeight - 20),
-                color: isWarm
-                  ? "rgba(251, 191, 36, 0.65)"
-                  : "rgba(186, 230, 253, 0.65)",
+                relY: (r / rows) * (bHeight - 25),
+                color: winColor,
                 phase: Math.random() * Math.PI * 2,
                 speed: 0.01 + Math.random() * 0.02,
               });
@@ -152,31 +157,34 @@ export default function AmbientBackground() {
         currentX += bWidth - 14 + Math.random() * 10;
       }
 
-      // 2. Capa Cercana (Edificios nítidos, ventanas vibrantes y balizas activas)
+      // 2. Capa Cercana (Edificios en primer plano, ventanas ultra nítidas y balizas activas)
       currentX = -40;
       while (currentX < targetWidth) {
-        const bWidth = 44 + Math.random() * 68;
-        const bHeight = 150 + Math.random() * 220;
-        const hasSpire = Math.random() < 0.35;
-        const spireHeight = hasSpire ? 25 + Math.random() * 50 : 0;
+        const bWidth = 50 + Math.random() * 70;
+        const bHeight = 240 + Math.random() * 260; // 240px a 500px de altura
+        const hasSpire = Math.random() < 0.45;
+        const spireHeight = hasSpire ? 35 + Math.random() * 65 : 0;
 
-        const color = "rgb(18, 26, 42)";
-        const strokeColor = "rgba(255, 255, 255, 0.09)";
+        const color = "rgb(20, 30, 50)";
+        const strokeColor = "rgba(148, 163, 184, 0.22)";
 
         const windows: WindowPoint[] = [];
         const cols = Math.floor(bWidth / 9);
-        const rows = Math.floor((bHeight - 20) / 13);
+        const rows = Math.floor((bHeight - 25) / 13);
 
         for (let c = 1; c < cols; c++) {
           for (let r = 1; r < rows; r++) {
-            if (Math.random() < 0.42) {
-              const isWarm = Math.random() < 0.7;
+            if (Math.random() < 0.52) {
+              const rand = Math.random();
+              const winColor =
+                rand < 0.70
+                  ? "rgba(251, 191, 36, 0.95)"
+                  : "rgba(224, 242, 254, 0.95)";
+
               windows.push({
                 relX: (c / cols) * bWidth,
-                relY: (r / rows) * (bHeight - 15),
-                color: isWarm
-                  ? "rgba(251, 191, 36, 0.85)"
-                  : "rgba(224, 242, 254, 0.85)",
+                relY: (r / rows) * (bHeight - 20),
+                color: winColor,
                 phase: Math.random() * Math.PI * 2,
                 speed: 0.01 + Math.random() * 0.02,
               });
@@ -307,96 +315,126 @@ export default function AmbientBackground() {
         ctx.fill();
       }
 
-      // ── 5. SKYLINE DE LA CIUDAD EN COTA 0 (Aparece suavemente de cota 40 a 0) ──
-      // Emerge desde scroll 0.36 y se consolida al llegar a Precios, FinalCTA y Footer
-      const cityProgress = Math.max(0, Math.min(1, (scrollVal - 0.36) / 0.54));
+      // ── 5. SKYLINE DE LA CIUDAD EN COTA 0 (Aparece majestuosamente al descender) ──
+      // Emerge desde scroll 0.22 y se consolida al llegar a Herramientas, Precios y Footer
+      const cityProgress = Math.max(0, Math.min(1, (scrollVal - 0.22) / 0.62));
       if (cityProgress > 0.01) {
         // Curva hermite suave
         const easedCity = cityProgress * cityProgress * (3 - 2 * cityProgress);
         ctx.save();
 
         // 5a. Resplandor Ambiental de la Metrópolis (Iluminación urbana ascendente)
-        const cityGlowGrad = ctx.createLinearGradient(0, height, 0, height - 380);
-        cityGlowGrad.addColorStop(0, `rgba(245, 158, 11, ${0.08 * easedCity})`);
-        cityGlowGrad.addColorStop(0.35, `rgba(56, 189, 248, ${0.05 * easedCity})`);
+        const cityGlowGrad = ctx.createLinearGradient(0, height, 0, height - 520);
+        cityGlowGrad.addColorStop(0, `rgba(245, 158, 11, ${0.16 * easedCity})`);
+        cityGlowGrad.addColorStop(0.22, `rgba(56, 189, 248, ${0.10 * easedCity})`);
+        cityGlowGrad.addColorStop(0.60, `rgba(30, 58, 138, ${0.05 * easedCity})`);
         cityGlowGrad.addColorStop(1, "transparent");
         ctx.fillStyle = cityGlowGrad;
-        ctx.fillRect(0, height - 380, width, 380);
+        ctx.fillRect(0, height - 520, width, 520);
 
-        // 5b. Capa Trasera de Edificios (Paralaje profundo, offset de elevación suave)
-        const farElevation = (1 - easedCity) * 320;
+        // 5b. Capa Trasera de Edificios (Rascacielos de fondo con paralaje profundo)
+        const farElevation = (1 - easedCity) * 140;
         const farGroundY = height + 10 + farElevation;
 
         for (let i = 0; i < farBuildings.length; i++) {
           const b = farBuildings[i];
           const bTop = farGroundY - b.height;
 
+          // Cuerpo del edificio
           ctx.fillStyle = b.color;
           ctx.fillRect(b.x, bTop, b.width, b.height + 40);
 
-          ctx.strokeStyle = `rgba(255, 255, 255, ${0.05 * easedCity})`;
+          // Contorno arquitectónico
+          ctx.strokeStyle = `rgba(148, 163, 184, ${0.12 * easedCity})`;
           ctx.lineWidth = 1;
           ctx.strokeRect(b.x, bTop, b.width, b.height + 40);
 
-          // Antena con baliza roja
+          // Remate superior iluminado (borde de azotea)
+          ctx.fillStyle = `rgba(224, 242, 254, ${0.22 * easedCity})`;
+          ctx.fillRect(b.x, bTop, b.width, 1.5);
+
+          // Antena con baliza roja de advertencia aeronáutica
           if (b.hasSpire) {
             const spireX = b.x + b.width / 2;
-            ctx.strokeStyle = `rgba(255, 255, 255, ${0.12 * easedCity})`;
+            ctx.strokeStyle = `rgba(255, 255, 255, ${0.18 * easedCity})`;
             ctx.beginPath();
             ctx.moveTo(spireX, bTop);
             ctx.lineTo(spireX, bTop - b.spireHeight);
             ctx.stroke();
 
             const beaconFlash = (Math.sin(time * 0.05 + i * 1.5) + 1) / 2;
-            if (beaconFlash > 0.6) {
-              ctx.fillStyle = `rgba(239, 68, 68, ${beaconFlash * easedCity * 0.8})`;
+            if (beaconFlash > 0.5) {
+              // Núcleo brillante
+              ctx.fillStyle = `rgba(239, 68, 68, ${beaconFlash * easedCity})`;
               ctx.beginPath();
-              ctx.arc(spireX, bTop - b.spireHeight, 1.5, 0, Math.PI * 2);
+              ctx.arc(spireX, bTop - b.spireHeight, 1.8, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Halo difuso
+              ctx.fillStyle = `rgba(239, 68, 68, ${beaconFlash * easedCity * 0.35})`;
+              ctx.beginPath();
+              ctx.arc(spireX, bTop - b.spireHeight, 4.5, 0, Math.PI * 2);
               ctx.fill();
             }
           }
 
-          // Ventanas distantes
+          // Matriz de ventanas distantes
           for (let w = 0; w < b.windows.length; w++) {
             const win = b.windows[w];
             const winY = bTop + win.relY;
             if (winY < farGroundY - 5) {
-              const shimmer = Math.sin(time * win.speed + win.phase) * 0.15;
-              ctx.fillStyle = win.color.replace("0.65", `${(0.55 + shimmer) * easedCity}`);
-              ctx.fillRect(b.x + win.relX, winY, 1.8, 2.4);
+              const shimmer = Math.sin(time * win.speed + win.phase) * 0.16;
+              const alphaMatch = win.color.match(/[\d.]+\)$/);
+              const baseAlpha = alphaMatch ? parseFloat(alphaMatch[0]) : 0.8;
+              const finalAlpha = Math.max(0.1, Math.min(1, (baseAlpha + shimmer) * easedCity));
+              ctx.fillStyle = win.color.replace(/[\d.]+\)$/, `${finalAlpha})`);
+              ctx.fillRect(b.x + win.relX, winY, 2.2, 3.2);
             }
           }
         }
 
-        // 5c. Capa Delantera de Edificios (Primer plano con máximo detalle)
-        const nearElevation = (1 - easedCity) * 280;
+        // 5c. Capa Delantera de Edificios (Primer plano con máximo contraste y detalle)
+        const nearElevation = (1 - easedCity) * 90;
         const nearGroundY = height + 5 + nearElevation;
 
         for (let i = 0; i < nearBuildings.length; i++) {
           const b = nearBuildings[i];
           const bTop = nearGroundY - b.height;
 
+          // Cuerpo del edificio
           ctx.fillStyle = b.color;
           ctx.fillRect(b.x, bTop, b.width, b.height + 40);
 
-          ctx.strokeStyle = `rgba(255, 255, 255, ${0.09 * easedCity})`;
+          // Contorno de alta definición
+          ctx.strokeStyle = `rgba(148, 163, 184, ${0.20 * easedCity})`;
           ctx.lineWidth = 1;
           ctx.strokeRect(b.x, bTop, b.width, b.height + 40);
+
+          // Remate nítido en el borde superior de la azotea
+          ctx.fillStyle = `rgba(224, 242, 254, ${0.35 * easedCity})`;
+          ctx.fillRect(b.x, bTop, b.width, 1.5);
 
           // Antena / aguja con luz de baliza parpadeante nítida
           if (b.hasSpire) {
             const spireX = b.x + b.width / 2;
-            ctx.strokeStyle = `rgba(255, 255, 255, ${0.2 * easedCity})`;
+            ctx.strokeStyle = `rgba(255, 255, 255, ${0.26 * easedCity})`;
             ctx.beginPath();
             ctx.moveTo(spireX, bTop);
             ctx.lineTo(spireX, bTop - b.spireHeight);
             ctx.stroke();
 
             const beaconFlash = (Math.sin(time * 0.07 + i) + 1) / 2;
-            if (beaconFlash > 0.55) {
+            if (beaconFlash > 0.45) {
+              // Núcleo intenso
               ctx.fillStyle = `rgba(239, 68, 68, ${beaconFlash * easedCity})`;
               ctx.beginPath();
-              ctx.arc(spireX, bTop - b.spireHeight, 1.8, 0, Math.PI * 2);
+              ctx.arc(spireX, bTop - b.spireHeight, 2.2, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Halo de advertencia nocturna
+              ctx.fillStyle = `rgba(239, 68, 68, ${beaconFlash * easedCity * 0.4})`;
+              ctx.beginPath();
+              ctx.arc(spireX, bTop - b.spireHeight, 6, 0, Math.PI * 2);
               ctx.fill();
             }
           }
@@ -406,9 +444,12 @@ export default function AmbientBackground() {
             const win = b.windows[w];
             const winY = bTop + win.relY;
             if (winY < nearGroundY - 5) {
-              const shimmer = Math.sin(time * win.speed + win.phase) * 0.18;
-              ctx.fillStyle = win.color.replace("0.85", `${(0.72 + shimmer) * easedCity}`);
-              ctx.fillRect(b.x + win.relX, winY, 2.2, 3);
+              const shimmer = Math.sin(time * win.speed + win.phase) * 0.20;
+              const alphaMatch = win.color.match(/[\d.]+\)$/);
+              const baseAlpha = alphaMatch ? parseFloat(alphaMatch[0]) : 0.9;
+              const finalAlpha = Math.max(0.15, Math.min(1, (baseAlpha + shimmer) * easedCity));
+              ctx.fillStyle = win.color.replace(/[\d.]+\)$/, `${finalAlpha})`);
+              ctx.fillRect(b.x + win.relX, winY, 2.8, 4.0);
             }
           }
         }

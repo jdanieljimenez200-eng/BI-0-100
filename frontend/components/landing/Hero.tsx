@@ -4,10 +4,11 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
-import { MOTION_DURATIONS, MOTION_EASINGS } from "@/lib/motion/tokens";
+import { ENTRADA_SEGURA, MOTION_DURATIONS, MOTION_EASINGS } from "@/lib/motion/tokens";
 
 function heroEntrada(indice: number, reducido: boolean | null) {
   return {
+    ...ENTRADA_SEGURA,
     initial: reducido ? false : ({ opacity: 0, y: 16 } as const),
     animate: { opacity: 1, y: 0 },
     transition: {
@@ -100,6 +101,7 @@ export default function Hero() {
 
             {/* Contenedor con animación de entrada */}
             <motion.div
+              {...ENTRADA_SEGURA}
               initial={shouldReduce ? false : { opacity: 0, scale: 0.96, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{

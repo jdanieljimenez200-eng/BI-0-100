@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { REVEAL_VIEWPORT } from "@/lib/motion/tokens";
+import { ENTRADA_SEGURA, REVEAL_VIEWPORT } from "@/lib/motion/tokens";
 import { SectionReveal, SectionRevealItem } from "@/components/motion/SectionReveal";
 import { ArrowRight, Check, Copy } from "lucide-react";
 
@@ -81,6 +81,7 @@ function AppleCard({
 
   return (
     <motion.div
+      {...ENTRADA_SEGURA}
       initial={shouldReduce ? false : { opacity: 0, y: 28, x: xOffset }}
       whileInView={{ opacity: 1, y: 0, x: 0 }}
       viewport={REVEAL_VIEWPORT}

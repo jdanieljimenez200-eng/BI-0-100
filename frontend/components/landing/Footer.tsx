@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function Footer() {
   return (
-    <footer className="bg-gradient-to-b from-transparent via-[#050911]/60 to-[#04070D]/90 pt-20 pb-12 px-4 sm:px-6 relative overflow-hidden">
+    <footer className="bg-transparent pt-20 pb-12 px-4 sm:px-6 relative overflow-hidden border-t border-white/[0.06]">
       <div className="max-w-[1240px] mx-auto relative z-10">
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-10 mb-16">

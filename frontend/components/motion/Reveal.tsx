@@ -3,7 +3,7 @@
 import React from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 
-import { MOTION_DURATIONS, MOTION_EASINGS, REVEAL_VIEWPORT } from '@/lib/motion/tokens';
+import { ENTRADA_SEGURA, MOTION_DURATIONS, MOTION_EASINGS, REVEAL_VIEWPORT } from '@/lib/motion/tokens';
 
 /**
  * Revela su contenido al entrar en viewport. Sustituye a los `ScrollTrigger`
@@ -37,6 +37,7 @@ export function Reveal({
   return (
     <Componente
       className={className}
+      {...ENTRADA_SEGURA}
       initial={shouldReduce ? false : { opacity: 0, y }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={REVEAL_VIEWPORT}

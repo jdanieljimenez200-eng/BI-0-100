@@ -75,6 +75,18 @@ export const MOTION_DURATIONS = {
   slow: 0.5,       // 500ms - Staggers iniciales al cargar la vista
 };
 
+/**
+ * Entradas que parten de `opacity: 0`: se animan en JS, no con WAAPI.
+ *
+ * framer-motion 12 manda `opacity`/`filter` a la Web Animations API. Si esa
+ * animación se interrumpe antes de avanzar (pestaña en segundo plano, recarga
+ * de HMR, doble montaje de React en dev), guarda el valor muestreado (≈0) y la
+ * cancela: el elemento se queda invisible para siempre. Con `onUpdate` presente
+ * framer no acelera y la animación sigue en el frameloop, que se reanuda solo.
+ * Úsalo en todo `motion.*` cuyo `initial` oculte contenido.
+ */
+export const ENTRADA_SEGURA = { onUpdate: () => {} } as const;
+
 // ─── 4. Variantes Canónicas para Componentes ─────────────────────────────────
 
 /** Entrada y salida de página (Page Transition) */

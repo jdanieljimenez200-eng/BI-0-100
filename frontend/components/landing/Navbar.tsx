@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Menu, X, ArrowRight, Sparkles } from "lucide-react";
-import { MOTION_SPRINGS, MOTION_EASINGS } from "@/lib/motion/tokens";
+import { ENTRADA_SEGURA, MOTION_SPRINGS, MOTION_EASINGS } from "@/lib/motion/tokens";
 
 const NAV_LINKS = [
   { href: "#modulos", label: "Módulos" },
@@ -108,6 +108,7 @@ export default function Navbar() {
       <AnimatePresence>
         {mobileMenuOpen && (
           <motion.div
+            {...ENTRADA_SEGURA}
             initial={shouldReduce ? false : { opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={shouldReduce ? undefined : { opacity: 0, y: -8 }}

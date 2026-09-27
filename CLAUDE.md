@@ -150,6 +150,7 @@ Montadas en `backend/src/app.ts`:
 > [!CAUTION]
 > **1. TYPEORM_SYNCHRONIZE=false (ESTRICTO)**
 > NUNCA cambies `TYPEORM_SYNCHRONIZE` a `true`. Con synchronize activo, TypeORM borra las decenas de índices de rendimiento y destruye las restricciones de claves foráneas creadas por las migraciones (ver historial acumulado en `backend/src/migrations/`). Todos los cambios de esquema se aplican **exclusivamente** con `npm run migration:run`.
+> Desde 2026-09-27 `synchronize` es `false` fijo en `config/database.ts` (lo vigila `__tests__/config/database.test.ts`). Antes bastaba con que faltara la variable: `npm run seed:demo` o un `npm run dev` fuera de Docker sincronizaban al conectar, y así quedó dañada `bi0a100_db` (reparación sin pérdida de datos: `docs/audit/reparar_bi0a100_db_2026-09-27.sql`). Una FK nueva lleva índice en la columna hija: Postgres no lo crea solo y borrar el padre recorre la tabla entera. `migrationsRun` también es `false` fijo: con `TYPEORM_MIGRATIONS_RUN=true`, la API y el worker migran al arrancar con `migrarAlArrancar()` (`config/migracionesAlArrancar.ts`) bajo `pg_advisory_lock`, porque en `docker-compose.prod.yml` arrancan a la vez y migraban en paralelo (uno se caía). En Railway las migraciones van en `preDeployCommand`. Todos los seeds (`seed:demo`, `seed:alertas` y los de `src/seeds/`) corren sobre el esquema de migraciones y salen con código 1 si fallan.
 
 > [!WARNING]
 > **2. UUIDs como Cadenas**
@@ -185,7 +186,7 @@ Montadas en `backend/src/app.ts`:
 > - **Historial que no se borra:** ventas, pagos de nómina y movimientos de inventario tienen FK `NO ACTION` hacia producto, empleado e insumo (migración `1775590000000`). Un producto con ventas no se borra (409); un empleado con pagos o un insumo con movimientos se **archivan** (`activo = false`). No vuelvas a poner `CASCADE` en esas FK.
 > - **Altas de dinero con `idempotente('<ámbito>')`** (`middleware/idempotency.ts`): el cliente manda `Idempotency-Key` (8–100 caracteres `[A-Za-z0-9_-]`, uno por intento de guardado; `nuevaClaveIdempotencia()` en `frontend/lib/api.ts`) y un reintento devuelve la respuesta guardada 24 h con `Idempotent-Replayed: true`; otro cuerpo con la misma clave → 422. Sin cabecera se comporta como antes. Un `POST` nuevo que cree ventas, pagos o movimientos debe llevarlo.
 > - **Listados con historial paginan por cursor** con `paginar()`/`responderPagina()` de `utils/paginacion.ts`: `?antes=<cursor>&limite=<n>` (200 por defecto, 500 máx.) y el cursor siguiente en la cabecera `X-Siguiente` (expuesta en CORS); el cuerpo sigue siendo el array. Nada de `.limit()` con `leftJoinAndSelect` (limita filas unidas, no entidades) ni de `OFFSET`.
-> - **Números con tope de columna**: usa `dinero()`, `cantidad()` y `costoUnitario()` de `utils/limitesNumericos.ts` en los esquemas Zod (un `1e12` o un `NaN` no llegan a Postgres). `venta_items.cantidad` es `numeric(12,3)`.
+> - **Números con tope de columna**: usa `dinero()`, `cantidad()` y `costoUnitario()` de `utils/limitesNumericos.ts` en los esquemas Zod (un `1e12` o un `NaN` no llegan a Postgres). `venta_items.cantidad` es `numeric(12,3)`. Los enteros llevan `.max(MAX_ENTERO)` y los textos `.max(n)` igual a su `varchar(n)`; el tope es el de la columna **más estrecha a la que llega** el dato (un salario acaba en `movimientos_contables.monto`, la moneda de una cotización en `ventas.moneda` varchar(3)). Si algo se escapa, `middleware/errorHandler.ts` responde 400/409 a los errores de dato de Postgres (22001, 22003, 22P02, 23514, 23505) en vez de 500, pero solo en rutas que delegan con `ah()`: las que hacen `res.status(500)` por su cuenta no pasan por él.
 > - **Gating por petición**: `requireToolCapability`/`requireHerramientaAccess` memorizan usuario y permisos en `req`, y la selección de herramientas vive en Redis 60 s (`herr_sel:{cuenta}`). Al cambiar la selección llama a `invalidatePlanCache(cuentaId)`. El tope del plan gratuito se cuenta bajo un candado Redis por cuenta y herramienta.
 > - **Tiempo máximo por consulta**: el pool fija `statement_timeout` (30 s, `DB_STATEMENT_TIMEOUT_MS`) e `idle_in_transaction_session_timeout` (60 s). Un trabajo largo legítimo hace `SET LOCAL statement_timeout = 0` dentro de su transacción (como la purga de papelera); las migraciones ya van sin límite (`config/cli-datasource.ts`).
 > - **Rate limit general por usuario**: con token de firma válida cuenta por `userId` (`RATE_LIMIT_MAX_USUARIO`, 1 200 / 15 min); sin sesión, por IP (`RATE_LIMIT_MAX`, 300). `req.ip` depende de `TRUST_PROXY` (saltos de proxy delante del backend; 1 por defecto, 2 con Cloudflare delante del hosting).
@@ -235,3 +236,26 @@ npm run logs          # Ver logs en tiempo real de backend y frontend
 npm run kill-all      # Liberar puertos 3000 y 3001 si están tomados
 bash scripts/pre-deploy-check.sh # Checklist automatizado antes de producción
 ```
+
+---
+
+## 9. Regla Estricta: Protección de Diseño UI (Landing Page y Auth)
+
+> [!CAUTION]
+> **PROHIBIDO ELIMINAR, REVERTIR O DEGRADAR LA LANDING PAGE Y EL SIGN UP**
+> Los siguientes componentes y archivos definen la identidad de marca aprobada y el concepto "0 a 100". Ningún agente de IA ni desarrollador debe modificarlos sin instrucción expresa del usuario:
+> 
+> 1. **`frontend/components/landing/AmbientBackground.tsx`**:
+>    - Motor en Canvas 2D cinemático que materializa el concepto de "Descenso de 100 a 0":
+>      - Cota 100 (arriba / Hero): Espacio profundo con campo de estrellas sólidas y limbo planetario curvado.
+>      - Cota 0 (abajo / Suelo): Skyline de metrópolis nocturna con rascacielos en dos capas, remates de azotea, balizas rojas de advertencia aeronáutica parpadeantes y matrices de ventanas cálidas/cian.
+>    - **NO eliminar ni reemplazar por librerías externas o fondos planos**.
+> 2. **`frontend/components/landing/Footer.tsx`**:
+>    - El pie de página DEBE conservar fondo transparente (`bg-transparent`) para permitir que el skyline urbano de `AmbientBackground` sea 100% visible a través de él. **NUNCA añadir fondos o gradientes oscuros opacos que tapen la ciudad**.
+> 3. **`frontend/components/auth/AuthBackground.tsx`**:
+>    - Canvas atmosférico en el panel izquierdo de autenticación con campo estelar interactivo, estrellas fugaces y luces de ciudad sutiles.
+> 4. **`frontend/app/auth/signup/page.tsx`**:
+>    - Pantalla de registro moderna estilo Studio Dark (`#1C1C1E`) con el explorador interactivo de 4 áreas del programa (`Viabilidad`, `Finanzas`, `Operación`, `Expertos`).
+> 5. **Filosofía de Estilo Visual**:
+>    - Estándar Apple / Tesla / Linear Dark UI: Tarjetas sólidas `#1C1C1E`, bordes `white/[0.08]`, puntos estelares nítidos y sólidos (cero orbes de neón estridentes, cero rectángulos azules y cero efectos borrosos que ensucien la interfaz).
+

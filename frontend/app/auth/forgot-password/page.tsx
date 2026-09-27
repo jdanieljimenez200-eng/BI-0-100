@@ -6,7 +6,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, Mail, CheckCircle2, AlertCircle, Loader2, KeyRound } from 'lucide-react';
 import api from '@/lib/api';
 import { interpretarErrorApi } from '@/lib/apiError';
-import { MOTION_DURATIONS, MOTION_EASINGS } from '@/lib/motion/tokens';
+import { ENTRADA_SEGURA, MOTION_DURATIONS, MOTION_EASINGS } from '@/lib/motion/tokens';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -80,6 +80,7 @@ export default function ForgotPasswordPage() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-gradient-to-tr from-cyan-500/5 via-emerald-500/5 to-transparent blur-[140px] pointer-events-none -z-10" />
 
         <motion.div
+          {...ENTRADA_SEGURA}
           initial={shouldReduce ? false : { opacity: 0, y: 20, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: MOTION_DURATIONS.deliberate, ease: MOTION_EASINGS.easeOutQuart }}

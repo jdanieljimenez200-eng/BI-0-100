@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Check, Plus, Minus } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
-import { REVEAL_VIEWPORT } from "@/lib/motion/tokens";
+import { ENTRADA_SEGURA, REVEAL_VIEWPORT } from "@/lib/motion/tokens";
 import { SectionReveal, SectionRevealItem } from "@/components/motion/SectionReveal";
 
 // ─── SVG Vector Icons Minimalistas (22px, trazo fino Apple) ──────────────────
@@ -81,6 +81,7 @@ function AppleToolCard({
 
   return (
     <motion.div
+      {...ENTRADA_SEGURA}
       initial={shouldReduce ? false : { opacity: 0, scale: 0.7, y: 40, filter: "blur(6px)" }}
       whileInView={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
       viewport={REVEAL_VIEWPORT}

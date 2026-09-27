@@ -10,7 +10,7 @@ import InputField from '@/components/auth/InputField';
 import PasswordStrength from '@/components/auth/PasswordStrength';
 import AuthMountain from '@/components/auth/AuthMountain';
 import { validateEmail, getPasswordStrength, getEmailError } from '@/components/auth/AuthValidation';
-import { MOTION_DURATIONS, MOTION_EASINGS, MOTION_SPRINGS } from '@/lib/motion/tokens';
+import { ENTRADA_SEGURA, MOTION_DURATIONS, MOTION_EASINGS, MOTION_SPRINGS } from '@/lib/motion/tokens';
 
 const VALUE_PROPOSITIONS = [
   'Cruce en tiempo real con Google Maps y competidores',
@@ -105,6 +105,7 @@ export default function LoginPage() {
         {/* Contenido Editorial Central */}
         <div className="relative z-10 max-w-lg my-auto py-8">
           <motion.div
+            {...ENTRADA_SEGURA}
             initial={shouldReduce ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: MOTION_DURATIONS.deliberate, ease: MOTION_EASINGS.easeOutQuart }}
@@ -122,6 +123,7 @@ export default function LoginPage() {
             {VALUE_PROPOSITIONS.map((prop, idx) => (
               <motion.div
                 key={idx}
+                {...ENTRADA_SEGURA}
                 initial={shouldReduce ? false : { opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{
@@ -153,6 +155,7 @@ export default function LoginPage() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-gradient-to-tr from-cyan-500/5 via-emerald-500/5 to-transparent blur-[140px] pointer-events-none -z-10" />
 
         <motion.div
+          {...ENTRADA_SEGURA}
           initial={shouldReduce ? false : { opacity: 0, y: 20, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: MOTION_DURATIONS.deliberate, ease: MOTION_EASINGS.easeOutQuart }}
