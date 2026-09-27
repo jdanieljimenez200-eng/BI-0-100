@@ -16,6 +16,8 @@ import {
   ChevronRight,
   AlertCircle,
   FileCheck2,
+  Wrench,
+  Paintbrush,
 } from "lucide-react";
 
 // ─── Datos de la Sección ──────────────────────────────────────────────────────
@@ -30,44 +32,45 @@ interface ChecklistItem {
 
 const INITIAL_CHECKLIST: ChecklistItem[] = [
   {
-    id: "sat",
-    entidad: "SAT",
-    texto: "Alta fiscal, RFC y emisión de sellos digitales (CSD)",
-    puntos: 36,
+    id: "legal",
+    entidad: "ABOGADO",
+    texto: "Contrato de arrendamiento comercial y pacto de socios",
+    puntos: 25,
     ok: true,
   },
   {
-    id: "contratos",
-    entidad: "STPS",
-    texto: "Contratos laborales individuales conforme a la LFT",
-    puntos: 36,
+    id: "plomeria",
+    entidad: "PLOMERO / CLIMA",
+    texto: "Instalación hidráulica, trampa de grasa y gas comercial",
+    puntos: 20,
     ok: true,
   },
   {
-    id: "impi",
-    entidad: "IMPI",
-    texto: "Registro de marca mixta en Clase 43 de Niza",
-    puntos: 10,
+    id: "pintura",
+    entidad: "PINTOR / ALBAÑIL",
+    texto: "Pintura epóxica, muros, fachada y adecuación del local",
+    puntos: 20,
+    ok: true,
+  },
+  {
+    id: "fiscal",
+    entidad: "CONTADOR",
+    texto: "Alta fiscal en SAT, sellos digitales y nómina patronal",
+    puntos: 20,
     ok: false,
   },
   {
-    id: "cofepris",
-    entidad: "COFEPRIS",
-    texto: "Aviso de funcionamiento sanitario y bitácora de higiene",
-    puntos: 10,
-    ok: false,
-  },
-  {
-    id: "licencia",
-    entidad: "MUNICIPIO",
-    texto: "Licencia de funcionamiento y dictamen de Protección Civil",
-    puntos: 8,
+    id: "suministro",
+    entidad: "EMPRESARIO / PROVEEDOR",
+    texto: "Convenio con mayoristas de insumos y maquinaria a precio preferente",
+    puntos: 15,
     ok: false,
   },
 ];
 
 interface ExpertProfile {
   id: number;
+  tipo: "oficio" | "profesion" | "empresa";
   nombre: string;
   cargo: string;
   credencial: string;
@@ -82,57 +85,86 @@ interface ExpertProfile {
 const PERFILES_EXPERTOS: ExpertProfile[] = [
   {
     id: 1,
+    tipo: "oficio",
+    nombre: "Héctor Morales Ramos",
+    cargo: "Maestro en Instalaciones & Climatización",
+    credencial: "14 años de oficio · Cuadrillas Morales",
+    especialidad: "Plomería Comercial, Gas LP & Refrigeración",
+    descripcion: "Instalación de trampas de grasa, redes hidráulicas, mantenimiento preventivo de cuartos fríos y líneas de gas comercial.",
+    tags: ["Plomería", "Refrigeración", "Gas LP Comercial"],
+    icon: Wrench,
+    compatibilidad: "99%",
+    tiempoRespuesta: "< 1 hr",
+  },
+  {
+    id: 2,
+    tipo: "oficio",
+    nombre: "Carlos Méndez Valenzuela",
+    cargo: "Especialista en Acabados & Albañilería",
+    credencial: "Contratista Registrado · Acabados Express",
+    especialidad: "Pintura Comercial, Tablaroca & Obra Civil",
+    descripcion: "Adecuación integral de locales, pintura epóxica para pisos de alto tráfico, fachadas exteriores y muros de tablaroca.",
+    tags: ["Pintura", "Albañilería", "Adecuación de Locales"],
+    icon: Paintbrush,
+    compatibilidad: "98%",
+    tiempoRespuesta: "< 2 hrs",
+  },
+  {
+    id: 3,
+    tipo: "profesion",
     nombre: "Lic. Roberto Valenzuela S.",
     cargo: "Socio Director · Valenzuela & Asoc.",
-    credencial: "Cédula Prof. 8492011",
-    especialidad: "Derecho Corporativo & Societario",
-    descripcion: "Estructuración de estatutos, pactos de socios, actas de asamblea y blindaje de responsabilidad comercial.",
-    tags: ["Pactos de Socios", "Contratos Mercantiles", "Gobierno Corporativo"],
+    credencial: "Cédula Prof. 8492011 · Barra de Abogados",
+    especialidad: "Derecho Corporativo, Contratos & IMPI",
+    descripcion: "Estructuración de estatutos, pactos de socios, contratos de arrendamiento comercial y registro de marca registrada.",
+    tags: ["Contratos", "Marcas IMPI", "Pactos de Socios"],
     icon: Scale,
     compatibilidad: "99%",
     tiempoRespuesta: "< 2 hrs",
   },
   {
-    id: 2,
-    nombre: "Mtra. Sofía Méndez Alcocer",
-    cargo: "Perito Marcario · Propiedad Intelectual",
-    credencial: "Cédula Prof. 9102482",
-    especialidad: "Registro de Marcas & Patentes (IMPI)",
-    descripcion: "Búsqueda fonética previa, registro de marca en Clase Niza y defensa legal ante oposiciones y litigios.",
-    tags: ["Clase 43 Niza", "Protección de Marca", "Activos Intangibles"],
-    icon: Briefcase,
-    compatibilidad: "98%",
-    tiempoRespuesta: "< 1 hr",
-  },
-  {
-    id: 3,
+    id: 4,
+    tipo: "profesion",
     nombre: "C.P.C. Alejandro Garza Treviño",
     cargo: "Socio de Consultoría & Auditoría Tributaria",
     credencial: "Cédula Prof. 7521890 · Col. Contadores",
     especialidad: "Estrategia Fiscal, SAT & Nómina",
-    descripcion: "Diagnóstico preventivo de CFDI 4.0, optimización de régimen tributario y cumplimiento de cuotas ante IMSS/SAT.",
-    tags: ["Estrategia SAT", "Nómina & IMSS", "CFDI 4.0"],
+    descripcion: "Diagnóstico preventivo de CFDI 4.0, alta patronal ante IMSS, conciliación bancaria y régimen fiscal óptimo para tu negocio.",
+    tags: ["Estrategia SAT", "Nómina & IMSS", "P&L Fiscal"],
     icon: Calculator,
     compatibilidad: "96%",
     tiempoRespuesta: "< 3 hrs",
+  },
+  {
+    id: 5,
+    tipo: "empresa",
+    nombre: "Ing. Javier Orozco Berlanga",
+    cargo: "Director de Operaciones · Suministros del Norte",
+    credencial: "Empresario Aliado · Red B2B",
+    especialidad: "Distribución Mayorista & Maquinaria Comercial",
+    descripcion: "Proveeduría directa de insumos a gran escala, financiamiento de maquinaria de mostrador y alianzas comerciales.",
+    tags: ["Maquinaria", "Proveeduría B2B", "Escalamiento"],
+    icon: Briefcase,
+    compatibilidad: "95%",
+    tiempoRespuesta: "< 2 hrs",
   },
 ];
 
 const STATS = [
   {
-    valor: "+480",
-    label: "Directorio Validado",
-    sub: "Cédula profesional auditada directamente ante la Dirección General de Profesiones (SEP).",
+    valor: "+1,200",
+    label: "Profesiones y Oficios",
+    sub: "Plomeros, pintores, albañiles, abogados, contadores y empresarios auditados en tu ciudad.",
   },
   {
     valor: "0%",
     label: "Sin Comisiones Ocultas",
-    sub: "Contacto y cotización directa con el despacho profesional sin sobreprecio de plataforma.",
+    sub: "Contacto y cotización directa con el profesional u oficial sin sobreprecio de plataforma.",
   },
   {
     valor: "< 2 hrs",
-    label: "Tiempo de Asignación",
-    sub: "El especialista recibe tu expediente técnico previo para iniciar la asesoría sin tiempos muertos.",
+    label: "Conexión Directa",
+    sub: "Envía un mensaje directo por WhatsApp para cotizar y resolver las necesidades de tu local.",
   },
 ];
 
@@ -155,10 +187,10 @@ function AppleDiagnosticCard({
         <div className="flex flex-wrap items-center justify-between gap-2.5 mb-5">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.05] border border-white/[0.08] text-xs font-sans font-medium text-slate-300">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Caso Real: Cafetería & Tostaduría de Especialidad</span>
+            <span>Caso Real: Adecuación & Apertura Integral de Local</span>
           </div>
           <span className="text-[11px] font-sans font-medium text-slate-400">
-            Expediente #REG-2026
+            Expediente #OBRA-REG-2026
           </span>
         </div>
 
@@ -166,7 +198,7 @@ function AppleDiagnosticCard({
         <div className="mb-5">
           <div className="flex items-baseline justify-between mb-2">
             <span className="text-xs font-sans font-medium text-slate-400">
-              Cumplimiento Legal & Sanitario
+              Adecuación Física, Legal & Fiscal
             </span>
             <div className="flex items-baseline gap-1 font-sans">
               <span className="text-3xl sm:text-4xl font-bold tracking-tight text-white tabular-nums">
@@ -232,8 +264,8 @@ function AppleDiagnosticCard({
               </div>
               <p className="text-xs text-slate-300 font-sans leading-relaxed">
                 {pendingCount === 0
-                  ? "Cumplimiento total verificado en materia fiscal, sanitaria, laboral y de propiedad intelectual."
-                  : "Se requieren trámites ante IMPI, COFEPRIS y municipio antes de iniciar operaciones abiertas."}
+                  ? "Adecuación integral lista: local habilitado físicamente y blindado legal y fiscalmente."
+                  : "Se requieren adecuaciones de plomería, pintura, alta en SAT o convenios de suministro para operar."}
               </p>
             </div>
           </div>
@@ -242,7 +274,7 @@ function AppleDiagnosticCard({
         {/* Checklist Interactivo */}
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs font-sans font-medium text-slate-400 mb-1 px-1">
-            <span>Requisitos Normativos del Negocio</span>
+            <span>Requisitos Físicos, Operativos y Legales</span>
             <span className="text-[11px] text-slate-400 hidden sm:inline">
               Haz clic para simular cumplimiento
             </span>
@@ -305,7 +337,7 @@ function AppleDiagnosticCard({
       <div className="relative z-10 pt-4 border-t border-white/[0.06] flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs text-slate-300 font-sans">
           <span className="w-2 h-2 rounded-full bg-emerald-400" />
-          <span>3 despachos compatibles asignados al caso</span>
+          <span>Especialistas y oficiales compatibles con tu caso</span>
         </div>
         <span className="text-xs font-sans font-semibold text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 px-2.5 py-1 rounded-full">
           Afinidad 98%
@@ -421,12 +453,18 @@ export default function NetworkTeaser() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>(INITIAL_CHECKLIST);
   const [selectedExpertId, setSelectedExpertId] = useState<number>(1);
+  const [filtroCategoria, setFiltroCategoria] = useState<"todos" | "oficio" | "profesion" | "empresa">("todos");
 
   const toggleChecklistItem = (index: number) => {
     setChecklist((prev) =>
       prev.map((item, i) => (i === index ? { ...item, ok: !item.ok } : item))
     );
   };
+
+  const perfilesFiltrados =
+    filtroCategoria === "todos"
+      ? PERFILES_EXPERTOS
+      : PERFILES_EXPERTOS.filter((e) => e.tipo === filtroCategoria);
 
   return (
     <section className="relative py-24 md:py-32 overflow-hidden bg-transparent">
@@ -439,21 +477,21 @@ export default function NetworkTeaser() {
             className="inline-flex items-center gap-2 h-7 px-3 rounded-full bg-cyan-400/10 border border-cyan-400/25 text-cyan-300 text-xs font-sans font-medium mb-4"
           >
             <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Red de Especialistas Verificados</span>
+            <span>Red Abierta de Profesiones & Oficios</span>
           </SectionRevealItem>
 
           <SectionRevealItem
             as="h2"
             className="font-sans text-3xl sm:text-5xl lg:text-6xl font-bold tracking-[-0.025em] text-white mb-4"
           >
-            Tu análisis conecta con el profesional adecuado
+            La red que conecta tu negocio con profesionales y oficios reales
           </SectionRevealItem>
 
           <SectionRevealItem
             as="p"
-            className="font-sans text-base sm:text-lg font-normal leading-relaxed text-slate-300 max-w-xl"
+            className="font-sans text-base sm:text-lg font-normal leading-relaxed text-slate-300 max-w-2xl"
           >
-            Cada informe de viabilidad incluye acceso directo a abogados mercantiles, peritos del IMPI y fiscalistas colegiados para ejecutar tu proyecto sin contingencias.
+            Ya sea que necesites un abogado mercantil o contador para blindar tu sociedad, o un pintor, plomero, albañil, electricista o empresario aliado para poner en marcha tu local comercial. Conexión directa y sin intermediarios.
           </SectionRevealItem>
         </SectionReveal>
 
@@ -468,16 +506,39 @@ export default function NetworkTeaser() {
 
           {/* PANEL DERECHO: Fichas Profesionales de la Red */}
           <div className="space-y-3.5">
-            <div className="flex items-center justify-between mb-1 px-1">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1 px-1">
               <span className="text-xs font-sans font-semibold uppercase tracking-wider text-slate-400">
-                Especialistas Asignados al Expediente
+                Directorio Activo en tu Ciudad
               </span>
-              <span className="text-[11px] font-sans text-slate-400 bg-white/[0.04] px-2.5 py-0.5 rounded-full border border-white/[0.06]">
-                Directorio Colegiado
+              <span className="text-[11px] font-sans text-cyan-300 bg-cyan-500/10 px-2.5 py-0.5 rounded-full border border-cyan-400/20 w-fit">
+                Oficios & Profesionistas Verificados
               </span>
             </div>
 
-            {PERFILES_EXPERTOS.map((experto) => (
+            {/* Selector de Categorías de Profesiones y Oficios */}
+            <div className="flex flex-wrap gap-1.5 pb-1">
+              {[
+                { id: "todos", label: "Todos" },
+                { id: "oficio", label: "Oficios & Mantenimiento" },
+                { id: "profesion", label: "Servicios Profesionales" },
+                { id: "empresa", label: "Empresarios & Aliados" },
+              ].map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setFiltroCategoria(cat.id as any)}
+                  className={`px-3 py-1 rounded-full text-[11px] font-sans font-medium transition-all duration-150 cursor-pointer ${
+                    filtroCategoria === cat.id
+                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 shadow-xs"
+                      : "bg-white/[0.04] text-slate-400 border border-white/[0.08] hover:text-white hover:bg-white/[0.08]"
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+
+            {perfilesFiltrados.map((experto) => (
               <AppleExpertCard
                 key={experto.id}
                 experto={experto}
@@ -493,7 +554,7 @@ export default function NetworkTeaser() {
                 className="flex items-center justify-center gap-2.5 w-full h-12 rounded-full border border-white/[0.12] bg-white/[0.04] hover:bg-white/[0.08] hover:border-white/[0.22] text-white text-xs sm:text-sm font-sans font-semibold tracking-wide transition-all shadow-sm active:scale-[0.98] group cursor-pointer"
               >
                 <Plus className="w-4 h-4 text-cyan-400 transition-transform duration-200 group-hover:rotate-90" />
-                <span>Explorar el directorio completo de profesionales</span>
+                <span>Explorar directorio completo de profesiones y oficios</span>
                 <ArrowRight className="w-3.5 h-3.5 text-slate-400 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-white" />
               </Link>
             </div>

@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Check, Plus, Minus } from "lucide-react";
+import { ArrowRight, Check, Plus, Minus, Users, Sparkles, Bell } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ENTRADA_SEGURA, REVEAL_VIEWPORT } from "@/lib/motion/tokens";
 import { SectionReveal, SectionRevealItem } from "@/components/motion/SectionReveal";
@@ -52,6 +52,22 @@ const IconPersonal = (
     <path d="M3 21v-1.5A4.5 4.5 0 0 1 7.5 15h3A4.5 4.5 0 0 1 15 19.5V21" />
     <circle cx="17.5" cy="9.5" r="2.5" />
     <path d="M15.5 13.5h2a3.5 3.5 0 0 1 3.5 3.5V18" />
+  </svg>
+);
+
+const IconContabilidad = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[22px] h-[22px]">
+    <rect x="2" y="3" width="20" height="18" rx="2" />
+    <line x1="2" y1="9" x2="22" y2="9" />
+    <line x1="2" y1="15" x2="22" y2="15" />
+    <line x1="8" y1="9" x2="8" y2="21" />
+    <line x1="16" y1="9" x2="16" y2="21" />
+  </svg>
+);
+
+const IconMantenimientos = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[22px] h-[22px]">
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
   </svg>
 );
 
@@ -301,7 +317,7 @@ function ToolCRMWidget() {
   );
 }
 
-// ─── 5. Calendario ────────────────────────────────────────────────────────────
+// ─── 5. Calendario, Google Sync & Fila Virtual ─────────────────────────────────
 
 function ToolCalendarioWidget() {
   return (
@@ -309,35 +325,117 @@ function ToolCalendarioWidget() {
       <div className="flex items-baseline justify-between mb-3.5">
         <div>
           <div className="text-[11px] font-medium tracking-[0.08em] uppercase text-slate-400 mb-0.5 font-sans">
-            Agenda del día
+            Agenda & Fila del Día
           </div>
-          <div className="text-3xl sm:text-4xl font-bold tracking-tight text-cyan-400 tabular-nums font-sans">
-            3 <span className="text-xs sm:text-sm font-normal text-slate-400">citas</span>
+          <div className="text-2xl sm:text-3xl font-bold tracking-tight text-cyan-400 tabular-nums font-sans">
+            3 <span className="text-xs sm:text-sm font-normal text-slate-400">citas</span> · 2 <span className="text-xs sm:text-sm font-normal text-slate-400">en fila</span>
           </div>
         </div>
 
         <span className="h-[28px] px-2.5 rounded-full text-[11px] font-medium text-cyan-300 bg-cyan-500/10 border border-cyan-400/25 flex items-center font-sans">
-          100% asistencias
+          Google Sync
         </span>
       </div>
 
       <div className="space-y-1 py-1 text-[12px] sm:text-[13px] font-sans">
         <div className="flex items-center justify-between text-slate-300">
-          <span>10:30 · Consulta General</span>
-          <span className="text-cyan-400 text-[11px] font-medium">Confirmada</span>
+          <span>Sillón 1 · Cita 10:30</span>
+          <span className="text-cyan-400 text-[11px] font-medium">Sincronizada</span>
         </div>
         <div className="flex items-center justify-between text-slate-400">
-          <span>16:00 · Entrega de Pedido</span>
+          <span>Turno #04 · Sin cita</span>
           <span className="text-emerald-400 text-[11px] font-medium flex items-center gap-1">
-            Recordatorio WA
+            Llamado por WA
             <Check className="w-3 h-3" />
           </span>
         </div>
       </div>
 
       <div className="flex items-center justify-between text-[11px] sm:text-[12px] text-slate-400 pt-2.5 border-t border-white/[0.04] font-sans">
-        <span>Confirmación automática</span>
-        <span className="text-cyan-300 font-medium">Cero ausencias</span>
+        <span>Gestión de lugares & walk-in</span>
+        <span className="text-cyan-300 font-medium">Avisos por WhatsApp</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── 6. Contabilidad & P&L ───────────────────────────────────────────────────
+
+function ToolContabilidadWidget() {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-3.5">
+        <div>
+          <div className="text-[11px] font-medium tracking-[0.08em] uppercase text-slate-400 mb-0.5 font-sans">
+            Utilidad Neta (P&L)
+          </div>
+          <div className="text-2xl sm:text-3xl font-bold tracking-tight text-emerald-400 tabular-nums font-sans">
+            +48.2%
+          </div>
+        </div>
+        <span className="h-[28px] px-2.5 rounded-full text-[11px] font-medium text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 flex items-center font-sans">
+          Conciliación CSV
+        </span>
+      </div>
+
+      <div className="space-y-1.5 py-1 text-[12px] sm:text-[13px] font-sans">
+        <div className="flex items-center justify-between text-slate-300">
+          <span>Ingresos verificados</span>
+          <span className="text-white font-medium tabular-nums">$148,200 MXN</span>
+        </div>
+        <div className="flex items-center justify-between text-slate-400">
+          <span>Egresos & Costos fijos</span>
+          <span className="text-slate-300 font-medium tabular-nums">$76,800 MXN</span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between text-[11px] sm:text-[12px] text-slate-400 pt-2.5 border-t border-white/[0.04] font-sans">
+        <span>Estado de Resultados</span>
+        <span className="text-emerald-300 font-medium">En tiempo real en SQL</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── 7. Mantenimientos Preventivos ───────────────────────────────────────────
+
+function ToolMantenimientosWidget() {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-3.5">
+        <div>
+          <div className="text-[11px] font-medium tracking-[0.08em] uppercase text-slate-400 mb-0.5 font-sans">
+            Salud de Equipos
+          </div>
+          <div className="text-2xl sm:text-3xl font-bold tracking-tight text-amber-400 tabular-nums font-sans">
+            96% <span className="text-xs sm:text-sm font-normal text-slate-400">operativo</span>
+          </div>
+        </div>
+        <span className="h-[28px] px-2.5 rounded-full text-[11px] font-medium text-amber-300 bg-amber-500/10 border border-amber-400/25 flex items-center font-sans">
+          Semáforo Preventivo
+        </span>
+      </div>
+
+      <div className="space-y-1.5 py-1 text-[12px] sm:text-[13px] font-sans">
+        <div className="flex items-center justify-between text-slate-300">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            Horno industrial / Clima
+          </span>
+          <span className="text-slate-400 text-[11px]">Al día</span>
+        </div>
+        <div className="flex items-center justify-between text-slate-400">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            Vehículo de entrega
+          </span>
+          <span className="text-amber-400 text-[11px]">Toca en 6 días</span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between text-[11px] sm:text-[12px] text-slate-400 pt-2.5 border-t border-white/[0.04] font-sans">
+        <span>Catálogo + IA Haiku</span>
+        <span className="text-amber-300 font-medium">Cero paros imprevistos</span>
       </div>
     </div>
   );
@@ -387,20 +485,20 @@ export default function Tools() {
           <SectionRevealItem as="h2" className="font-sans text-3xl sm:text-5xl lg:text-6xl font-bold mb-4 tracking-[-0.025em] text-white">
             Tu negocio completo en una sola pantalla
           </SectionRevealItem>
-          <SectionRevealItem as="p" className="font-sans text-base sm:text-lg text-slate-300 max-w-xl mx-auto font-normal leading-relaxed">
-            Una vez validada tu idea, administra ventas, inventario, cotizaciones y nómina sincronizados con tus finanzas en tiempo real.
+          <SectionRevealItem as="p" className="font-sans text-base sm:text-lg text-slate-300 max-w-2xl mx-auto font-normal leading-relaxed">
+            Una vez validada tu idea, activa de inmediato tu terminal de cobro, almacén de insumos, citas con Google Calendar, mantenimiento de equipos y contabilidad en tiempo real.
           </SectionRevealItem>
         </SectionReveal>
 
-        {/* ── BENTO REBALANCEADO APPLE PREMIUM CARDS (Radius 26px, Sólido iPhone) ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
+        {/* ── BENTO REBALANCEADO DE 8 HERRAMIENTAS OPERATIVAS (Radius 26px, Sólido iPhone) ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
           <AppleToolCard
             index={0}
             icon={IconPOS}
             iconColor="#34D399"
             eyebrow="Operación en Mostrador"
             title="Punto de Venta"
-            description="Vende con catálogo digital, envía tickets por WhatsApp y sincroniza cada cobro con tu flujo de caja."
+            description="Vende con catálogo digital, emite tickets con folio oficial por WhatsApp y sincroniza cada cobro con tu balance."
           >
             <ToolPOSWidget />
           </AppleToolCard>
@@ -410,8 +508,8 @@ export default function Tools() {
             icon={IconInventario}
             iconColor="#F59E0B"
             eyebrow="Control de Existencias"
-            title="Inventario"
-            description="Supervisa existencias en vivo, recibe alertas antes de desabastecerte y registra compras automáticamente."
+            title="Inventario & Insumos"
+            description="Supervisa existencias en vivo, deduce mermas, recibe alertas de stock crítico y protege pedidos con bloqueo pesimista."
           >
             <ToolInventarioWidget />
           </AppleToolCard>
@@ -420,54 +518,115 @@ export default function Tools() {
             index={2}
             icon={IconCotizaciones}
             iconColor="#60A5FA"
-            eyebrow="Presupuestos Ejecutivos"
+            eyebrow="Presupuestos Oficiales"
             title="Cotizaciones"
-            description="Genera cotizaciones oficiales con tu logotipo en segundos. Envíalas por enlace o PDF con aprobación instantánea."
+            description="Genera cotizaciones ejecutivas con tu logotipo en segundos. Envíalas por enlace o PDF con conversión directa a venta."
           >
             <ToolCotizacionesWidget />
           </AppleToolCard>
 
           <AppleToolCard
             index={3}
-            icon={IconCRM}
-            iconColor="#A78BFA"
-            eyebrow="Historial & Fidelización"
-            title="Clientes & CRM"
-            description="Consulta compras previas, notas y preferencias de cada cliente para cerrar nuevas ventas por WhatsApp."
+            icon={IconContabilidad}
+            iconColor="#10B981"
+            eyebrow="Conciliación & P&L"
+            title="Contabilidad Bancaria"
+            description="Importa estados de cuenta en CSV, concilia movimientos y obtén tu Estado de Resultados (P&L) en tiempo real en SQL."
           >
-            <ToolCRMWidget />
+            <ToolContabilidadWidget />
           </AppleToolCard>
 
           <AppleToolCard
             index={4}
             icon={IconCalendario}
             iconColor="#22D3EE"
-            eyebrow="Agenda Automatizada"
-            title="Citas & Agenda"
-            description="Organiza tus reservas con confirmaciones y recordatorios automáticos por WhatsApp que reducen ausencias."
+            eyebrow="Google Sync & Walk-in"
+            title="Citas & Fila Virtual"
+            description="Sincroniza tus citas con Google Calendar, asigna sillones o mesas y gestiona la fila del día sin cita con aviso por WhatsApp."
           >
             <ToolCalendarioWidget />
           </AppleToolCard>
 
           <AppleToolCard
             index={5}
+            icon={IconMantenimientos}
+            iconColor="#FBBF24"
+            eyebrow="Salud de Equipos"
+            title="Mantenimiento"
+            description="Semáforo preventivo para maquinaria, vehículos e instalaciones con catálogo de frecuencias de uso y sugerencias con IA."
+          >
+            <ToolMantenimientosWidget />
+          </AppleToolCard>
+
+          <AppleToolCard
+            index={6}
+            icon={IconCRM}
+            iconColor="#A78BFA"
+            eyebrow="Historial & Fidelización"
+            title="Clientes & CRM"
+            description="Consulta compras previas, notas de servicio y preferencias de cada cliente para reactivar ventas por WhatsApp."
+          >
+            <ToolCRMWidget />
+          </AppleToolCard>
+
+          <AppleToolCard
+            index={7}
             icon={IconPersonal}
             iconColor="#FB7185"
             eyebrow="Sueldos & Comisiones"
             title="Personal & Nómina"
-            description="Administra colaboradores y calcula salarios e incentivos. Cada dispersión impacta automáticamente tu balance."
+            description="Administra colaboradores, calcula salarios base y comisiones por venta. Cada dispersión impacta tus finanzas."
           >
             <ToolPersonalWidget />
           </AppleToolCard>
         </div>
 
+        {/* ── CINTILLO DE INFRAESTRUCTURA Y CAPACIDADES EMPRESARIALES ── */}
+        <div className="mt-8 rounded-[24px] border border-white/[0.08] bg-[#141416]/80 backdrop-blur-md p-6 sm:p-8 grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
+          <div className="flex items-start gap-3.5">
+            <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center flex-shrink-0 text-cyan-400">
+              <Users className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white font-sans mb-1">Multi-Usuario & Roles</h4>
+              <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                Invita cajeros, recepcionistas, estilistas, almacenistas y gerentes con permisos granulares por producto y herramienta.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3.5">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center flex-shrink-0 text-amber-400">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white font-sans mb-1">Marca Corporativa (White-Label)</h4>
+              <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                Tu logotipo, colores y datos fiscales oficiales impresos en tickets de venta POS, cotizaciones y reportes ejecutivos.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3.5">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center flex-shrink-0 text-emerald-400">
+              <Bell className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white font-sans mb-1">Centro de Alertas Inteligentes</h4>
+              <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                Alertas automáticas por stock bajo, cuentas por cobrar vencidas, mantenimientos preventivos y metas comerciales.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Enlace Explorador */}
-        <div className="text-center mt-16">
+        <div className="text-center mt-12 sm:mt-16">
           <Link
             href="/auth/signup"
             className="inline-flex items-center gap-2 h-11 px-6 rounded-full text-[13px] font-semibold tracking-wide text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-all cursor-pointer shadow-sm group"
           >
-            <span>Explora todas las herramientas operativas</span>
+            <span>Explora las 8 herramientas operativas</span>
             <ArrowRight className="w-3.5 h-3.5 transition-transform duration-150 group-hover:translate-x-1" />
           </Link>
         </div>

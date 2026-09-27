@@ -42,11 +42,11 @@ export default function Hero() {
               {...heroEntrada(1, shouldReduce)}
               className="text-base sm:text-lg lg:text-xl max-w-xl mb-10 font-normal leading-relaxed text-transparent bg-clip-text bg-gradient-to-r from-slate-100 via-slate-200 to-slate-400"
             >
-              Mapea competidores locales en Google Maps, calcula tu{" "}
+              Mapea competidores en Google Maps, calcula tu{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-teal-200 to-emerald-300 font-medium">
                 punto de equilibrio financiero
               </span>{" "}
-              y verifica normativas legales y fiscales en menos de 3 minutos.
+              y opera de inmediato con Punto de Venta, inventario, citas y contabilidad en tiempo real.
             </motion.p>
 
             {/* CTAs */}

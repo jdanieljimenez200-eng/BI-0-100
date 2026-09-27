@@ -45,11 +45,11 @@ const DEFAULT_STEPS: HowItWorksStep[] = [
   },
   {
     n: "04",
-    title: "Expediente ejecutivo de decisión",
-    desc: "Recibe tu panel de control completo con informe descargable en PDF oficial A4, listo para socios, bancos e inversionistas.",
+    title: "Expediente ejecutivo y activación en 1 clic",
+    desc: "Genera tu informe oficial en PDF para bancos e inversionistas, y activa de inmediato tu catálogo en las 8 herramientas operativas (POS, Inventario, Contabilidad, Citas y más).",
     badge: "Listo en <3 min",
     icon: FileCheck2,
-    detail: "Diagnóstico certificado",
+    detail: "Operación & PDF",
     color: "#34D399",
   },
 ];

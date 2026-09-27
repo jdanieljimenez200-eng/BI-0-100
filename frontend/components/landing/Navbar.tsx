@@ -9,6 +9,7 @@ import { ENTRADA_SEGURA, MOTION_SPRINGS, MOTION_EASINGS } from "@/lib/motion/tok
 const NAV_LINKS = [
   { href: "#modulos", label: "Módulos" },
   { href: "#herramientas", label: "Herramientas" },
+  { href: "/network", label: "Red de Profesiones & Oficios" },
   { href: "#como-funciona", label: "Cómo Funciona" },
   { href: "#precios", label: "Precios" },
 ];

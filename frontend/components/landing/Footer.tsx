@@ -59,7 +59,7 @@ export default function Footer() {
               Aviso de Privacidad y Datos
             </Link>
             <Link href="/network" className="text-xs sm:text-sm text-slate-300 hover:text-white transition-colors font-sans">
-              Directorio de Profesionales
+              Red de Profesiones y Oficios
             </Link>
           </div>
         </div>

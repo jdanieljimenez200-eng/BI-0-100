@@ -324,7 +324,7 @@ function CardMarketing() {
         </div>
 
         <p className="text-[11px] font-medium tracking-[0.08em] uppercase text-pink-400/90 mb-1 font-sans">
-          Adquisición & Estrategia
+          Adquisición & Scripts WhatsApp
         </p>
 
         <h3 className="text-2xl sm:text-[28px] font-bold text-white tracking-[-0.03em] leading-tight mb-2 font-sans">
@@ -332,7 +332,7 @@ function CardMarketing() {
         </h3>
 
         <p className="text-[14px] sm:text-[15px] text-slate-300 leading-relaxed font-normal mb-4 font-sans">
-          Canales de adquisición con menor costo por cliente y copys probados.
+          Canales de menor costo por cliente, copys y guiones de WhatsApp de alta conversión.
         </p>
 
         {/* Chips Apple */}
@@ -387,9 +387,10 @@ function CardMarketing() {
   );
 }
 
-// ─── 4. Módulo Ventas (Objeciones & Cierre Comercial) ─────────────────────────
+// ─── 4. Módulo Ventas (Objeciones, Audio Whisper & Cierre Comercial) ─────────
 
 const OBJECIONES = [
+  { id: "whisper", label: "Audio Whisper", score: "9.6/10", boost: "+22.4%", guion: "Transcripción Whisper: 'Objeción de costo detectada en 01:24. Recomendación: anclar garantía de 24h antes del presupuesto para asegurar el cierre.'" },
   { id: "caro", label: "Está caro", score: "9.2/10", boost: "+14.8%", guion: "Entiendo el precio. Justo por eso incluimos garantía de cambio en 24h y soporte local, evitando que pierdas hasta 3 días hábiles si falla." },
   { id: "pensar", label: "Lo pensaré", score: "8.9/10", boost: "+12.4%", guion: "Totalmente. Para ayudarte a evaluar: ¿tu duda principal es el tiempo de entrega o el retorno de inversión?" },
   { id: "proveedor", label: "Tengo proveedor", score: "9.4/10", boost: "+16.2%", guion: "Excelente. Varios clientes venían de ahí por el tiempo de respuesta. ¿En cuánto tiempo te resuelven actualmente?" },
@@ -406,7 +407,7 @@ function CardVentas() {
         </div>
 
         <p className="text-[11px] font-medium tracking-[0.08em] uppercase text-orange-400/90 mb-1 font-sans">
-          Negociación & Cierre
+          Audio Whisper & Cierre Comercial
         </p>
 
         <h3 className="text-2xl sm:text-[28px] font-bold text-white tracking-[-0.03em] leading-tight mb-2 font-sans">
@@ -414,7 +415,7 @@ function CardVentas() {
         </h3>
 
         <p className="text-[14px] sm:text-[15px] text-slate-300 leading-relaxed font-normal mb-4 font-sans">
-          Respuestas probadas para neutralizar objeciones y cerrar más ventas.
+          Transcripción de llamadas o pitch de mostrador con IA y guiones probados contra objeciones.
         </p>
 
         {/* Chips Apple */}
