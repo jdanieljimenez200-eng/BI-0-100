@@ -21,6 +21,7 @@ import { interpretarErrorApi } from '@/lib/apiError';
 import InputField from '@/components/auth/InputField';
 import PasswordStrength from '@/components/auth/PasswordStrength';
 import AuthBackground from '@/components/auth/AuthBackground';
+import BotonGoogle, { ERRORES_GOOGLE } from '@/components/auth/BotonGoogle';
 import { validateEmail, getPasswordStrength, getEmailError, getPasswordError } from '@/components/auth/AuthValidation';
 import { ENTRADA_SEGURA, MOTION_DURATIONS, MOTION_EASINGS } from '@/lib/motion/tokens';
 
@@ -133,7 +134,7 @@ export default function SignupPage() {
         oauth_denied: 'Autorización cancelada.',
         session_expired: 'La sesión expiró. Por favor regístrate de nuevo.',
       };
-      setError(KNOWN_ERRORS[param] || 'Ocurrió un problema durante el registro. Intenta de nuevo.');
+      setError(KNOWN_ERRORS[param] || ERRORES_GOOGLE[param] || 'Ocurrió un problema durante el registro. Intenta de nuevo.');
     }
   }, []);
 
@@ -201,7 +202,7 @@ export default function SignupPage() {
         <div className="absolute inset-0 bg-gradient-to-b from-[#05070C]/80 via-transparent to-[#05070C]/85 pointer-events-none z-1" />
 
         {/* Marca / Logo Superior */}
-        <div className="relative z-10 flex items-center justify-between">
+        <div className="relative z-10">
           <Link href="/" className="inline-flex items-center gap-3 group">
             <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-[0_4px_20px_rgba(255,255,255,0.15)] group-hover:scale-105 transition-transform duration-200">
               <span className="text-sm text-[#0A0A0C] font-sans font-black leading-none tracking-tight">BI</span>
@@ -211,10 +212,6 @@ export default function SignupPage() {
               <span className="text-[10px] font-sans font-semibold tracking-wider text-slate-400 uppercase mt-1">Plataforma Empresarial</span>
             </div>
           </Link>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-sans font-semibold text-slate-300 bg-white/[0.05] border border-white/[0.08]">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Ecosistema 360° All-in-One
-          </span>
         </div>
 
         {/* Contenido Editorial Central con Gancho Maestro y Módulos del Programa */}
@@ -416,6 +413,15 @@ export default function SignupPage() {
                 })}
               </div>
             </div>
+
+            {/* Google usa el tipo de cuenta elegido arriba y el código de invitación, si lo hay. */}
+            <BotonGoogle
+              modo="registro"
+              tipoCuenta={tipoCuenta}
+              codigoInvitacion={form.codigo_invitacion || undefined}
+              forma="pastilla"
+              deshabilitado={loading}
+            />
 
             <InputField
               id="signup-name"
