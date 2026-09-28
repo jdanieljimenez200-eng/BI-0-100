@@ -9,7 +9,6 @@ import { ENTRADA_SEGURA, MOTION_SPRINGS } from "@/lib/motion/tokens";
 const NAV_LINKS = [
   { href: "#modulos", label: "Módulos" },
   { href: "#herramientas", label: "Herramientas" },
-  { href: "/network", label: "Profesiones & Oficios" },
   { href: "#como-funciona", label: "Cómo Funciona" },
   { href: "#precios", label: "Precios" },
 ];
@@ -37,15 +36,15 @@ export default function Navbar() {
   return (
     <header className="fixed top-0 inset-x-0 z-50 px-3 sm:px-6 pt-3 sm:pt-4 pointer-events-none">
       <nav
-        className={`pointer-events-auto max-w-6xl mx-auto rounded-full border transition-all duration-300 px-4 sm:px-6 h-14 flex items-center justify-between shadow-[0_8px_32px_rgba(0,0,0,0.55)] ${
+        className={`pointer-events-auto max-w-5xl mx-auto rounded-full border transition-all duration-300 px-4 sm:px-6 h-14 flex items-center justify-between shadow-[0_8px_32px_rgba(0,0,0,0.55)] ${
           scrolled
             ? "bg-[#070E17]/92 backdrop-blur-xl border-white/[0.14] border-t-white/25"
             : "bg-[#090E17]/80 backdrop-blur-md border-white/[0.10] border-t-white/15"
         }`}
         aria-label="Navegación principal"
       >
-        {/* 1. Izquierda: Marca / Logo (Ancho equilibrado de 230px para simetría matemática) */}
-        <div className="flex items-center flex-shrink-0 w-auto lg:w-[230px] justify-start h-9">
+        {/* 1. Izquierda: Marca / Logo (Ancho equilibrado de 220px para simetría perfecta) */}
+        <div className="flex items-center flex-shrink-0 w-auto lg:w-[220px] justify-start h-9">
           <Link
             href="/"
             className="h-9 flex items-center gap-2.5 group focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded-full"
@@ -62,21 +61,21 @@ export default function Navbar() {
           </Link>
         </div>
 
-        {/* 2. Centro: Enlaces de Navegación (Misma altura h-9, mismo tamaño text-[13px], mismo leading-none) */}
-        <div className="hidden lg:flex items-center justify-center gap-1 xl:gap-2 flex-1 h-9">
+        {/* 2. Centro: Los 4 enlaces principales de la Landing (Misma altura h-9, text-[13px], leading-none) */}
+        <div className="hidden lg:flex items-center justify-center gap-1.5 xl:gap-3 flex-1 h-9">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="h-9 px-3 xl:px-3.5 rounded-full text-[13px] font-sans font-medium text-slate-300 hover:text-white hover:bg-white/[0.08] transition-all whitespace-nowrap leading-none flex items-center justify-center"
+              className="h-9 px-3.5 rounded-full text-[13px] font-sans font-medium text-slate-300 hover:text-white hover:bg-white/[0.08] transition-all whitespace-nowrap leading-none flex items-center justify-center"
             >
               {link.label}
             </Link>
           ))}
         </div>
 
-        {/* 3. Derecha: Acciones (Ancho equilibrado de 230px para simetría matemática con el lado izquierdo) */}
-        <div className="flex items-center justify-end gap-2.5 flex-shrink-0 w-auto lg:w-[230px] h-9">
+        {/* 3. Derecha: Acciones (Ancho equilibrado de 220px para simetría matemática con el lado izquierdo) */}
+        <div className="flex items-center justify-end gap-2.5 flex-shrink-0 w-auto lg:w-[220px] h-9">
           <Link
             href="/auth/login"
             className="hidden sm:inline-flex items-center justify-center h-9 px-3 rounded-full text-[13px] font-sans font-medium text-slate-300 hover:text-white hover:bg-white/[0.06] transition-colors whitespace-nowrap leading-none"
@@ -114,7 +113,7 @@ export default function Navbar() {
             animate={{ opacity: 1, y: 0 }}
             exit={shouldReduce ? undefined : { opacity: 0, y: -8 }}
             transition={MOTION_SPRINGS.snappy}
-            className="pointer-events-auto lg:hidden max-w-6xl mx-auto mt-2 rounded-2xl bg-[#070E17]/95 backdrop-blur-2xl border border-white/[0.12] p-4 shadow-2xl flex flex-col gap-1.5"
+            className="pointer-events-auto lg:hidden max-w-5xl mx-auto mt-2 rounded-2xl bg-[#070E17]/95 backdrop-blur-2xl border border-white/[0.12] p-4 shadow-2xl flex flex-col gap-1.5"
           >
             {NAV_LINKS.map((link) => (
               <Link

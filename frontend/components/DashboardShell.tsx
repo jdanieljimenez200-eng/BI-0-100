@@ -624,6 +624,15 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
             collapsed={col}
             onNavigate={cerrarDrawer}
           />
+
+          <SidebarLink
+            href="/network"
+            label="Profesiones & Oficios"
+            Icon={Briefcase}
+            active={pathname.startsWith('/network')}
+            collapsed={col}
+            onNavigate={cerrarDrawer}
+          />
         </SidebarSection>
 
         {/* ── 4. Configuración & Cuenta ── */}
