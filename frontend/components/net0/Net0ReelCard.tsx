@@ -222,10 +222,12 @@ export default function Net0ReelCard({
 
           <div className="flex items-center gap-3 text-xs font-sans text-zinc-400 flex-wrap">
             <span className="text-zinc-300 font-medium">{experto.especialidad}</span>
-            {experto.ciudad && (
+            {(experto.direccion || experto.ciudad) && (
               <span className="inline-flex items-center gap-1 text-zinc-400">
-                <MapPin className="w-3 h-3 text-zinc-500" />
-                <span>{experto.ciudad}</span>
+                <MapPin className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                <span className="truncate max-w-[200px]">
+                  {[experto.direccion, experto.ciudad].filter(Boolean).join(', ')}
+                </span>
               </span>
             )}
             {experto.total_resenas > 0 && (

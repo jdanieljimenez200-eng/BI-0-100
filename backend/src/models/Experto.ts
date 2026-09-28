@@ -75,6 +75,18 @@ export class Experto {
   @Column({ type: 'varchar', length: 2, nullable: true })
   pais!: string | null;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  direccion!: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  google_maps_url!: string | null;
+
+  @Column({ type: 'numeric', precision: 10, scale: 7, nullable: true })
+  latitud!: number | null;
+
+  @Column({ type: 'numeric', precision: 10, scale: 7, nullable: true })
+  longitud!: number | null;
+
   // ─── Contacto ───────────────────────────────────────────────────────────
   // Solo se devuelven en la ficha pública si `mostrar_contacto` está activo.
 

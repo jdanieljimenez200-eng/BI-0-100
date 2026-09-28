@@ -51,6 +51,10 @@ export interface ExpertoPublico {
   sub_especialidades: string[];
   ciudad: string;
   pais: string | null;
+  direccion?: string | null;
+  google_maps_url?: string | null;
+  latitud?: number | null;
+  longitud?: number | null;
   avatar_url: string | null;
   portada_url: string | null;
   sitio_web: string | null;
@@ -117,6 +121,10 @@ export interface FichaPropia {
   sub_especialidades: string[];
   ciudad: string;
   pais: string | null;
+  direccion?: string | null;
+  google_maps_url?: string | null;
+  latitud?: number | null;
+  longitud?: number | null;
   email_contacto: string | null;
   telefono: string | null;
   whatsapp: string | null;
@@ -195,6 +203,10 @@ export type DatosFicha = Partial<{
   sub_especialidades: string[];
   ciudad: string;
   pais: string | null;
+  direccion: string | null;
+  google_maps_url: string | null;
+  latitud: number | null;
+  longitud: number | null;
   email_contacto: string | null;
   telefono: string | null;
   whatsapp: string | null;
@@ -206,6 +218,34 @@ export type DatosFicha = Partial<{
   ofrece_consulta_gratis: boolean;
   video_url: string | null;
 }>;
+
+/**
+ * Obtiene el enlace de Google Maps a partir de los datos disponibles en la ficha
+ * (enlace explícito de Maps, coordenadas GPS, o búsqueda por dirección/ciudad).
+ */
+export function obtenerEnlaceGoogleMaps(experto: {
+  direccion?: string | null;
+  ciudad?: string;
+  pais?: string | null;
+  google_maps_url?: string | null;
+  latitud?: number | null;
+  longitud?: number | null;
+  nombre_comercial?: string;
+}): string | null {
+  if (experto.google_maps_url?.trim()) {
+    return experto.google_maps_url.trim();
+  }
+  if (experto.latitud != null && experto.longitud != null) {
+    return `https://www.google.com/maps?q=${experto.latitud},${experto.longitud}`;
+  }
+  const partes = [experto.nombre_comercial, experto.direccion, experto.ciudad, experto.pais]
+    .map((s) => s?.trim())
+    .filter(Boolean);
+  if (partes.length > 0) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(partes.join(', '))}`;
+  }
+  return null;
+}
 
 export interface CupoNet0 {
   fichas_actuales: number;

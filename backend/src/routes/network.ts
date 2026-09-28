@@ -93,6 +93,23 @@ const CamposEditablesSchema = z.object({
   sub_especialidades: z.array(texto(60).min(1)).max(10).default([]),
   ciudad: texto(120).default(''),
   pais: z.string().trim().length(2).toUpperCase().nullable().optional(),
+  direccion: texto(255).nullable().optional(),
+  google_maps_url: z
+    .string()
+    .trim()
+    .max(500)
+    .refine((v) => {
+      if (!v) return true;
+      try {
+        return ['http:', 'https:'].includes(new URL(v).protocol);
+      } catch {
+        return false;
+      }
+    }, 'El enlace de Google Maps debe empezar por http:// o https://')
+    .nullable()
+    .optional(),
+  latitud: z.coerce.number().min(-90).max(90).nullable().optional(),
+  longitud: z.coerce.number().min(-180).max(180).nullable().optional(),
   email_contacto: z.string().trim().email().max(180).nullable().optional(),
   telefono: texto(40).nullable().optional(),
   // Solo dígitos, con lada de país: es lo que wa.me necesita para abrir el chat.

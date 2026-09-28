@@ -97,7 +97,7 @@ export default function Net0GridCard({
               {experto.nombre_comercial}
             </h3>
             <p className="text-zinc-400 text-[11px] font-sans truncate">
-              {[experto.especialidad, experto.ciudad].filter(Boolean).join(' · ')}
+              {[experto.especialidad, experto.direccion || experto.ciudad].filter(Boolean).join(' · ')}
             </p>
           </div>
         </div>

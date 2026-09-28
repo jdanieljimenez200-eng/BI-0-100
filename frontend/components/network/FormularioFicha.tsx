@@ -5,10 +5,12 @@ import {
   CATEGORIAS,
   NOMBRE_CATEGORIA,
   errorLegible,
+  obtenerEnlaceGoogleMaps,
   type CategoriaExperto,
   type DatosFicha,
   type FichaPropia,
 } from '@/lib/network';
+import { MapPin, Navigation, ExternalLink, Compass, CheckCircle2 } from 'lucide-react';
 
 /**
  * Formulario de la ficha de experto, compartido entre el alta y la edición.
@@ -50,6 +52,10 @@ type Formulario = {
   sub_especialidades: string;
   ciudad: string;
   pais: string;
+  direccion: string;
+  google_maps_url: string;
+  latitud: string;
+  longitud: string;
   email_contacto: string;
   telefono: string;
   whatsapp: string;
@@ -72,6 +78,10 @@ function aFormulario(ficha?: FichaPropia): Formulario {
     sub_especialidades: (ficha?.sub_especialidades ?? []).join(', '),
     ciudad: ficha?.ciudad ?? '',
     pais: ficha?.pais ?? '',
+    direccion: ficha?.direccion ?? '',
+    google_maps_url: ficha?.google_maps_url ?? '',
+    latitud: ficha?.latitud == null ? '' : String(ficha.latitud),
+    longitud: ficha?.longitud == null ? '' : String(ficha.longitud),
     email_contacto: ficha?.email_contacto ?? '',
     telefono: ficha?.telefono ?? '',
     whatsapp: ficha?.whatsapp ?? '',
@@ -110,6 +120,10 @@ function aDatos(f: Formulario): DatosFicha {
       .slice(0, 10),
     ciudad: texto(f.ciudad),
     pais: opcional(f.pais)?.toUpperCase() ?? null,
+    direccion: opcional(f.direccion),
+    google_maps_url: opcional(f.google_maps_url),
+    latitud: f.latitud.trim() === '' ? null : Number(f.latitud),
+    longitud: f.longitud.trim() === '' ? null : Number(f.longitud),
     email_contacto: opcional(f.email_contacto),
     telefono: opcional(f.telefono),
     whatsapp: opcional(f.whatsapp),
@@ -155,6 +169,52 @@ export default function FormularioFicha({
 
   const set = <K extends keyof Formulario>(clave: K, valor: Formulario[K]) =>
     setF((previo) => ({ ...previo, [clave]: valor }));
+
+  const [obteniendoGps, setObteniendoGps] = useState(false);
+
+  const obtenerUbicacionGps = () => {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      setError('Tu navegador no soporta geolocalización.');
+      return;
+    }
+    setObteniendoGps(true);
+    setError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setObteniendoGps(false);
+        const lat = pos.coords.latitude.toFixed(6);
+        const lng = pos.coords.longitude.toFixed(6);
+        set('latitud', lat);
+        set('longitud', lng);
+        set('google_maps_url', `https://www.google.com/maps?q=${lat},${lng}`);
+      },
+      (err) => {
+        setObteniendoGps(false);
+        setError(`No se pudo obtener la ubicación GPS: ${err.message}`);
+      },
+      { timeout: 10000, enableHighAccuracy: true }
+    );
+  };
+
+  const generarEnlaceMaps = () => {
+    const partes = [f.direccion, f.ciudad, f.pais].map((s) => s.trim()).filter(Boolean);
+    if (partes.length === 0) {
+      setError('Ingresa al menos una ciudad o dirección física para generar el enlace de Maps.');
+      return;
+    }
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(partes.join(', '))}`;
+    set('google_maps_url', url);
+  };
+
+  const enlaceMapsCalculado = obtenerEnlaceGoogleMaps({
+    google_maps_url: f.google_maps_url,
+    latitud: f.latitud ? Number(f.latitud) : null,
+    longitud: f.longitud ? Number(f.longitud) : null,
+    direccion: f.direccion,
+    ciudad: f.ciudad,
+    pais: f.pais,
+    nombre_comercial: f.nombre_comercial,
+  });
 
   /** ¿Este cambio va a devolver una ficha ya aprobada a la cola de revisión? */
   const volveraRevision =
@@ -361,13 +421,14 @@ export default function FormularioFicha({
         <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-4">
           <div>
             <label className={etiqueta} htmlFor="ciudad">
-              Ciudad
+              Ciudad *
             </label>
             <input
               id="ciudad"
               value={f.ciudad}
               onChange={(e) => set('ciudad', e.target.value)}
               maxLength={120}
+              placeholder="Ej. Monterrey, CDMX, Guadalajara..."
               className={campo}
             />
           </div>
@@ -383,6 +444,107 @@ export default function FormularioFicha({
               placeholder="MX"
               className={campo}
             />
+          </div>
+        </div>
+
+        {/* ── Dirección física y Conexión con Google Maps ── */}
+        <div className="space-y-4 pt-2 border-t border-white/[0.06]">
+          <div>
+            <label className={etiqueta} htmlFor="direccion">
+              Dirección física / Ubicación (calle, número, colonia, taller u oficina)
+            </label>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-3 w-4 h-4 text-zinc-400 pointer-events-none" />
+              <input
+                id="direccion"
+                value={f.direccion}
+                onChange={(e) => set('direccion', e.target.value)}
+                maxLength={255}
+                placeholder="Ej. Av. Insurgentes Sur 1200, Col. Del Valle, Benito Juárez"
+                className={`${campo} pl-9`}
+              />
+            </div>
+            <p className="text-white/30 text-[11px] mt-1.5">
+              Visible en tu perfil para que tus clientes sepan dónde encontrarte o ubicar tu zona de servicio presencial.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                  <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                </div>
+                <span className="text-xs font-semibold text-white">Conexión con Google Maps</span>
+              </div>
+
+              {enlaceMapsCalculado && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-medium text-emerald-400">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Conectado
+                </span>
+              )}
+            </div>
+
+            <div>
+              <label className={etiqueta} htmlFor="google_maps_url">
+                Enlace directo de Google Maps (URL o enlace de compartir)
+              </label>
+              <input
+                id="google_maps_url"
+                value={f.google_maps_url}
+                onChange={(e) => set('google_maps_url', e.target.value)}
+                maxLength={500}
+                placeholder="https://maps.app.goo.gl/... o https://www.google.com/maps/..."
+                className={campo}
+              />
+            </div>
+
+            {/* Asistentes rápidos de Google Maps */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={generarEnlaceMaps}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-[11px] font-medium text-zinc-300 hover:text-white transition-all cursor-pointer"
+                title="Generar enlace de búsqueda con tu dirección y ciudad"
+              >
+                <Navigation className="w-3 h-3 text-emerald-400" />
+                <span>Generar con mi dirección</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={obtenerUbicacionGps}
+                disabled={obteniendoGps}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-[11px] font-medium text-zinc-300 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+                title="Capturar coordenadas GPS desde tu dispositivo"
+              >
+                <Compass className={`w-3 h-3 text-blue-400 ${obteniendoGps ? 'animate-spin' : ''}`} />
+                <span>{obteniendoGps ? 'Detectando GPS...' : 'Usar mi ubicación actual (GPS)'}</span>
+              </button>
+
+              <a
+                href="https://www.google.com/maps"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-[11px] font-medium text-zinc-400 hover:text-white transition-all cursor-pointer"
+              >
+                <ExternalLink className="w-3 h-3" />
+                <span>Abrir Google Maps</span>
+              </a>
+
+              {enlaceMapsCalculado && (
+                <a
+                  href={enlaceMapsCalculado}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/20 transition-all cursor-pointer sm:ml-auto"
+                >
+                  <MapPin className="w-3 h-3" />
+                  <span>Probar enlace ↗</span>
+                </a>
+              )}
+            </div>
           </div>
         </div>
       </fieldset>

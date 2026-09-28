@@ -35,6 +35,10 @@ export interface ExpertoPublico {
   sub_especialidades: string[];
   ciudad: string;
   pais: string | null;
+  direccion: string | null;
+  google_maps_url: string | null;
+  latitud: number | null;
+  longitud: number | null;
   avatar_url: string | null;
   portada_url: string | null;
   sitio_web: string | null;
@@ -65,6 +69,10 @@ const COLUMNAS_PUBLICAS = `
   e.sub_especialidades,
   e.ciudad,
   e.pais,
+  e.direccion,
+  e.google_maps_url,
+  e.latitud,
+  e.longitud,
   e.avatar_url,
   e.portada_url,
   e.sitio_web,
@@ -101,6 +109,10 @@ type FilaDirectorio = {
   sub_especialidades: string[] | null;
   ciudad: string;
   pais: string | null;
+  direccion: string | null;
+  google_maps_url: string | null;
+  latitud: string | null;
+  longitud: string | null;
   avatar_url: string | null;
   portada_url: string | null;
   sitio_web: string | null;
@@ -125,6 +137,10 @@ function aPublico(f: FilaDirectorio): ExpertoPublico {
     sub_especialidades: Array.isArray(f.sub_especialidades) ? f.sub_especialidades : [],
     ciudad: f.ciudad,
     pais: f.pais,
+    direccion: f.direccion ?? null,
+    google_maps_url: f.google_maps_url ?? null,
+    latitud: f.latitud === null || f.latitud === undefined ? null : Number(f.latitud),
+    longitud: f.longitud === null || f.longitud === undefined ? null : Number(f.longitud),
     avatar_url: f.avatar_url,
     portada_url: f.portada_url,
     sitio_web: f.sitio_web,

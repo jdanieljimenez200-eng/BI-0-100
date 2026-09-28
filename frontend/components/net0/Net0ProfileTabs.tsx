@@ -15,6 +15,7 @@ import {
   ArrowRight,
   X,
   ExternalLink,
+  MapPin,
 } from 'lucide-react';
 import type {
   FichaExperto,
@@ -23,7 +24,7 @@ import type {
   ImagenPerfil,
   ServicioPerfil,
 } from '@/lib/network';
-import { pesosMx } from '@/lib/network';
+import { pesosMx, obtenerEnlaceGoogleMaps } from '@/lib/network';
 import FormularioResena from '@/components/network/FormularioResena';
 
 type TabTipo = 'portafolio' | 'servicios' | 'resenas' | 'info';
@@ -58,6 +59,7 @@ export default function Net0ProfileTabs({
 }: Net0ProfileTabsProps) {
   const [tabActiva, setTabActiva] = useState<TabTipo>('portafolio');
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const enlaceMaps = obtenerEnlaceGoogleMaps(ficha);
 
   // Navegación con teclado en Lightbox
   useEffect(() => {
@@ -453,6 +455,59 @@ export default function Net0ProfileTabs({
                 )}
               </div>
             </div>
+
+            {/* Ubicación y Conexión con Google Maps */}
+            {(ficha.direccion || ficha.ciudad || ficha.google_maps_url) && (
+              <div className="pt-4 border-t border-white/[0.08] space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-sans font-bold uppercase tracking-wider text-zinc-400">
+                    Ubicación y Google Maps
+                  </h3>
+                  {enlaceMaps && (
+                    <a
+                      href={enlaceMaps}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-sans font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
+                    >
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>Abrir en Google Maps ↗</span>
+                    </a>
+                  )}
+                </div>
+
+                <div className="p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <MapPin className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      {ficha.direccion && (
+                        <p className="text-white text-xs sm:text-sm font-sans font-medium">
+                          {ficha.direccion}
+                        </p>
+                      )}
+                      <p className="text-zinc-400 text-xs font-sans mt-0.5">
+                        {[ficha.ciudad, ficha.pais].filter(Boolean).join(', ')}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Mapa interactivo incrustado */}
+                  <div className="w-full h-48 sm:h-64 rounded-xl overflow-hidden border border-white/10 bg-[#0A0A0C] relative">
+                    <iframe
+                      title={`Ubicación de ${ficha.nombre_comercial}`}
+                      width="100%"
+                      height="100%"
+                      loading="lazy"
+                      style={{ border: 0 }}
+                      referrerPolicy="no-referrer-when-downgrade"
+                      src={`https://maps.google.com/maps?q=${encodeURIComponent(
+                        [ficha.direccion, ficha.ciudad, ficha.pais].filter(Boolean).join(', ')
+                      )}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}
