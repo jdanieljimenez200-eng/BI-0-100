@@ -337,6 +337,30 @@ export default function SignupPage() {
 
       {/* ── PANEL DERECHO: Formulario de Registro Solid Studio ── */}
       <div className="flex-1 flex relative items-center justify-center p-6 sm:p-10 lg:p-12 overflow-y-auto bg-[#0A0A0C]">
+        {/* Fondo sutil con desvanecido ambiental */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          {/* Resplandor superior cálido difuminado */}
+          <div className="absolute -top-[20%] left-1/2 -translate-x-1/2 w-[650px] h-[500px] bg-gradient-to-b from-red-500/[0.08] via-emerald-500/[0.03] to-transparent rounded-full blur-[130px]" />
+
+          {/* Resplandor inferior de contrapunto */}
+          <div className="absolute -bottom-[20%] right-[10%] w-[500px] h-[450px] bg-gradient-to-t from-cyan-500/[0.04] to-transparent rounded-full blur-[140px]" />
+
+          {/* Trama sutil con desvanecido radial concéntrico */}
+          <div
+            className="absolute inset-0 opacity-[0.14]"
+            style={{
+              backgroundImage: "radial-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px)",
+              backgroundSize: "28px 28px",
+              maskImage: "radial-gradient(ellipse at 50% 50%, black 25%, transparent 75%)",
+              WebkitMaskImage: "radial-gradient(ellipse at 50% 50%, black 25%, transparent 75%)",
+            }}
+          />
+
+          {/* Viñetas superior e inferior con desvanecido gradual */}
+          <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-[#0A0A0C] via-[#0A0A0C]/80 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#0A0A0C] via-[#0A0A0C]/80 to-transparent" />
+        </div>
+
         <motion.div
           {...ENTRADA_SEGURA}
           initial={shouldReduce ? false : { opacity: 0, y: 22, scale: 0.98 }}
