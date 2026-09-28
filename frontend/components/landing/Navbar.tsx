@@ -43,8 +43,8 @@ export default function Navbar() {
         }`}
         aria-label="Navegación principal"
       >
-        {/* 1. Izquierda: Marca / Logo (Ancho equilibrado de 220px para simetría perfecta) */}
-        <div className="flex items-center flex-shrink-0 w-auto lg:w-[220px] justify-start h-9">
+        {/* 1. Izquierda: Marca / Logo (Ancho simétrico de 250px para centrado milimétrico del centro) */}
+        <div className="flex items-center flex-shrink-0 w-auto lg:w-[250px] justify-start h-9">
           <Link
             href="/"
             className="h-9 flex items-center gap-2.5 group focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded-full"
@@ -62,7 +62,7 @@ export default function Navbar() {
         </div>
 
         {/* 2. Centro: Los 4 enlaces principales de la Landing (Misma altura h-9, text-[13px], leading-none) */}
-        <div className="hidden lg:flex items-center justify-center gap-1.5 xl:gap-3 flex-1 h-9">
+        <div className="hidden lg:flex items-center justify-center gap-1.5 xl:gap-2.5 flex-1 h-9">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
@@ -74,8 +74,8 @@ export default function Navbar() {
           ))}
         </div>
 
-        {/* 3. Derecha: Acciones (Ancho equilibrado de 220px para simetría matemática con el lado izquierdo) */}
-        <div className="flex items-center justify-end gap-2.5 flex-shrink-0 w-auto lg:w-[220px] h-9">
+        {/* 3. Derecha: Acciones (Ancho simétrico de 250px para equilibrio matemático exacto) */}
+        <div className="flex items-center justify-end gap-2.5 flex-shrink-0 w-auto lg:w-[250px] h-9">
           <Link
             href="/auth/login"
             className="hidden sm:inline-flex items-center justify-center h-9 px-3 rounded-full text-[13px] font-sans font-medium text-slate-300 hover:text-white hover:bg-white/[0.06] transition-colors whitespace-nowrap leading-none"
@@ -141,7 +141,7 @@ export default function Navbar() {
               onClick={() => setMobileMenuOpen(false)}
               className="flex items-center justify-center gap-2 h-11 px-5 rounded-full text-xs sm:text-sm font-sans font-semibold text-white bg-gradient-to-b from-[#EF4444] via-[#DC2626] to-[#B91C1C] border border-white/20 shadow-[0_2px_14px_rgba(239,68,68,0.38)] active:scale-[0.98] transition-all mt-2 whitespace-nowrap"
             >
-              <span>Comenzar validación gratis</span>
+              <span>Comenzar gratis</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           </motion.div>
