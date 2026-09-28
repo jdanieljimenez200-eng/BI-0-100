@@ -628,10 +628,10 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
           />
 
           <SidebarLink
-            href="/network"
-            label="Profesiones & Oficios"
-            Icon={Briefcase}
-            active={pathname.startsWith('/network')}
+            href="/dashboard/net0"
+            label="Net0"
+            Icon={Users}
+            active={pathname.startsWith('/dashboard/net0')}
             collapsed={col}
             onNavigate={cerrarDrawer}
           />

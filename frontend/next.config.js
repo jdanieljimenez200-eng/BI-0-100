@@ -9,6 +9,30 @@ const nextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: '/network',
+        destination: '/dashboard/net0',
+        permanent: false,
+      },
+      {
+        source: '/network/:path*',
+        destination: '/dashboard/net0/:path*',
+        permanent: false,
+      },
+      {
+        source: '/net0',
+        destination: '/dashboard/net0',
+        permanent: false,
+      },
+      {
+        source: '/net0/:path*',
+        destination: '/dashboard/net0/:path*',
+        permanent: false,
+      },
+    ];
+  },
 };
 
 // Wrap with Sentry only when DSN is configured (graceful degradation)

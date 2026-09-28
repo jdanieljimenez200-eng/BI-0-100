@@ -174,7 +174,7 @@ export default function SignupPage() {
       localStorage.removeItem('refreshToken');
 
       const destino =
-        data.user?.tipo_cuenta === 'experto' ? '/network/registro?bienvenida=1' : '/dashboard';
+        data.user?.tipo_cuenta === 'experto' ? '/dashboard/net0/registro?bienvenida=1' : '/dashboard';
       router.push(destino);
     } catch (err: unknown) {
       const errorInfo = interpretarErrorApi(err, 'Error al crear la cuenta.');

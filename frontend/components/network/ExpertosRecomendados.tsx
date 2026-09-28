@@ -115,16 +115,16 @@ export default function ExpertosRecomendados({
 
       <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <Link
-          href={`/network?categoria=${categoria}`}
+          href={`/dashboard/net0?categoria=${categoria}`}
           className="text-white/50 hover:text-white text-xs font-semibold transition-colors"
         >
-          Ver el directorio completo →
+          Ver el directorio Net0 completo →
         </Link>
         <Link
-          href="/network/registro"
+          href="/dashboard/net0/registro"
           className="text-white/30 hover:text-white/60 text-xs transition-colors"
         >
-          ¿Eres experto en este rubro? Preséntate
+          ¿Eres experto en este rubro? Preséntate en Net0
         </Link>
       </div>
     </section>

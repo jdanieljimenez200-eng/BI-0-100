@@ -106,7 +106,13 @@ function Avatar({ experto, acento }: { experto: ExpertoPublico; acento: (typeof 
   );
 }
 
-export default function ExpertoCard({ experto }: { experto: ExpertoPublico }) {
+export default function ExpertoCard({
+  experto,
+  basePath = '/dashboard/net0',
+}: {
+  experto: ExpertoPublico;
+  basePath?: string;
+}) {
   const acento = ACENTO[experto.categoria] ?? ACENTO.legal;
   const tarifa = formatearTarifa(experto.tarifa_desde, experto.moneda);
 
@@ -216,7 +222,7 @@ export default function ExpertoCard({ experto }: { experto: ExpertoPublico }) {
           contactado a alguien que ni se había enterado.
         */}
         <Link
-          href={`/network/${experto.id}`}
+          href={`${basePath}/${experto.id}`}
           className={`block w-full text-center py-2 rounded-lg text-xs font-bold transition-all duration-200 ${acento.bg} border ${acento.borde} ${acento.texto} hover:brightness-125`}
         >
           Ver perfil y contacto

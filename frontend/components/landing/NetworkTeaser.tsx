@@ -550,11 +550,11 @@ export default function NetworkTeaser() {
             {/* Botón CTA a Directorio Completo Estilo Cápsula */}
             <div className="pt-2">
               <Link
-                href="/network"
+                href="/dashboard/net0"
                 className="flex items-center justify-center gap-2.5 w-full h-12 rounded-full border border-white/[0.12] bg-white/[0.04] hover:bg-white/[0.08] hover:border-white/[0.22] text-white text-xs sm:text-sm font-sans font-semibold tracking-wide transition-all shadow-sm active:scale-[0.98] group cursor-pointer"
               >
                 <Plus className="w-4 h-4 text-cyan-400 transition-transform duration-200 group-hover:rotate-90" />
-                <span>Explorar directorio completo de profesiones y oficios</span>
+                <span>Explorar directorio Net0 completo de profesiones y oficios</span>
                 <ArrowRight className="w-3.5 h-3.5 text-slate-400 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-white" />
               </Link>
             </div>

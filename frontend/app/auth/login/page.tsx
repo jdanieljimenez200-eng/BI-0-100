@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
@@ -9,6 +9,7 @@ import api from '@/lib/api';
 import InputField from '@/components/auth/InputField';
 import PasswordStrength from '@/components/auth/PasswordStrength';
 import AuthMountain from '@/components/auth/AuthMountain';
+import BotonGoogle, { ERRORES_GOOGLE } from '@/components/auth/BotonGoogle';
 import { validateEmail, getPasswordStrength, getEmailError } from '@/components/auth/AuthValidation';
 import { ENTRADA_SEGURA, MOTION_DURATIONS, MOTION_EASINGS, MOTION_SPRINGS } from '@/lib/motion/tokens';
 
@@ -36,6 +37,12 @@ export default function LoginPage() {
   const isEmailValid = Boolean(email && validateEmail(email));
   const isPasswordValid = Boolean(password && password.length > 0);
   const isFormValid = isEmailValid && isPasswordValid && !loading;
+
+  // Al volver de Google con un problema, el backend redirige aquí con ?error=.
+  useEffect(() => {
+    const codigo = new URLSearchParams(window.location.search).get('error');
+    if (codigo) setError(ERRORES_GOOGLE[codigo] ?? 'No pudimos iniciar sesión. Inténtalo de nuevo.');
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,7 +74,7 @@ export default function LoginPage() {
         })
       );
 
-      const destino = user.tipo_cuenta === 'experto' ? '/network/mis-fichas' : '/dashboard';
+      const destino = user.tipo_cuenta === 'experto' ? '/dashboard/net0/mis-fichas' : '/dashboard';
       router.push(destino);
     } catch (err: unknown) {
       const errorMsg =
@@ -178,6 +185,8 @@ export default function LoginPage() {
               Ingresa tus credenciales para continuar a tu panel.
             </p>
           </div>
+
+          <BotonGoogle modo="login" deshabilitado={loading} />
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <InputField
