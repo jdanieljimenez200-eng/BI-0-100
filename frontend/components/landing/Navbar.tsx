@@ -78,7 +78,7 @@ export default function Navbar() {
         <div className="flex items-center justify-end gap-2.5 flex-shrink-0 h-9">
           <Link
             href="/auth/login"
-            className="hidden sm:inline-flex items-center justify-center h-9 px-3.5 rounded-full text-[13px] font-sans font-medium text-slate-300 hover:text-white hover:bg-white/[0.06] transition-colors whitespace-nowrap leading-none"
+            className="hidden sm:inline-flex items-center justify-center h-9 px-4 rounded-full text-[13px] font-sans font-semibold text-[#070E17] bg-white hover:bg-slate-100 active:scale-95 transition-all duration-200 shadow-[0_2px_8px_rgba(255,255,255,0.18)] whitespace-nowrap leading-none cursor-pointer"
           >
             Iniciar sesión
           </Link>
@@ -131,7 +131,7 @@ export default function Navbar() {
             <Link
               href="/auth/login"
               onClick={() => setMobileMenuOpen(false)}
-              className="px-3.5 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:text-white hover:bg-white/[0.06] transition-colors font-sans whitespace-nowrap"
+              className="flex items-center justify-center h-10 px-4 rounded-full text-xs sm:text-sm font-sans font-semibold text-[#070E17] bg-white hover:bg-slate-100 active:scale-[0.98] transition-all shadow-sm whitespace-nowrap"
             >
               Iniciar sesión
             </Link>
