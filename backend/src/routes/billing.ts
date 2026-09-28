@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import Stripe from 'stripe';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { logger } from '../utils/logger';
+import { urlApp } from '../utils/urlApp';
 import { AppDataSource } from '../config/database';
 import { Usuario, Plan } from '../models/Usuario';
 import { getLimites, PLAN_LIMITES } from '../services/billing/planService';
@@ -164,12 +165,11 @@ router.post(
         await repo.update({ id: user.id } as FindOptionsWhere<Usuario>, { stripe_customer_id: customerId });
       }
 
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
       const url = await createCheckoutSession({
         customerId,
         plan,
-        successUrl: `${frontendUrl}/dashboard/billing?session=success&plan=${plan}`,
-        cancelUrl: `${frontendUrl}/dashboard/billing?session=cancel`,
+        successUrl: urlApp('/dashboard/billing', { session: 'success', plan }),
+        cancelUrl: urlApp('/dashboard/billing', { session: 'cancel' }),
         billingCycle,
       });
 
@@ -196,8 +196,7 @@ router.post('/portal', authenticate, async (req: AuthRequest, res: Response) => 
       return;
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const url = await createPortalSession(user.stripe_customer_id, `${frontendUrl}/dashboard/billing`);
+    const url = await createPortalSession(user.stripe_customer_id, urlApp('/dashboard/billing'));
     res.json({ portal_url: url });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Error interno';

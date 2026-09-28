@@ -158,7 +158,7 @@ export const sendPasswordResetEmail = async (
     return false;
   }
 
-  const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/auth/reset-password?token=${encodeURIComponent(resetToken)}`;
+  const resetUrl = urlApp('/auth/reset-password', { token: resetToken });
 
   const emailContent = `
     <h1>Restablecimiento de Contraseña</h1>

@@ -317,5 +317,34 @@ describeWithDb('Red: perfiles e impulsos', () => {
       // Sin Stripe en tests corta con 503 antes; con Stripe, 404 por no ser suya.
       expect([404, 503]).toContain(res.status);
     });
+
+    it('al pagar o cancelar, Stripe devuelve a Mis perfiles del portal /net0', async () => {
+      // Stripe se simula entero: lo que se comprueba es a dónde manda de vuelta.
+      const espias = [
+        jest.spyOn(stripeService, 'isStripeAvailable').mockReturnValue(true),
+        jest.spyOn(stripeService, 'getOrCreateCustomer').mockResolvedValue(`cus_test_${randomUUID().slice(0, 8)}`),
+        jest
+          .spyOn(stripeService, 'createImpulsoCheckoutSession')
+          .mockResolvedValue({ id: `cs_test_${randomUUID().slice(0, 8)}`, url: 'https://checkout.stripe.test/cs' }),
+      ];
+      let impulsoId: string | undefined;
+      try {
+        const res = await api()
+          .post('/api/network/impulsos/checkout')
+          .set(cabeceras(experto))
+          .send({ experto_id: fichaId, alcance: 'nacional', dias: 3 });
+        expect(res.status).toBe(200);
+        impulsoId = res.body.impulso_id;
+        expect(stripeService.createImpulsoCheckoutSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            successUrl: expect.stringMatching(/^https?:\/\/[^,\s]+\/net0\/mis-fichas\?impulso=ok$/),
+            cancelUrl: expect.stringMatching(/^https?:\/\/[^,\s]+\/net0\/mis-fichas\?impulso=cancelado$/),
+          })
+        );
+      } finally {
+        if (impulsoId) await q(`DELETE FROM impulsos_experto WHERE id = $1`, [impulsoId]);
+        espias.forEach((espia) => espia.mockRestore());
+      }
+    });
   });
 });

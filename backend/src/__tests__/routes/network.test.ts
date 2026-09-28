@@ -4,7 +4,7 @@ import { describeWithDb } from '../helpers/dbGuard';
 import { signupTestUser, TestUser, hacerAdmin, cabeceras, type AdminTestUser } from '../helpers/authHelper';
 import { AppDataSource } from '../../config/database';
 import { Usuario } from '../../models/Usuario';
-import { Experto } from '../../models/Experto';
+import { Experto, CATEGORIAS_EXPERTO } from '../../models/Experto';
 import { Negocio } from '../../models/Negocio';
 import { Producto } from '../../models/Producto';
 import { AnalisisMercado } from '../../models/AnalisisMercado';
@@ -154,23 +154,23 @@ describeWithDb('Red de expertos (/api/network)', () => {
 
       // 4. Los análisis en borrador / estimados NO cuentan para el cupo
       const prodBorrador = await repoProducto.save(
-        repoProducto.create({ usuario_id: usuario.id, nombre: 'Borrador', status: 'activo' })
+        repoProducto.create({ usuario_id: usuario.userId, nombre: 'Borrador', status: 'activo' })
       );
       await repoMercado.save(
         repoMercado.create({
           producto_id: prodBorrador.id,
-          usuario_id: usuario.id,
+          usuario_id: usuario.userId,
           estado_analisis: 'procesando',
           resultado_estimado: false,
         })
       );
       const prodEstimado = await repoProducto.save(
-        repoProducto.create({ usuario_id: usuario.id, nombre: 'Estimado', status: 'activo' })
+        repoProducto.create({ usuario_id: usuario.userId, nombre: 'Estimado', status: 'activo' })
       );
       await repoMercado.save(
         repoMercado.create({
           producto_id: prodEstimado.id,
-          usuario_id: usuario.id,
+          usuario_id: usuario.userId,
           estado_analisis: 'completado',
           resultado_estimado: true,
         })
@@ -181,14 +181,14 @@ describeWithDb('Red de expertos (/api/network)', () => {
       expect(r3IntentoInvalido.status).toBe(403);
 
       // 3. Usuario tiene 3 negocios con análisis completados -> cupo 3 -> puede crear la 3ª
-      const p1 = await repoProducto.save(repoProducto.create({ usuario_id: usuario.id, nombre: 'P1', status: 'activo' }));
-      const p2 = await repoProducto.save(repoProducto.create({ usuario_id: usuario.id, nombre: 'P2', status: 'activo' }));
-      const p3 = await repoProducto.save(repoProducto.create({ usuario_id: usuario.id, nombre: 'P3', status: 'activo' }));
+      const p1 = await repoProducto.save(repoProducto.create({ usuario_id: usuario.userId, nombre: 'P1', status: 'activo' }));
+      const p2 = await repoProducto.save(repoProducto.create({ usuario_id: usuario.userId, nombre: 'P2', status: 'activo' }));
+      const p3 = await repoProducto.save(repoProducto.create({ usuario_id: usuario.userId, nombre: 'P3', status: 'activo' }));
 
       await repoMercado.save([
-        repoMercado.create({ producto_id: p1.id, usuario_id: usuario.id, estado_analisis: 'completado', resultado_estimado: false }),
-        repoMercado.create({ producto_id: p2.id, usuario_id: usuario.id, estado_analisis: 'completado', resultado_estimado: false }),
-        repoMercado.create({ producto_id: p3.id, usuario_id: usuario.id, estado_analisis: 'completado', resultado_estimado: false }),
+        repoMercado.create({ producto_id: p1.id, usuario_id: usuario.userId, estado_analisis: 'completado', resultado_estimado: false }),
+        repoMercado.create({ producto_id: p2.id, usuario_id: usuario.userId, estado_analisis: 'completado', resultado_estimado: false }),
+        repoMercado.create({ producto_id: p3.id, usuario_id: usuario.userId, estado_analisis: 'completado', resultado_estimado: false }),
       ]);
 
       const rCupoConTres = await request.default(app)
@@ -203,8 +203,73 @@ describeWithDb('Red de expertos (/api/network)', () => {
       expect(r3Permitida.status).toBe(201);
 
       // Limpieza
-      await repoMercado.delete({ usuario_id: usuario.id });
-      await repoProducto.delete({ usuario_id: usuario.id });
+      await repoMercado.delete({ usuario_id: usuario.userId });
+      await repoProducto.delete({ usuario_id: usuario.userId });
+    });
+
+    it('registrar negocios o productos sin análisis no amplía el cupo', async () => {
+      const usuario = await signupTestUser();
+      const repoProducto = AppDataSource.getRepository(Producto);
+      const repoNegocio = AppDataSource.getRepository(Negocio);
+      await repoNegocio.save(
+        ['N1', 'N2', 'N3'].map((nombre) => repoNegocio.create({ usuario_id: usuario.userId, nombre }))
+      );
+      await repoProducto.save(
+        ['P1', 'P2', 'P3'].map((nombre) => repoProducto.create({ usuario_id: usuario.userId, nombre, status: 'activo' }))
+      );
+
+      const cupo = await request.default(app)
+        .get('/api/network/cupo')
+        .set('Authorization', `Bearer ${usuario.accessToken}`);
+      expect(cupo.status).toBe(200);
+      expect(cupo.body).toMatchObject({ limite_permitido: 2, negocios_activos: 0 });
+
+      await repoProducto.delete({ usuario_id: usuario.userId });
+      await repoNegocio.delete({ usuario_id: usuario.userId });
+    });
+
+    it('altas simultáneas con un solo hueco libre: entra una y las demás reciben 403', async () => {
+      const usuario = await signupTestUser();
+      const primera = await crearFicha(usuario.accessToken, { ...baseLegal, categoria: 'legal' });
+      expect(primera.status).toBe(201);
+
+      // En local las peticiones rara vez coinciden en el mismo milisegundo, así
+      // que la carrera se fuerza: el test toma el cerrojo de cupo de la cuenta
+      // y todas las altas tienen que quedarse esperando. Sin el cerrojo en la
+      // ruta, terminarían ya y varias leerían «1 de 2».
+      const cerrojo = AppDataSource.createQueryRunner();
+      await cerrojo.connect();
+      await cerrojo.startTransaction();
+      let respuestas: request.Response[];
+      try {
+        await cerrojo.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['net0:cupo:' + usuario.userId]);
+        let terminadas = 0;
+        const resto = CATEGORIAS_EXPERTO.filter((c) => c !== 'legal');
+        const altas = Promise.all(
+          resto.map((categoria) =>
+            crearFicha(usuario.accessToken, { ...baseLegal, categoria }).then((r) => {
+              terminadas++;
+              return r;
+            })
+          )
+        );
+        await new Promise((resolver) => setTimeout(resolver, 750));
+        expect(terminadas).toBe(0);
+
+        await cerrojo.commitTransaction();
+        respuestas = await altas;
+      } finally {
+        if (cerrojo.isTransactionActive) await cerrojo.rollbackTransaction();
+        await cerrojo.release();
+      }
+      const estados = respuestas.map((r) => r.status);
+      expect(estados.filter((s) => s === 201)).toHaveLength(1);
+      expect(estados.filter((s) => s === 403)).toHaveLength(estados.length - 1);
+
+      const cupo = await request.default(app)
+        .get('/api/network/cupo')
+        .set('Authorization', `Bearer ${usuario.accessToken}`);
+      expect(cupo.body).toMatchObject({ fichas_actuales: 2, limite_permitido: 2, puede_crear: false });
     });
   });
 

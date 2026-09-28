@@ -6,139 +6,27 @@ import { useParams } from 'next/navigation';
 import { motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowLeft,
-  ArrowRight,
-  X,
   MessageCircle,
-  Mail,
-  Phone,
-  Globe,
-  Star,
+  Share2,
   CheckCircle2,
   Sparkles,
+  MapPin,
+  Star,
+  Globe,
 } from 'lucide-react';
-import { ACENTO } from '@/components/network/ExpertoCard';
-import FormularioResena from '@/components/network/FormularioResena';
+import { toast } from 'sonner';
+import Net0ProfileTabs from '@/components/net0/Net0ProfileTabs';
 import {
   obtenerFicha,
   formatearTarifa,
-  pesosMx,
   registrarContacto,
   NOMBRE_CATEGORIA,
   type Distribucion,
   type FichaExperto,
-  type ImagenPerfil,
   type ResenaPublica,
 } from '@/lib/network';
 import { ENTRADA_SEGURA, MOTION_SPRINGS } from '@/lib/motion/tokens';
-
-function Galeria({ imagenes }: { imagenes: ImagenPerfil[] }) {
-  const [abierta, setAbierta] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (abierta === null) return;
-    const tecla = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setAbierta(null);
-      if (e.key === 'ArrowRight') setAbierta((i) => (i === null ? i : (i + 1) % imagenes.length));
-      if (e.key === 'ArrowLeft') setAbierta((i) => (i === null ? i : (i - 1 + imagenes.length) % imagenes.length));
-    };
-    window.addEventListener('keydown', tecla);
-    return () => window.removeEventListener('keydown', tecla);
-  }, [abierta, imagenes.length]);
-
-  if (imagenes.length === 0) return null;
-  const actual = abierta === null ? null : imagenes[abierta];
-
-  return (
-    <div className="rounded-2xl border border-white/[0.08] bg-[#090E17]/85 backdrop-blur-xl p-6 shadow-sm">
-      <h2 className="text-xs font-sans font-bold uppercase tracking-wider text-zinc-400 mb-4">
-        Galería de trabajos y proyectos
-      </h2>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-        {imagenes.map((img, i) => (
-          <button
-            key={img.id}
-            type="button"
-            onClick={() => setAbierta(i)}
-            className={`group relative overflow-hidden rounded-xl border border-white/10 bg-white/5 cursor-pointer ${
-              i === 0 && imagenes.length > 2 ? 'col-span-2 row-span-2 aspect-square sm:aspect-auto' : 'aspect-square'
-            }`}
-            aria-label={img.descripcion || `Ver imagen ${i + 1}`}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={img.url}
-              alt={img.descripcion}
-              loading="lazy"
-              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-            />
-          </button>
-        ))}
-      </div>
-
-      {actual && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Imagen ampliada"
-          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm"
-          onClick={() => setAbierta(null)}
-        >
-          <figure className="max-w-4xl w-full" onClick={(e) => e.stopPropagation()}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={actual.url} alt={actual.descripcion} className="max-h-[80vh] w-auto mx-auto rounded-2xl object-contain shadow-2xl" />
-            <figcaption className="flex items-center justify-between gap-3 mt-4 text-zinc-300 text-sm font-sans">
-              <span className="min-w-0 truncate">{actual.descripcion}</span>
-              <span className="flex items-center gap-2 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setAbierta((i) => ((i ?? 0) - 1 + imagenes.length) % imagenes.length)}
-                  className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer"
-                  aria-label="Anterior"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-                <span className="text-zinc-500 text-xs font-mono">
-                  {(abierta ?? 0) + 1}/{imagenes.length}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setAbierta((i) => ((i ?? 0) + 1) % imagenes.length)}
-                  className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer"
-                  aria-label="Siguiente"
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAbierta(null)}
-                  className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer ml-2"
-                  aria-label="Cerrar visor"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </span>
-            </figcaption>
-          </figure>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Estrellas({ valor }: { valor: number }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((s) => (
-        <Star
-          key={s}
-          className={`w-3.5 h-3.5 ${
-            s <= Math.round(valor) ? 'text-amber-400 fill-amber-400' : 'text-zinc-600'
-          }`}
-        />
-      ))}
-    </div>
-  );
-}
+import { ACENTO } from '@/components/network/ExpertoCard';
 
 export default function FichaNet0DetailPage() {
   const params = useParams();
@@ -169,6 +57,27 @@ export default function FichaNet0DetailPage() {
     cargar();
   }, [cargar]);
 
+  const compartir = async () => {
+    if (!ficha) return;
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: `${ficha.nombre_comercial} en Net0`,
+          text: `Consulta el portafolio y servicios de ${ficha.nombre_comercial} en Net0`,
+          url,
+        });
+        return;
+      } catch {
+        // Fallback
+      }
+    }
+    if (url && typeof navigator !== 'undefined' && navigator.clipboard) {
+      await navigator.clipboard.writeText(url);
+      toast.success('Enlace del perfil copiado al portapapeles');
+    }
+  };
+
   if (estado === 'cargando') {
     return (
       <div className="w-full py-28 flex flex-col items-center justify-center gap-3 text-zinc-400">
@@ -191,7 +100,7 @@ export default function FichaNet0DetailPage() {
         </p>
         <Link
           href="/net0"
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-[#070E17] font-sans font-bold text-xs"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-[#0A0A0C] font-sans font-bold text-xs"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Volver al Directorio Net0</span>
@@ -202,8 +111,6 @@ export default function FichaNet0DetailPage() {
 
   const acento = ACENTO[ficha.categoria] ?? ACENTO.legal;
   const tarifa = formatearTarifa(ficha.tarifa_desde, ficha.moneda);
-  const hayContacto = Boolean(ficha.whatsapp || ficha.email_contacto || ficha.telefono || ficha.sitio_web);
-
   const enlaceWhatsapp = ficha.whatsapp
     ? `https://wa.me/${ficha.whatsapp}?text=${encodeURIComponent(
         `Hola, vi tu perfil «${ficha.nombre_comercial}» en Net0 de BI 0 A 100 y me gustaría consultar sobre tus servicios.`
@@ -213,12 +120,12 @@ export default function FichaNet0DetailPage() {
   return (
     <motion.div
       {...ENTRADA_SEGURA}
-      initial={shouldReduce ? false : { opacity: 0, y: 14 }}
+      initial={shouldReduce ? false : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={MOTION_SPRINGS.gentle}
-      className="w-full max-w-5xl mx-auto space-y-6 pb-16"
+      className="w-full max-w-4xl mx-auto space-y-6 pb-20"
     >
-      {/* ── Regreso y Categoría ── */}
+      {/* ── Regreso a Directorio ── */}
       <div>
         <Link
           href={`/net0?categoria=${ficha.categoria}`}
@@ -229,233 +136,206 @@ export default function FichaNet0DetailPage() {
         </Link>
       </div>
 
-      {/* ── Portada y Cabecera de Ficha ── */}
-      <div className="relative rounded-2xl border border-white/[0.08] bg-[#090E17]/85 backdrop-blur-xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
-        {ficha.portada_url && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={ficha.portada_url}
-            alt=""
-            className="w-full h-44 sm:h-60 object-cover border-b border-white/10"
-          />
-        )}
-
-        <div className={`p-6 sm:p-8 flex flex-col sm:flex-row items-start gap-5 ${ficha.portada_url ? '-mt-12 sm:-mt-16' : ''}`}>
-          {ficha.avatar_url ? (
+      {/* ── Cabecera de Creador Estilo Instagram ── */}
+      <div className="rounded-3xl border border-white/[0.08] bg-[#141416] overflow-hidden shadow-lg">
+        {/* Banner de Portada */}
+        <div className="relative w-full h-44 sm:h-56 bg-[#0A0A0C]">
+          {ficha.portada_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={ficha.avatar_url}
-              alt=""
-              className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border-2 border-[#090E17] shadow-xl bg-[#090E17] flex-shrink-0"
+              src={ficha.portada_url}
+              alt={ficha.nombre_comercial}
+              className="w-full h-full object-cover"
             />
           ) : (
-            <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-2xl ${acento.bg} border ${acento.borde} ${acento.texto} flex items-center justify-center text-3xl font-sans font-extrabold flex-shrink-0 shadow-lg`}>
-              {(ficha.nombre_display || ficha.nombre_comercial).charAt(0).toUpperCase()}
+            <div className="w-full h-full bg-[#18181B] flex items-center justify-center">
+              <span className={`text-9xl font-sans font-black ${acento.texto} opacity-10 select-none`}>
+                {(ficha.nombre_display || ficha.nombre_comercial).charAt(0).toUpperCase()}
+              </span>
             </div>
           )}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#141416] via-transparent to-black/30 pointer-events-none" />
+        </div>
 
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-2xl sm:text-3xl font-sans font-extrabold tracking-tight text-white">
-                {ficha.nombre_comercial}
-              </h1>
+        {/* Información Principal del Creador */}
+        <div className="p-6 sm:p-8 relative -mt-16 sm:-mt-20 space-y-5">
+          {/* Avatar Circular y Botones de Acción */}
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            {/* Avatar con aro de verificación */}
+            <div className="relative">
+              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full p-[3px] bg-[#141416] shadow-2xl">
+                <div className="w-full h-full rounded-full overflow-hidden bg-[#18181B] flex items-center justify-center border-2 border-white/10">
+                  {ficha.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={ficha.avatar_url}
+                      alt={ficha.nombre_comercial}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-white text-3xl font-sans font-black">
+                      {(ficha.nombre_display || ficha.nombre_comercial).charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+              </div>
+
               {ficha.verificado && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-sans font-semibold bg-emerald-500/10 border border-emerald-500/25 text-emerald-400">
-                  <CheckCircle2 className="w-3 h-3" />
-                  <span>Acreditación verificada</span>
+                <span
+                  title="Acreditación profesional verificada"
+                  className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-[#141416] flex items-center justify-center border border-white/20 text-emerald-400"
+                >
+                  <CheckCircle2 className="w-4 h-4 fill-emerald-400 text-[#141416]" />
                 </span>
               )}
+            </div>
+
+            {/* Fila de Estadísticas estilo Instagram */}
+            <div className="flex items-center gap-6 sm:gap-8 py-2">
+              <div className="text-center">
+                <span className="text-base sm:text-lg font-sans font-black text-white block">
+                  {ficha.imagenes.length}
+                </span>
+                <span className="text-[11px] font-sans text-zinc-400">Proyectos</span>
+              </div>
+
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-1">
+                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                  <span className="text-base sm:text-lg font-sans font-black text-white">
+                    {ficha.rating > 0 ? ficha.rating.toFixed(1) : '—'}
+                  </span>
+                </div>
+                <span className="text-[11px] font-sans text-zinc-400">Calificación</span>
+              </div>
+
+              <div className="text-center">
+                <span className="text-base sm:text-lg font-sans font-black text-white block">
+                  {ficha.total_resenas}
+                </span>
+                <span className="text-[11px] font-sans text-zinc-400">Opiniones</span>
+              </div>
+
+              {ficha.servicios.length > 0 && (
+                <div className="text-center">
+                  <span className="text-base sm:text-lg font-sans font-black text-white block">
+                    {ficha.servicios.length}
+                  </span>
+                  <span className="text-[11px] font-sans text-zinc-400">Servicios</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Nombre y Bio */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl sm:text-3xl font-sans font-black tracking-tight text-white">
+                {ficha.nombre_comercial}
+              </h1>
               {ficha.es_patrocinado && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-sans font-bold bg-amber-500/20 border border-amber-500/40 text-amber-300 uppercase tracking-wider">
+                <span className="inline-flex items-center gap-1 text-[10px] font-sans font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300">
                   <Sparkles className="w-3 h-3" />
                   <span>Destacado</span>
                 </span>
               )}
             </div>
 
-            <p className="text-zinc-400 text-xs sm:text-sm font-sans">
-              {[ficha.especialidad, ficha.ciudad, ficha.pais].filter(Boolean).join(' · ')}
+            <p className="text-sm font-sans font-medium text-zinc-300">
+              {ficha.especialidad}
             </p>
 
-            <div className="flex items-center gap-2 pt-1">
-              {ficha.total_resenas > 0 ? (
-                <>
-                  <Estrellas valor={ficha.rating} />
-                  <span className="text-amber-400 text-xs font-bold font-sans">{ficha.rating.toFixed(1)}</span>
-                  <span className="text-zinc-500 text-xs font-sans">
-                    ({ficha.total_resenas} {ficha.total_resenas === 1 ? 'reseña' : 'reseñas'})
-                  </span>
-                </>
-              ) : (
-                <span className="text-zinc-500 text-xs font-sans">Sin reseñas todavía</span>
+            <div className="flex items-center gap-3 text-xs font-sans text-zinc-400 flex-wrap pt-0.5">
+              {ficha.ciudad && (
+                <span className="inline-flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-zinc-500" />
+                  <span>{[ficha.ciudad, ficha.pais].filter(Boolean).join(', ')}</span>
+                </span>
               )}
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* ── Cuerpo: Detalle + Panel de Contacto Directo ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
-        {/* Columna Principal */}
-        <div className="space-y-6">
-          {/* Biografía */}
-          {(ficha.bio_larga || ficha.bio_corta) && (
-            <div className="rounded-2xl border border-white/[0.08] bg-[#090E17]/85 backdrop-blur-xl p-6 shadow-sm space-y-3">
-              <h2 className="text-xs font-sans font-bold uppercase tracking-wider text-zinc-400">
-                Sobre {ficha.nombre_display || ficha.nombre_comercial}
-              </h2>
-              <p className="text-zinc-300 text-xs sm:text-sm font-sans leading-relaxed whitespace-pre-line">
-                {ficha.bio_larga || ficha.bio_corta}
-              </p>
-
-              {ficha.sub_especialidades.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-3">
-                  {ficha.sub_especialidades.map((tag) => (
-                    <span
-                      key={tag}
-                      className="text-[11px] font-sans font-medium px-2.5 py-0.5 rounded-md bg-white/[0.04] text-zinc-400 border border-white/[0.08]"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
+              {tarifa && (
+                <span className="text-zinc-300 font-semibold">
+                  Tarifa: <strong className="text-white">Desde {tarifa}</strong>
+                </span>
               )}
-            </div>
-          )}
 
-          {/* Galería de Trabajos */}
-          <Galeria imagenes={ficha.imagenes} />
-
-          {/* Servicios y Tarifas */}
-          {ficha.servicios.length > 0 && (
-            <div className="rounded-2xl border border-white/[0.08] bg-[#090E17]/85 backdrop-blur-xl p-6 shadow-sm space-y-4">
-              <h2 className="text-xs font-sans font-bold uppercase tracking-wider text-zinc-400">
-                Servicios y Cotizaciones
-              </h2>
-              <div className="divide-y divide-white/[0.06]">
-                {ficha.servicios.map((s) => (
-                  <div key={s.id} className="py-3.5 first:pt-0 last:pb-0 flex items-start justify-between gap-4">
-                    <div>
-                      <h3 className="text-white text-xs sm:text-sm font-sans font-semibold">{s.nombre}</h3>
-                      {s.descripcion && (
-                        <p className="text-zinc-400 text-xs font-sans mt-0.5 leading-relaxed">{s.descripcion}</p>
-                      )}
-                    </div>
-                    {s.precio_desde !== null && s.precio_desde !== undefined && (
-                      <span className="text-xs font-sans font-bold text-white whitespace-nowrap bg-white/[0.04] px-2.5 py-1 rounded-lg border border-white/[0.08]">
-                        {pesosMx(s.precio_desde)}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Reseñas y Formulario */}
-          <div className="rounded-2xl border border-white/[0.08] bg-[#090E17]/85 backdrop-blur-xl p-6 shadow-sm space-y-5">
-            <h2 className="text-xs font-sans font-bold uppercase tracking-wider text-zinc-400">
-              Reseñas de Clientes ({ficha.total_resenas})
-            </h2>
-
-            {resenas.length > 0 ? (
-              <div className="space-y-4 divide-y divide-white/[0.06]">
-                {resenas.map((r) => (
-                  <div key={r.id} className="pt-3.5 first:pt-0 space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-white font-sans font-semibold">{r.autor}</span>
-                      <Estrellas valor={r.puntuacion} />
-                    </div>
-                    <p className="text-zinc-300 text-xs sm:text-sm font-sans leading-relaxed">{r.comentario}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-zinc-500 text-xs font-sans">Todavía no hay reseñas públicas para este perfil.</p>
-            )}
-
-            <div className="pt-4 border-t border-white/[0.06]">
-              <FormularioResena
-                expertoId={ficha.id}
-                miResena={resenas.find((r) => r.es_mia) ?? null}
-                alGuardar={cargar}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Columna Lateral de Contacto Directo */}
-        <div className="space-y-4 sticky top-6">
-          <div className="rounded-2xl border border-white/[0.08] bg-[#090E17]/90 backdrop-blur-xl p-5 shadow-lg space-y-4">
-            <div className="space-y-1">
-              <span className="text-[11px] font-sans font-semibold uppercase tracking-wider text-zinc-400">
-                Tarifa referencial
-              </span>
-              <p className="text-xl font-sans font-extrabold text-white">
-                {tarifa ? `Desde ${tarifa}` : 'A consultar'}
-              </p>
               {ficha.ofrece_consulta_gratis && (
-                <span className="inline-flex items-center gap-1 text-emerald-400 text-xs font-sans font-medium">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Primera consulta / diagnóstico gratis</span>
+                <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>Consulta gratis</span>
                 </span>
               )}
             </div>
 
-            {/* Botón WhatsApp Directo */}
+            {/* Biografía */}
+            {ficha.bio_corta && (
+              <p className="text-zinc-300 text-xs sm:text-sm font-sans leading-relaxed pt-1 whitespace-pre-line max-w-2xl">
+                {ficha.bio_corta}
+              </p>
+            )}
+
+            {/* Chips de Sub-especialidades */}
+            {ficha.sub_especialidades.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-2">
+                {ficha.sub_especialidades.map((tag) => (
+                  <span
+                    key={tag}
+                    className="text-[11px] font-sans font-medium px-2.5 py-0.5 rounded-md bg-white/[0.04] text-zinc-300 border border-white/[0.08]"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Barra de Acciones del Perfil */}
+          <div className="pt-2 flex flex-wrap items-center gap-2.5 border-t border-white/[0.08]">
             {enlaceWhatsapp && (
               <a
                 href={enlaceWhatsapp}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => registrarContacto(ficha.id, 'whatsapp')}
-                className="flex items-center justify-center gap-2 w-full h-11 rounded-xl text-xs sm:text-sm font-sans font-bold text-white bg-[#25D366] hover:brightness-110 active:scale-95 transition-all shadow-[0_2px_12px_rgba(37,211,102,0.3)] cursor-pointer"
+                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 h-11 px-6 rounded-xl bg-[#25D366] hover:brightness-110 active:scale-98 text-white font-sans font-bold text-xs sm:text-sm transition-all shadow-md"
               >
-                <MessageCircle className="w-4 h-4 fill-white text-transparent" />
+                <MessageCircle className="w-4 h-4 fill-white" />
                 <span>Contactar por WhatsApp</span>
               </a>
             )}
 
-            {/* Datos de contacto secundarios */}
-            {hayContacto && (
-              <div className="pt-3 border-t border-white/[0.08] space-y-2.5 text-xs font-sans">
-                {ficha.email_contacto && (
-                  <a
-                    href={`mailto:${ficha.email_contacto}`}
-                    onClick={() => registrarContacto(ficha.id, 'email')}
-                    className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors"
-                  >
-                    <Mail className="w-3.5 h-3.5 text-zinc-500" />
-                    <span className="truncate">{ficha.email_contacto}</span>
-                  </a>
-                )}
-                {ficha.telefono && (
-                  <a
-                    href={`tel:${ficha.telefono}`}
-                    onClick={() => registrarContacto(ficha.id, 'telefono')}
-                    className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors"
-                  >
-                    <Phone className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>{ficha.telefono}</span>
-                  </a>
-                )}
-                {ficha.sitio_web && (
-                  <a
-                    href={ficha.sitio_web}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => registrarContacto(ficha.id, 'web')}
-                    className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors"
-                  >
-                    <Globe className="w-3.5 h-3.5 text-zinc-500" />
-                    <span className="truncate">Sitio web oficial</span>
-                  </a>
-                )}
-              </div>
+            {ficha.sitio_web && (
+              <a
+                href={ficha.sitio_web.startsWith('http') ? ficha.sitio_web : `https://${ficha.sitio_web}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => registrarContacto(ficha.id, 'web')}
+                className="inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/10 active:scale-98 font-sans font-semibold text-xs sm:text-sm transition-all"
+              >
+                <Globe className="w-4 h-4 text-cyan-400" />
+                <span>Sitio web</span>
+              </a>
             )}
+
+            <button
+              type="button"
+              onClick={compartir}
+              title="Compartir perfil"
+              className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/10 active:scale-98 transition-all cursor-pointer"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>
+
+      {/* ── Pestañas de Contenido estilo Instagram (Trabajos, Servicios, Reseñas, Info) ── */}
+      <Net0ProfileTabs
+        ficha={ficha}
+        resenas={resenas}
+        distribucion={distribucion}
+        onResenaGuardada={cargar}
+      />
     </motion.div>
   );
 }

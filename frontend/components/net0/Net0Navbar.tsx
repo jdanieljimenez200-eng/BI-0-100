@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X, ArrowLeft, Plus } from 'lucide-react';
@@ -10,11 +10,16 @@ export default function Net0Navbar() {
   const pathname = usePathname();
   const haySesion = useHaySesion();
   const [menuAbierto, setMenuAbierto] = useState(false);
+  // Tras iniciar sesión se vuelve a la página donde estaba (una ficha, el directorio…).
+  const hrefLogin = `/auth/login?next=${encodeURIComponent(pathname || '/net0')}`;
 
-  // Cerrar menú móvil al navegar
-  useEffect(() => {
+  // Cerrar menú móvil al navegar (se ajusta durante el render, sin efecto:
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes).
+  const [rutaDelMenu, setRutaDelMenu] = useState(pathname);
+  if (rutaDelMenu !== pathname) {
+    setRutaDelMenu(pathname);
     setMenuAbierto(false);
-  }, [pathname]);
+  }
 
   const esActivo = (ruta: string) => {
     if (ruta === '/net0') return pathname === '/net0';
@@ -78,7 +83,7 @@ export default function Net0Navbar() {
           ) : (
             <>
               <Link
-                href="/auth/login?next=/net0"
+                href={hrefLogin}
                 className="px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-white transition-colors"
               >
                 Iniciar sesión
@@ -133,7 +138,7 @@ export default function Net0Navbar() {
             ) : (
               <div className="flex flex-col gap-2">
                 <Link
-                  href="/auth/login?next=/net0"
+                  href={hrefLogin}
                   className="w-full text-center px-3.5 py-2 rounded-lg border border-white/[0.08] text-xs font-medium text-white"
                 >
                   Iniciar sesión

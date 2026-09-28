@@ -4,9 +4,10 @@ import Net0Footer from '@/components/net0/Net0Footer';
 import { PageTransition } from '@/components/motion/PageTransition';
 
 export const metadata: Metadata = {
+  // `absolute`: el portal no hereda la plantilla «%s | BI 0 A 100» del layout raíz.
   title: {
     template: '%s | Net0',
-    default: 'Net0 | Red de Profesionales y Oficios',
+    absolute: 'Net0 | Red de Profesionales y Oficios',
   },
   description:
     'Directorio de abogados, contadores, albañiles, plomeros, diseñadores, técnicos, proveedores y consultores. Contacto directo por WhatsApp sin comisiones.',

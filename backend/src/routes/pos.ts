@@ -35,6 +35,7 @@ import { idempotente } from '../middleware/idempotency';
 import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
 import { cantidad, dinero, MAX_DINERO, MAX_ENTERO } from '../utils/limitesNumericos';
 import { r2 } from '../utils/dinero';
+import { urlApp } from '../utils/urlApp';
 
 // Topes = columnas de `items_pos`, `venta_items`, `ventas` y `clientes`. Un
 // texto más largo pasaba la validación y el INSERT respondía 500.
@@ -891,8 +892,7 @@ router.get('/ventas/:id/whatsapp', ah(async (req: AuthRequest, res: Response) =>
   }
 
   const cfg = getTaxConfig(venta.producto?.pais || 'MX');
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-  const ticketUrl = `${frontendUrl}/ticket/${venta.id}`;
+  const ticketUrl = urlApp(`/ticket/${venta.id}`);
 
   const link = buildWhatsAppLink({
     telefono:       venta.cliente_telefono,

@@ -6,6 +6,7 @@ import { Cita } from '../models/Cita';
 import { ConexionGoogleCalendar } from '../models/ConexionGoogleCalendar';
 import { ah } from '../utils/asyncHandler';
 import { logger } from '../utils/logger';
+import { urlApp } from '../utils/urlApp';
 import { cifrarToken, descifrarToken } from '../services/google/cifradoTokens';
 import {
   consumirState,
@@ -34,10 +35,7 @@ const MAX_CITAS_POR_SINCRONIZACION = 500;
 const DIAS_ATRAS = 30;
 
 function urlFrontend(resultado: string): string {
-  const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.FRONTEND_URL?.split(',')[0] || 'http://localhost:3000')
-    .trim()
-    .replace(/\/+$/, '');
-  return `${base}/dashboard/herramientas/calendario?google=${encodeURIComponent(resultado)}`;
+  return urlApp('/dashboard/herramientas/calendario', { google: resultado });
 }
 
 function fechaDesde(): string {

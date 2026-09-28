@@ -114,6 +114,35 @@ describeWithDb('Patrocinios de expertos', () => {
         .send({ experto_id: expertoId });
       expect(res.status).toBe(401);
     });
+
+    it('al pagar o cancelar, Stripe devuelve a Mis perfiles del portal /net0', async () => {
+      // Stripe se simula entero: lo que se comprueba es a dónde manda de vuelta.
+      const espias = [
+        jest.spyOn(stripeService, 'isStripeAvailable').mockReturnValue(true),
+        jest.spyOn(stripeService, 'getPriceIdPatrocinio').mockReturnValue('price_test_patrocinio'),
+        jest.spyOn(stripeService, 'getOrCreateCustomer').mockResolvedValue(CUSTOMER),
+        jest.spyOn(stripeService, 'createSponsorshipCheckoutSession').mockResolvedValue('https://checkout.stripe.test/cs'),
+      ];
+      // El patrocinio exige la ficha aprobada; se aprueba solo para esta prueba.
+      await AppDataSource.getRepository(Experto).update(expertoId, { estado: 'aprobado' });
+      try {
+        const res = await request
+          .default(app)
+          .post('/api/network/patrocinios/checkout')
+          .set(auth(profesional))
+          .send({ experto_id: expertoId });
+        expect(res.status).toBe(200);
+        expect(stripeService.createSponsorshipCheckoutSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            successUrl: expect.stringMatching(/^https?:\/\/[^,\s]+\/net0\/mis-fichas\?patrocinio=ok$/),
+            cancelUrl: expect.stringMatching(/^https?:\/\/[^,\s]+\/net0\/mis-fichas\?patrocinio=cancelado$/),
+          })
+        );
+      } finally {
+        await AppDataSource.getRepository(Experto).update(expertoId, { estado: 'pendiente' });
+        espias.forEach((espia) => espia.mockRestore());
+      }
+    });
   });
 
   describe('Webhook: el patrocinio no toca el plan del usuario', () => {

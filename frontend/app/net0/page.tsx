@@ -9,13 +9,14 @@ import {
   MapPin,
   Plus,
   User,
-  Sparkles,
-  ArrowRight,
   RotateCcw,
-  Briefcase,
   Users,
+  ArrowRight,
 } from 'lucide-react';
-import ExpertoCard from '@/components/network/ExpertoCard';
+import Net0StoriesBar from '@/components/net0/Net0StoriesBar';
+import Net0ViewToggle from '@/components/net0/Net0ViewToggle';
+import Net0GridCard from '@/components/net0/Net0GridCard';
+import Net0ReelCard from '@/components/net0/Net0ReelCard';
 import {
   listarExpertos,
   CATEGORIAS,
@@ -26,6 +27,7 @@ import {
 import { ENTRADA_SEGURA, MOTION_SPRINGS } from '@/lib/motion/tokens';
 
 const POR_PAGINA = 12;
+const VISTA_STORAGE_KEY = 'net0_vista_preferida';
 
 function esCategoria(v: string | null): v is CategoriaExperto {
   return CATEGORIAS.includes(v as CategoriaExperto);
@@ -44,12 +46,34 @@ function DirectorioNet0Content() {
   const [texto, setTexto] = useState(params.get('q') ?? '');
   const [busqueda, setBusqueda] = useState(params.get('q') ?? '');
 
+  const [vista, setVista] = useState<'grid' | 'feed'>('grid');
   const [expertos, setExpertos] = useState<ExpertoPublico[]>([]);
   const [promocionados, setPromocionados] = useState<ExpertoPublico[]>([]);
   const [total, setTotal] = useState(0);
   const [pagina, setPagina] = useState(1);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Leer vista guardada en localStorage al montar
+  useEffect(() => {
+    try {
+      const guardada = localStorage.getItem(VISTA_STORAGE_KEY);
+      if (guardada === 'grid' || guardada === 'feed') {
+        setVista(guardada);
+      }
+    } catch {
+      // Ignorar errores en navegadores restrictivos
+    }
+  }, []);
+
+  const cambiarVista = (nuevaVista: 'grid' | 'feed') => {
+    setVista(nuevaVista);
+    try {
+      localStorage.setItem(VISTA_STORAGE_KEY, nuevaVista);
+    } catch {
+      // Ignorar
+    }
+  };
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -93,41 +117,38 @@ function DirectorioNet0Content() {
   const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
 
   return (
-    <div className="w-full space-y-8 pb-16">
-      {/* ── 1. Encabezado Maestro de Net0 con Transición de Entrada ── */}
+    <div className="w-full space-y-6 sm:space-y-8 pb-16">
+      {/* ── 1. Encabezado Maestro Studio Dark ── */}
       <motion.div
         {...ENTRADA_SEGURA}
-        initial={shouldReduce ? false : { opacity: 0, y: 14 }}
+        initial={shouldReduce ? false : { opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={MOTION_SPRINGS.gentle}
-        className="relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#131926]/90 via-[#0B101B]/85 to-[#070B12]/90 backdrop-blur-xl p-6 sm:p-8 lg:p-10 shadow-[0_8px_32px_rgba(0,0,0,0.45)] overflow-hidden"
+        className="rounded-3xl border border-white/[0.08] bg-[#141416] p-6 sm:p-8 lg:p-9 shadow-sm"
       >
-        <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/[0.07] rounded-full blur-[100px] pointer-events-none" />
-        <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-red-500/[0.05] rounded-full blur-[100px] pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="max-w-2xl space-y-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[11px] font-sans font-medium tracking-wide">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="max-w-2xl space-y-2.5">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-sans font-medium tracking-wide">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span>Red de Profesiones, Oficios y Consultores Verificados</span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-sans font-extrabold tracking-tight text-white leading-tight">
-              Net0 <span className="text-zinc-500 font-light">|</span> Directorio Operativo
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-sans font-black tracking-tight text-white leading-tight">
+              Net0 <span className="text-zinc-600 font-light">·</span> Directorio
             </h1>
 
-            <p className="text-zinc-300/85 text-xs sm:text-sm font-sans font-normal leading-relaxed">
-              Abogados, contadores, albañiles, plomeros, diseñadores, técnicos, proveedores y consultores. Contacto directo vía WhatsApp sin intermediarios ni comisiones sobre tus acuerdos.
+            <p className="text-zinc-400 text-xs sm:text-sm font-sans font-normal leading-relaxed">
+              Descubre y contrata directamente abogados, contadores, carpinteros, plomeros, diseñadores, técnicos y consultores. Acuerdos directos vía WhatsApp sin comisiones intermedias.
             </p>
           </div>
 
           {/* Acciones principales de Net0 */}
-          <div className="flex flex-wrap items-center gap-3 flex-shrink-0">
+          <div className="flex flex-wrap items-center gap-2.5 flex-shrink-0">
             <Link
               href="/net0/registro"
-              className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-xs sm:text-sm font-sans font-semibold text-[#070E17] bg-white hover:bg-slate-100 active:scale-95 transition-all shadow-[0_2px_10px_rgba(255,255,255,0.2)] whitespace-nowrap cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-xs sm:text-sm font-sans font-semibold text-[#0A0A0C] bg-white hover:bg-zinc-200 active:scale-95 transition-all shadow-sm whitespace-nowrap cursor-pointer"
             >
-              <Plus className="w-4 h-4 text-[#070E17]" />
+              <Plus className="w-4 h-4 text-[#0A0A0C]" />
               <span>Ofrecer mis servicios</span>
             </Link>
 
@@ -142,108 +163,113 @@ function DirectorioNet0Content() {
         </div>
       </motion.div>
 
-      {/* ── 2. Barra de Filtros y Búsqueda Interactiva ── */}
+      {/* ── 2. Barra de Historias / Highlights Estilo Instagram ── */}
       <motion.div
         {...ENTRADA_SEGURA}
-        initial={shouldReduce ? false : { opacity: 0, y: 12 }}
+        initial={shouldReduce ? false : { opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...MOTION_SPRINGS.gentle, delay: 0.05 }}
-        className="rounded-2xl border border-white/[0.08] bg-[#090E17]/85 backdrop-blur-xl p-4 sm:p-5 shadow-[0_4px_24px_rgba(0,0,0,0.3)] space-y-4"
       >
-        {/* Chips de Categorías */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          <button
-            type="button"
-            onClick={() => {
-              setCategoria('');
-              setPagina(1);
-            }}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-sans font-semibold whitespace-nowrap transition-all cursor-pointer ${
-              categoria === ''
-                ? 'bg-white text-[#070E17] shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-white/[0.06] border border-white/[0.06]'
-            }`}
-          >
-            Todas las especialidades
-          </button>
-          {CATEGORIAS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => {
-                setCategoria(c);
-                setPagina(1);
-              }}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-sans font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                categoria === c
-                  ? 'bg-white text-[#070E17] shadow-sm'
-                  : 'text-zinc-400 hover:text-white hover:bg-white/[0.06] border border-white/[0.06]'
-              }`}
-            >
-              {NOMBRE_CATEGORIA[c]}
-            </button>
-          ))}
-        </div>
-
-        {/* Input de Búsqueda y Ciudad */}
-        <form
-          className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2.5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setBusqueda(texto);
+        <Net0StoriesBar
+          categoriaSeleccionada={categoria}
+          onSeleccionarCategoria={(cat) => {
+            setCategoria(cat);
             setPagina(1);
           }}
-        >
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
-            <input
-              type="text"
-              value={texto}
-              onChange={(e) => setTexto(e.target.value)}
-              placeholder="Buscar por oficio, nombre, especialidad…"
-              className="w-full h-10 pl-10 pr-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] hover:border-white/15 focus:border-white/30 focus:bg-white/[0.06] text-xs sm:text-sm text-white placeholder-zinc-500 outline-none transition-all font-sans"
-            />
-          </div>
-
-          <div className="relative">
-            <MapPin className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
-            <input
-              type="text"
-              value={ciudad}
-              onChange={(e) => {
-                setCiudad(e.target.value);
-                setPagina(1);
-              }}
-              placeholder="Ciudad o territorio…"
-              className="w-full h-10 pl-10 pr-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] hover:border-white/15 focus:border-white/30 focus:bg-white/[0.06] text-xs sm:text-sm text-white placeholder-zinc-500 outline-none transition-all font-sans"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="h-10 px-5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.12] text-white font-sans font-semibold text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
-          >
-            <span>Buscar</span>
-          </button>
-        </form>
+          destacados={promocionados}
+        />
       </motion.div>
 
-      {/* ── 3. Resultados y Fichas con Animación Stagger ── */}
+      {/* ── 3. Barra de Búsqueda y Selector de Vista ── */}
+      <motion.div
+        {...ENTRADA_SEGURA}
+        initial={shouldReduce ? false : { opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...MOTION_SPRINGS.gentle, delay: 0.08 }}
+        className="rounded-2xl border border-white/[0.08] bg-[#141416] p-3.5 sm:p-4 shadow-sm space-y-3"
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          {/* Formulario de búsqueda */}
+          <form
+            className="flex-1 grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setBusqueda(texto);
+              setPagina(1);
+            }}
+          >
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+              <input
+                type="text"
+                value={texto}
+                onChange={(e) => setTexto(e.target.value)}
+                placeholder="Buscar por oficio, nombre, rubro…"
+                className="w-full h-10 pl-10 pr-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] hover:border-white/15 focus:border-white/30 focus:bg-white/[0.06] text-xs sm:text-sm text-white placeholder-zinc-500 outline-none transition-all font-sans"
+              />
+            </div>
+
+            <div className="relative">
+              <MapPin className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+              <input
+                type="text"
+                value={ciudad}
+                onChange={(e) => {
+                  setCiudad(e.target.value);
+                  setPagina(1);
+                }}
+                placeholder="Ciudad o territorio…"
+                className="w-full h-10 pl-10 pr-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] hover:border-white/15 focus:border-white/30 focus:bg-white/[0.06] text-xs sm:text-sm text-white placeholder-zinc-500 outline-none transition-all font-sans"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="h-10 px-4 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.12] text-white font-sans font-semibold text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center"
+            >
+              Buscar
+            </button>
+          </form>
+
+          {/* Selector de Vista (Mosaico vs Feed) */}
+          <Net0ViewToggle vista={vista} onCambiarVista={cambiarVista} />
+        </div>
+
+        {/* Indicador de categoría activa con opción de limpiar */}
+        {categoria && (
+          <div className="flex items-center gap-2 pt-1">
+            <span className="text-zinc-500 text-xs font-sans">Filtrando por:</span>
+            <button
+              type="button"
+              onClick={() => {
+                setCategoria('');
+                setPagina(1);
+              }}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-sans font-semibold bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/20 transition-colors cursor-pointer"
+            >
+              <span>{NOMBRE_CATEGORIA[categoria]}</span>
+              <span className="text-[10px] text-emerald-400/60 font-bold">✕</span>
+            </button>
+          </div>
+        )}
+      </motion.div>
+
+      {/* ── 4. Resultados del Directorio ── */}
       <motion.div
         {...ENTRADA_SEGURA}
         initial={shouldReduce ? false : { opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ ...MOTION_SPRINGS.gentle, delay: 0.1 }}
+        transition={{ ...MOTION_SPRINGS.gentle, delay: 0.12 }}
       >
         {cargando ? (
-          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-16 text-center space-y-3">
+          <div className="rounded-3xl border border-white/[0.08] bg-[#141416] p-16 text-center space-y-3">
             <div className="w-8 h-8 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin mx-auto" />
             <p className="text-zinc-400 text-xs sm:text-sm font-sans">
-              Cargando directorio de profesionales y oficios Net0…
+              Cargando catálogo de profesionales y oficios Net0…
             </p>
           </div>
         ) : error ? (
-          <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-10 text-center space-y-3">
+          <div className="rounded-3xl border border-rose-500/20 bg-rose-500/5 p-10 text-center space-y-3">
             <p className="text-rose-300 text-sm font-sans font-medium">{error}</p>
             <button
               type="button"
@@ -255,7 +281,7 @@ function DirectorioNet0Content() {
             </button>
           </div>
         ) : expertos.length === 0 && promocionados.length === 0 ? (
-          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-12 text-center max-w-xl mx-auto space-y-4">
+          <div className="rounded-3xl border border-white/[0.08] bg-[#141416] p-12 text-center max-w-xl mx-auto space-y-4">
             <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center mx-auto text-zinc-400">
               <Users className="w-6 h-6" />
             </div>
@@ -270,7 +296,7 @@ function DirectorioNet0Content() {
             <div className="pt-2">
               <Link
                 href="/net0/registro"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-[#070E17] font-sans font-bold text-xs sm:text-sm hover:bg-slate-100 transition-all shadow-md"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-[#0A0A0C] font-sans font-bold text-xs sm:text-sm hover:bg-zinc-200 transition-all shadow-md"
               >
                 <span>Publicar mi ficha en Net0</span>
                 <ArrowRight className="w-4 h-4" />
@@ -279,34 +305,40 @@ function DirectorioNet0Content() {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Destacados / Promocionados */}
-            {promocionados.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-amber-300/80 text-xs font-sans font-bold uppercase tracking-wider">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Profesionales destacados{ciudad.trim() ? ` en ${ciudad.trim()}` : ''}</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {promocionados.map((e) => (
-                    <ExpertoCard key={e.id} experto={e} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Contador y lista orgánica */}
+            {/* Contador de resultados */}
             <div className="flex items-center justify-between text-xs text-zinc-400 font-sans px-1">
               <span>
-                {total} {total === 1 ? 'perfil registrado' : 'perfiles registrados'}
+                {total} {total === 1 ? 'perfil disponible' : 'perfiles disponibles'}
                 {categoria ? ` en ${NOMBRE_CATEGORIA[categoria]}` : ''}
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {expertos.map((e) => (
-                <ExpertoCard key={e.id} experto={e} />
-              ))}
-            </div>
+            {/* ── Renderizado según el Modo de Vista ── */}
+            {vista === 'grid' ? (
+              /* Mosaico Explore (Instagram) */
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {/* Promocionados primero */}
+                {promocionados.map((e) => (
+                  <Net0GridCard key={e.id} experto={e} />
+                ))}
+                {/* Orgánicos */}
+                {expertos.map((e) => (
+                  <Net0GridCard key={e.id} experto={e} />
+                ))}
+              </div>
+            ) : (
+              /* Feed Inmersivo (TikTok / Reels) */
+              <div className="space-y-6 max-w-xl mx-auto">
+                {/* Promocionados primero */}
+                {promocionados.map((e) => (
+                  <Net0ReelCard key={e.id} experto={e} />
+                ))}
+                {/* Orgánicos */}
+                {expertos.map((e) => (
+                  <Net0ReelCard key={e.id} experto={e} />
+                ))}
+              </div>
+            )}
 
             {/* Paginación */}
             {paginas > 1 && (
