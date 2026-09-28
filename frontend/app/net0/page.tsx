@@ -128,11 +128,6 @@ function DirectorioNet0Content() {
       >
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="max-w-2xl space-y-2.5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-sans font-medium tracking-wide">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Red de Profesiones, Oficios y Consultores Verificados</span>
-            </div>
-
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-sans font-black tracking-tight text-white leading-tight">
               Net0 <span className="text-zinc-600 font-light">·</span> Directorio
             </h1>
