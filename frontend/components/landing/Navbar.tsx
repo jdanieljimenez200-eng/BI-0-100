@@ -43,8 +43,8 @@ export default function Navbar() {
         }`}
         aria-label="Navegación principal"
       >
-        {/* 1. Izquierda: Marca / Logo (Ancho simétrico de 250px para centrado milimétrico del centro) */}
-        <div className="flex items-center flex-shrink-0 w-auto lg:w-[250px] justify-start h-9">
+        {/* 1. Izquierda: Marca / Logo */}
+        <div className="flex items-center flex-shrink-0 h-9">
           <Link
             href="/"
             className="h-9 flex items-center gap-2.5 group focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded-full"
@@ -61,8 +61,8 @@ export default function Navbar() {
           </Link>
         </div>
 
-        {/* 2. Centro: Los 4 enlaces principales de la Landing (Misma altura h-9, text-[13px], leading-none) */}
-        <div className="hidden lg:flex items-center justify-center gap-1.5 xl:gap-2.5 flex-1 h-9">
+        {/* 2. Centro: Los 4 enlaces principales de la Landing (Distribución balanceada con 128px de aire en ambos lados) */}
+        <div className="hidden lg:flex items-center gap-1.5 xl:gap-2.5 flex-shrink-0 h-9">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
@@ -74,11 +74,11 @@ export default function Navbar() {
           ))}
         </div>
 
-        {/* 3. Derecha: Acciones (Ancho simétrico de 250px para equilibrio matemático exacto) */}
-        <div className="flex items-center justify-end gap-2.5 flex-shrink-0 w-auto lg:w-[250px] h-9">
+        {/* 3. Derecha: Acciones (Separadas holgadamente de la navegación central) */}
+        <div className="flex items-center justify-end gap-2.5 flex-shrink-0 h-9">
           <Link
             href="/auth/login"
-            className="hidden sm:inline-flex items-center justify-center h-9 px-3 rounded-full text-[13px] font-sans font-medium text-slate-300 hover:text-white hover:bg-white/[0.06] transition-colors whitespace-nowrap leading-none"
+            className="hidden sm:inline-flex items-center justify-center h-9 px-3.5 rounded-full text-[13px] font-sans font-medium text-slate-300 hover:text-white hover:bg-white/[0.06] transition-colors whitespace-nowrap leading-none"
           >
             Iniciar sesión
           </Link>
