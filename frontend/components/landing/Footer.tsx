@@ -72,11 +72,6 @@ export default function Footer() {
           <span className="text-xs font-sans text-slate-400">
             © {new Date().getFullYear()} BI 0 A 100. Todos los derechos reservados.
           </span>
-
-          <div className="flex items-center gap-2 text-xs font-sans font-medium text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-full border border-emerald-500/20 shadow-xs">
-            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-            <span>Sistemas y APIs operacionales</span>
-          </div>
         </div>
 
       </div>
