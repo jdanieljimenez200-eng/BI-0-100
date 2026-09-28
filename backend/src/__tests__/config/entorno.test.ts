@@ -27,11 +27,28 @@ const entornoCompleto = (): Record<string, string | undefined> => ({
   GOOGLE_CLIENT_SECRET: 'secreto',
   GOOGLE_REDIRECT_URI: 'https://api.bi0a100.com/api/integraciones/google-calendar/callback',
   GOOGLE_TOKENS_KEY: 'a'.repeat(64),
+  GOOGLE_LOGIN_REDIRECT_URI: 'https://api.bi0a100.com/api/auth/google/callback',
 });
 
 describe('config/entorno — contrato de variables de producción', () => {
   it('un entorno completo no tiene faltantes', () => {
     expect(revisarEntornoProduccion(entornoCompleto()).faltantes).toEqual([]);
+  });
+
+  it('entrar con Google: sin su URL de retorno solo avisa; con ella exige el cliente completo', () => {
+    const sinLogin = revisarEntornoProduccion({ ...entornoCompleto(), GOOGLE_LOGIN_REDIRECT_URI: undefined });
+    expect(sinLogin.faltantes).toEqual([]);
+    expect(sinLogin.avisos.join(' ')).toMatch(/GOOGLE_LOGIN_REDIRECT_URI/);
+
+    const soloLogin = revisarEntornoProduccion({
+      ...entornoCompleto(),
+      GOOGLE_CLIENT_ID: undefined,
+      GOOGLE_CLIENT_SECRET: undefined,
+      GOOGLE_REDIRECT_URI: undefined,
+      GOOGLE_TOKENS_KEY: undefined,
+    });
+    expect(soloLogin.faltantes.join(' ')).toMatch(/GOOGLE_CLIENT_ID.*entrar con Google/);
+    expect(soloLogin.faltantes.join(' ')).toMatch(/GOOGLE_CLIENT_SECRET/);
   });
 
   it('sin DATABASE_URL ni DB_HOST no arranca (caería a postgres:postgres@postgres)', () => {

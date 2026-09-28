@@ -29,6 +29,13 @@ export class Usuario {
   @Column({ type: 'varchar' })
   password_hash!: string;
 
+  /**
+   * `sub` de la cuenta de Google con la que entra (login con Google). Único
+   * cuando existe (índice parcial `UQ_usuarios_google_sub`, migración 1775680000000).
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  google_sub!: string | null;
+
   @Column({ type: 'varchar' })
   nombre!: string;
 

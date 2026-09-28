@@ -175,6 +175,16 @@ export function revisarEntornoProduccion(env: Entorno = process.env): RevisionEn
     }
   }
 
+  // ── Entrar con Google (services/google/loginGoogle.ts) ────────────────────
+  // Opcional: sin GOOGLE_LOGIN_REDIRECT_URI el botón «Continuar con Google» no
+  // aparece. Con ella, el cliente tiene que estar completo o el callback fallaría.
+  if (!definida(env, 'GOOGLE_LOGIN_REDIRECT_URI')) {
+    avisos.push('GOOGLE_LOGIN_REDIRECT_URI no definida: entrar y registrarse con Google queda desactivado');
+  } else {
+    exigir('GOOGLE_CLIENT_ID', 'cliente OAuth para entrar con Google');
+    exigir('GOOGLE_CLIENT_SECRET', 'canje del código al entrar con Google');
+  }
+
   return { faltantes, avisos };
 }
 

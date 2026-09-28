@@ -6,12 +6,25 @@ import { AsignacionTrabajador } from '../models/AsignacionTrabajador';
 import { computePermisosEfectivos } from '../services/billing/planService';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { randomUUID, randomBytes } from 'crypto';
+import { randomUUID, randomBytes, timingSafeEqual } from 'crypto';
 import { logger } from '../utils/logger';
 import { redisClient } from '../config/redis';
 import { isEmailAvailable, sendPasswordResetEmail } from '../services/email/emailService';
 import { loginLimiter, signupLimiter, passwordResetLimiter } from '../middleware/cors';
 import { authenticate, AuthRequest, claveBloqueo } from '../middleware/auth';
+import {
+  ErrorLoginGoogle,
+  IntentoGoogle,
+  PerfilGoogle,
+  VIGENCIA_LOGIN_MS,
+  consumirStateLogin,
+  firmarStateLogin,
+  loginGoogleConfigurado,
+  nuevoPkce,
+  perfilDesdeCodigo,
+  urlAutorizacionLogin,
+  verificarStateLogin,
+} from '../services/google/loginGoogle';
 
 const router = Router();
 
@@ -85,6 +98,64 @@ function obtenerHashFicticio(): Promise<string> {
 }
 
 class InvitacionYaUsadaError extends Error {}
+
+/** Comprueba un código de invitación para `email`; el error es el texto que ve el usuario. */
+async function validarInvitacion(codigo: string, email: string): Promise<{ invitacion: InvitacionTrabajador } | { error: string }> {
+  const inv = await AppDataSource.getRepository(InvitacionTrabajador).findOne({ where: { codigo } });
+  if (!inv) return { error: 'Código de invitación inválido' };
+  if (inv.usado_por) return { error: 'Este código de invitación ya fue utilizado' };
+  if (new Date() > new Date(inv.expira_en)) return { error: 'El código de invitación ha expirado' };
+  if (inv.email_destino && inv.email_destino.trim().toLowerCase() !== email) {
+    return { error: 'Este código de invitación está restringido a otro correo' };
+  }
+  return { invitacion: inv };
+}
+
+/**
+ * Crea la cuenta y, si hay invitación, la consume en la misma transacción.
+ * Lanza InvitacionYaUsadaError si otra alta se la llevó antes, o el 23505 de
+ * Postgres si el email ya existe (dos altas simultáneas).
+ */
+async function crearCuenta(datos: {
+  email: string;
+  passwordHash: string;
+  nombre: string;
+  tipoCuenta: 'negocio' | 'experto';
+  invitacion: InvitacionTrabajador | null;
+  googleSub?: string | null;
+}): Promise<Usuario> {
+  const { invitacion } = datos;
+  return AppDataSource.transaction(async (manager) => {
+    const u = manager.create(Usuario, {
+      email: datos.email,
+      password_hash: datos.passwordHash,
+      google_sub: datos.googleSub ?? null,
+      nombre: datos.nombre,
+      account_role: invitacion ? 'trabajador' : 'owner',
+      owner_id: invitacion ? invitacion.cuenta_id : undefined,
+      plan: 'freemium',
+      // Un colaborador invitado entra a la cuenta de un negocio, elija lo que elija.
+      tipo_cuenta: !invitacion && datos.tipoCuenta === 'experto' ? 'experto' : 'negocio',
+      analisis_disponibles: 0,
+      creditos_marketing: 0,
+    });
+    await manager.save(Usuario, u);
+
+    if (invitacion) {
+      // Consumo atómico: la comprobación `usado_por` se leyó sin bloqueo y dos
+      // altas simultáneas con el mismo código la pasaban las dos. Solo una de
+      // estas UPDATE afecta a la fila; la otra revierte su alta.
+      const consumo = await manager
+        .createQueryBuilder()
+        .update(InvitacionTrabajador)
+        .set({ usado_por: u.id, usado_en: new Date() })
+        .where('id = :id AND usado_por IS NULL', { id: invitacion.id })
+        .execute();
+      if (consumo.affected !== 1) throw new InvitacionYaUsadaError();
+    }
+    return u;
+  });
+}
 
 /**
  * La política real, alineada con lo que el frontend ya promete en signup y
@@ -259,57 +330,22 @@ const handleSignup = async (req: Request, res: Response) => {
     let invitacionValida: InvitacionTrabajador | null = null;
 
     if (codigoInvitacion) {
-      const invRepo = AppDataSource.getRepository(InvitacionTrabajador);
-      const inv = await invRepo.findOne({ where: { codigo: codigoInvitacion } });
-      if (!inv) {
-        return res.status(400).json({ error: 'Código de invitación inválido' });
-      }
-      if (inv.usado_por) {
-        return res.status(400).json({ error: 'Este código de invitación ya fue utilizado' });
-      }
-      if (new Date() > new Date(inv.expira_en)) {
-        return res.status(400).json({ error: 'El código de invitación ha expirado' });
-      }
-      if (inv.email_destino && inv.email_destino.trim().toLowerCase() !== email) {
-        return res.status(400).json({ error: 'Este código de invitación está restringido a otro correo' });
-      }
-      invitacionValida = inv;
+      const r = await validarInvitacion(codigoInvitacion, email);
+      if ('error' in r) return res.status(400).json({ error: r.error });
+      invitacionValida = r.invitacion;
     }
 
     // Hash password (cost 12)
     const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
 
-    // Crear usuario dentro de transacción si hay invitación para marcarla como usada atómicamente
     let usuario: Usuario;
     try {
-      usuario = await AppDataSource.transaction(async (manager) => {
-        const u = manager.create(Usuario, {
-          email,
-          password_hash: hashedPassword,
-          nombre: name.trim(),
-          account_role: invitacionValida ? 'trabajador' : 'owner',
-          owner_id: invitacionValida ? invitacionValida.cuenta_id : undefined,
-          plan: 'freemium',
-          // Un colaborador invitado entra a la cuenta de un negocio, elija lo que elija.
-          tipo_cuenta: !invitacionValida && req.body.tipo_cuenta === 'experto' ? 'experto' : 'negocio',
-          analisis_disponibles: 0,
-          creditos_marketing: 0,
-        });
-        await manager.save(Usuario, u);
-
-        if (invitacionValida) {
-          // Consumo atómico: la comprobación `usado_por` de arriba se leyó sin
-          // bloqueo y dos altas simultáneas con el mismo código la pasaban las
-          // dos. Solo una de estas UPDATE afecta a la fila; la otra revierte su alta.
-          const consumo = await manager
-            .createQueryBuilder()
-            .update(InvitacionTrabajador)
-            .set({ usado_por: u.id, usado_en: new Date() })
-            .where('id = :id AND usado_por IS NULL', { id: invitacionValida.id })
-            .execute();
-          if (consumo.affected !== 1) throw new InvitacionYaUsadaError();
-        }
-        return u;
+      usuario = await crearCuenta({
+        email,
+        passwordHash: hashedPassword,
+        nombre: name.trim(),
+        tipoCuenta: req.body.tipo_cuenta === 'experto' ? 'experto' : 'negocio',
+        invitacion: invitacionValida,
       });
     } catch (err) {
       if (err instanceof InvitacionYaUsadaError) {
@@ -691,6 +727,149 @@ router.post('/reset-password', passwordResetLimiter, async (req: Request, res: R
   } catch (err) {
     logger.error('POST /api/auth/reset-password error:', err);
     res.status(500).json({ error: 'Error al restablecer la contraseña' });
+  }
+});
+
+// ─── Entrar y registrarse con Google ─────────────────────────────────────────
+//
+// GET /google lleva al navegador a Google; Google vuelve a GET /google/callback,
+// que crea o enlaza la cuenta, pone la cookie del refresh token y redirige a la
+// app (/auth/google), que canjea esa cookie por el access token como en un
+// refresh normal. El token nunca viaja en una URL.
+
+const COOKIE_GOOGLE = 'bi_google';
+
+function opcionesCookieGoogle(): CookieOptions {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    // `lax` basta: Google vuelve con una navegación GET de nivel superior.
+    sameSite: 'lax',
+    path: '/api/auth/google',
+    ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
+  };
+}
+
+/** URL de la app; los destinos son fijos (nunca de la petición): no hay redirección abierta. */
+function urlApp(ruta: string, params: Record<string, string> = {}): string {
+  const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.FRONTEND_URL?.split(',')[0] || 'http://localhost:3000')
+    .trim()
+    .replace(/\/+$/, '');
+  const qs = new URLSearchParams(params).toString();
+  return `${base}${ruta}${qs ? `?${qs}` : ''}`;
+}
+
+/** Métodos de acceso disponibles, para que la pantalla no muestre botones muertos. */
+router.get('/proveedores', (_req: Request, res: Response) => {
+  res.json({ google: loginGoogleConfigurado() });
+});
+
+router.get('/google', (req: Request, res: Response) => {
+  const modo = req.query.modo === 'registro' ? 'registro' : 'login';
+  const origen = modo === 'registro' ? '/auth/signup' : '/auth/login';
+  if (!loginGoogleConfigurado()) return res.redirect(urlApp(origen, { error: 'google_no_disponible' }));
+
+  const codigo = typeof req.query.codigo === 'string' ? req.query.codigo.trim().toUpperCase() : '';
+  const nonce = randomBytes(16).toString('base64url');
+  const { verificador, reto } = nuevoPkce();
+  const state = firmarStateLogin(
+    {
+      modo,
+      tipoCuenta: req.query.tipo === 'experto' ? 'experto' : 'negocio',
+      codigoInvitacion: /^[A-Z0-9_-]{4,32}$/.test(codigo) ? codigo : null,
+    },
+    nonce
+  );
+  res.cookie(COOKIE_GOOGLE, `${nonce}.${verificador}`, { ...opcionesCookieGoogle(), maxAge: VIGENCIA_LOGIN_MS });
+  return res.redirect(urlAutorizacionLogin(state, nonce, reto));
+});
+
+type ResultadoGoogle = { usuario: Usuario; nuevo: boolean } | { error: string };
+
+/**
+ * La cuenta de un perfil de Google: primero por `google_sub`; si no, por email
+ * (se enlaza: Google ya verificó que ese correo es suyo); si no, se crea.
+ */
+async function cuentaDeGoogle(perfil: PerfilGoogle, intento: IntentoGoogle): Promise<ResultadoGoogle> {
+  const repo = AppDataSource.getRepository(Usuario);
+  const porSub = await repo.findOne({ where: { google_sub: perfil.sub } });
+  if (porSub) return { usuario: porSub, nuevo: false };
+
+  const porEmail = await repo.findOne({ where: { email: perfil.email } });
+  if (porEmail) {
+    if (porEmail.google_sub && porEmail.google_sub !== perfil.sub) return { error: 'google_otra_cuenta' };
+    await repo.update(porEmail.id, { google_sub: perfil.sub });
+    porEmail.google_sub = perfil.sub;
+    return { usuario: porEmail, nuevo: false };
+  }
+
+  let invitacion: InvitacionTrabajador | null = null;
+  if (intento.codigoInvitacion) {
+    const r = await validarInvitacion(intento.codigoInvitacion, perfil.email);
+    if ('error' in r) return { error: 'invitacion_invalida' };
+    invitacion = r.invitacion;
+  }
+  try {
+    const usuario = await crearCuenta({
+      email: perfil.email,
+      // Contraseña que nadie conoce: entra con Google y, si algún día quiere
+      // contraseña, la pone con «¿Olvidaste tu contraseña?».
+      passwordHash: await bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_COST),
+      nombre: perfil.nombre ?? perfil.email.split('@')[0],
+      tipoCuenta: intento.tipoCuenta,
+      invitacion,
+      googleSub: perfil.sub,
+    });
+    return { usuario, nuevo: true };
+  } catch (err) {
+    if (err instanceof InvitacionYaUsadaError) return { error: 'invitacion_invalida' };
+    // Otra pestaña creó la misma cuenta a la vez: se entra con la que ganó.
+    if ((err as { code?: string })?.code === '23505') {
+      const ganadora = await repo.findOne({ where: { google_sub: perfil.sub } });
+      if (ganadora) return { usuario: ganadora, nuevo: false };
+    }
+    throw err;
+  }
+}
+
+router.get('/google/callback', async (req: Request, res: Response) => {
+  const { code, state, error } = req.query as Record<string, string | undefined>;
+  const intento = verificarStateLogin(state);
+  const origen = intento?.modo === 'registro' ? '/auth/signup' : '/auth/login';
+  const fallar = (motivo: string) => {
+    res.clearCookie(COOKIE_GOOGLE, opcionesCookieGoogle());
+    return res.redirect(urlApp(origen, { error: motivo }));
+  };
+
+  if (error) return fallar(error === 'access_denied' ? 'oauth_denied' : 'google_failed');
+  if (!intento || typeof code !== 'string' || !code) return fallar('session_expired');
+
+  // El nonce del state tiene que ser el de la cookie de ESTE navegador.
+  const [nonceCookie, verificador] = String(req.cookies?.[COOKIE_GOOGLE] ?? '').split('.');
+  const a = Buffer.from(nonceCookie ?? '');
+  const b = Buffer.from(intento.nonce);
+  if (!verificador || a.length !== b.length || !timingSafeEqual(a, b)) return fallar('session_expired');
+  if (!(await consumirStateLogin(state!))) return fallar('session_expired');
+
+  try {
+    const perfil = await perfilDesdeCodigo(code, verificador, intento.nonce);
+    if (!perfil.emailVerificado) return fallar('email_no_verificado');
+
+    const r = await cuentaDeGoogle(perfil, intento);
+    if ('error' in r) return fallar(r.error);
+    if (r.usuario.activo === false) return fallar('cuenta_desactivada');
+
+    await limpiarIntentosFallidos(r.usuario.email);
+    ponerCookieRefresh(res, await issueRefreshToken(r.usuario.id));
+    res.clearCookie(COOKIE_GOOGLE, opcionesCookieGoogle());
+    return res.redirect(urlApp('/auth/google', r.nuevo ? { nuevo: '1' } : {}));
+  } catch (err) {
+    if (err instanceof ErrorLoginGoogle) {
+      logger.warn(`[auth] Login con Google rechazado: ${err.message}`);
+      return fallar(err.codigo);
+    }
+    logger.error('GET /api/auth/google/callback error:', err);
+    return fallar('google_failed');
   }
 });
 

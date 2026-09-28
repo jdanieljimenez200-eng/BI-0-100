@@ -113,14 +113,26 @@ cero), backend compilado en `:3101` con Redis db 13 y `next dev` en `:3102`.
     layout apuntaba a un `/og-image.png` inexistente. `h1` en Mantenimientos, nombres
     accesibles en botones de icono de la fila, lugares y edición contable.
 
+### Acceso (añadido el 2026-09-28)
+
+22. **Entrar y registrarse con Google** no existía (solo el OAuth de Calendar; el
+    registro tenía preparado un mensaje `google_failed` que nada usaba). Ahora hay
+    «Continuar con Google» en login y registro: OpenID Connect con PKCE, `state`
+    firmado de un solo uso ligado a una cookie del navegador, la cuenta se
+    encuentra por `google_sub` (migración `1775680000000`), se enlaza por email
+    verificado o se crea respetando tipo de cuenta e invitación, y la sesión llega
+    por la misma cookie `bi_refresh` que el login normal. El login ahora muestra
+    los errores `?error=` al volver de Google (antes los ignoraba). El botón solo
+    aparece si el backend tiene `GOOGLE_LOGIN_REDIRECT_URI` configurada.
+    Probado: 10 tests de integración con Google simulado y, en el navegador, la ida
+    a Google, el botón en ambas pantallas, el canje de la sesión y los errores.
+
 ---
 
 ## Pendiente (no se tocó, con motivo)
 
 - **Términos y Aviso de privacidad** son páginas de relleno: necesitan el texto legal
   del negocio (razón social, domicilio, responsable de datos). Bloquea el lanzamiento.
-- **Botón de «Entrar» sin nombre accesible** en `/auth/login`: es la zona de
-  autenticación; se deja para quien lleva ese diseño.
 - **Títulos de pestaña**: todas las herramientas dicen «Dashboard | BI 0 A 100».
 - Los permisos de herramientas de un trabajador valen para toda la cuenta, no por
   producto (los de módulos de análisis sí se acotan a sus productos). Es una

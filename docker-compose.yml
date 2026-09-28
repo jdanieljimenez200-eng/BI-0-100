@@ -82,6 +82,8 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:3001/api/integraciones/google-calendar/callback}
+      # Entrar con Google: sin GOOGLE_CLIENT_ID sigue desactivado aunque tenga valor.
+      GOOGLE_LOGIN_REDIRECT_URI: ${GOOGLE_LOGIN_REDIRECT_URI:-http://localhost:3001/api/auth/google/callback}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       # Blindaje: nunca type-check en runtime dentro del contenedor
       TS_NODE_TRANSPILE_ONLY: "true"
