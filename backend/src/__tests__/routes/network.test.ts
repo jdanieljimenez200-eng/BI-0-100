@@ -5,6 +5,7 @@ import { signupTestUser, TestUser, hacerAdmin, cabeceras, type AdminTestUser } f
 import { AppDataSource } from '../../config/database';
 import { Usuario } from '../../models/Usuario';
 import { Experto } from '../../models/Experto';
+import { Negocio } from '../../models/Negocio';
 
 /**
  * Lo que se prueba aquí no es "que la ruta responda 200": es que las tres
@@ -117,6 +118,37 @@ describeWithDb('Red de expertos (/api/network)', () => {
     it('exige autenticación', async () => {
       const res = await request.default(app).post('/api/network/expertos').send(baseLegal);
       expect(res.status).toBe(401);
+    });
+
+    it('aplica la regla inteligente de cupo (2 fichas base, ampliable por cada negocio)', async () => {
+      const usuario = await signupTestUser();
+      // 1ª ficha: permitida (categoría 'legal')
+      const r1 = await crearFicha(usuario.accessToken, { ...baseLegal, categoria: 'legal' });
+      expect(r1.status).toBe(201);
+
+      // 2ª ficha: permitida (categoría 'marketing')
+      const r2 = await crearFicha(usuario.accessToken, { ...baseLegal, categoria: 'marketing' });
+      expect(r2.status).toBe(201);
+
+      // 3ª ficha: rechazada con 403 (cupo excedido, usuario independiente con 0 negocios)
+      const r3 = await alta(usuario.accessToken, { ...baseLegal, categoria: 'diseno' });
+      expect(r3.status).toBe(403);
+      expect(r3.body.error).toContain('Has alcanzado el límite de 2 perfiles');
+
+      // Se agregan negocios para el usuario en la plataforma
+      const repoNegocio = AppDataSource.getRepository(Negocio);
+      await repoNegocio.save([
+        repoNegocio.create({ usuario_id: usuario.id, nombre: 'Negocio 1' }),
+        repoNegocio.create({ usuario_id: usuario.id, nombre: 'Negocio 2' }),
+        repoNegocio.create({ usuario_id: usuario.id, nombre: 'Negocio 3' }),
+      ]);
+
+      // Con 3 negocios activos, el límite es 3: la 3ª ficha ahora es permitida
+      const r3Permitida = await crearFicha(usuario.accessToken, { ...baseLegal, categoria: 'diseno' });
+      expect(r3Permitida.status).toBe(201);
+
+      // Limpieza de negocios creados
+      await repoNegocio.delete({ usuario_id: usuario.id });
     });
   });
 

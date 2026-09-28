@@ -130,10 +130,12 @@ export default function FormularioFicha({
   ficha,
   alGuardar,
   textoBoton,
+  negociosDisponibles,
 }: {
   ficha?: FichaPropia;
   alGuardar: (datos: DatosFicha, ficheros: FicherosFicha) => Promise<void>;
   textoBoton: string;
+  negociosDisponibles?: { id: string; nombre: string; emoji?: string; descripcion?: string }[];
 }) {
   const [f, setF] = useState<Formulario>(() => aFormulario(ficha));
   const [documento, setDocumento] = useState<File | undefined>();
@@ -207,6 +209,41 @@ export default function FormularioFicha({
 
   return (
     <form onSubmit={enviar} className="space-y-6">
+      {/* ── Selector de Negocio Vinculable de BI 0 A 100 (Opcional) ───────── */}
+      {!ficha && negociosDisponibles && negociosDisponibles.length > 0 && (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 space-y-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+            <span className="text-xs font-sans font-bold text-white/90">
+              ¿Vincular datos desde tus negocios de BI 0 A 100?
+            </span>
+            <span className="text-[11px] font-sans text-zinc-400">
+              Opcional · Autocompleta nombre comercial y descripción
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2 pt-1">
+            {negociosDisponibles.map((n) => (
+              <button
+                key={n.id}
+                type="button"
+                onClick={() => {
+                  setF((prev) => ({
+                    ...prev,
+                    nombre_comercial: n.nombre || prev.nombre_comercial,
+                    nombre_display: n.nombre || prev.nombre_display,
+                    bio_corta: n.descripcion ? n.descripcion.slice(0, 200) : prev.bio_corta,
+                    bio_larga: n.descripcion || prev.bio_larga,
+                  }));
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-xs font-sans text-zinc-200 hover:text-white transition-all cursor-pointer shadow-xs active:scale-95"
+              >
+                <span>{n.emoji || '💼'}</span>
+                <span className="font-semibold">{n.nombre}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Identidad ──────────────────────────────────────────────────── */}
       <fieldset className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
         <legend className="px-2 text-xs font-bold uppercase tracking-widest text-white/40">

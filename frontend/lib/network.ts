@@ -207,9 +207,34 @@ export type DatosFicha = Partial<{
   video_url: string | null;
 }>;
 
-export async function misFichas() {
-  const { data } = await api.get<{ fichas: FichaPropia[] }>('/network/mis-fichas');
-  return data.fichas;
+export interface CupoNet0 {
+  fichas_actuales: number;
+  limite_permitido: number;
+  negocios_activos: number;
+  puede_crear: boolean;
+}
+
+export interface NegocioDisponibleNet0 {
+  id: string;
+  nombre: string;
+  emoji?: string;
+  descripcion?: string;
+}
+
+export interface RespuestaMisFichas {
+  fichas: FichaPropia[];
+  cupo: CupoNet0;
+  negocios_disponibles: NegocioDisponibleNet0[];
+}
+
+export async function misFichas(): Promise<RespuestaMisFichas> {
+  const { data } = await api.get<RespuestaMisFichas>('/network/mis-fichas');
+  return data;
+}
+
+export async function obtenerCupoNet0(): Promise<CupoNet0> {
+  const { data } = await api.get<CupoNet0>('/network/cupo');
+  return data;
 }
 
 export async function crearFicha(datos: DatosFicha) {

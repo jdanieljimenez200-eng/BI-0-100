@@ -6,6 +6,8 @@ import { AppDataSource } from '../config/database';
 import { Experto, CATEGORIAS_EXPERTO } from '../models/Experto';
 import { ResenaExperto } from '../models/ResenaExperto';
 import { Usuario } from '../models/Usuario';
+import { Negocio } from '../models/Negocio';
+import { Producto } from '../models/Producto';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermiso } from '../middleware/requireAdmin';
 import { ah } from '../utils/asyncHandler';
@@ -330,21 +332,101 @@ router.get(
 
 router.use(authenticate);
 
-/** Las fichas propias, en cualquier estado, con el motivo del rechazo si lo hay. */
+/**
+ * Calcula el cupo de perfiles Net0 del usuario según la regla inteligente:
+ * - Base para cuentas independientes (búsqueda o servicio): 2 perfiles.
+ * - Cuentas con negocios validados/analizados con IA: 1 perfil por cada negocio activo (mínimo 2).
+ */
+async function obtenerCupoNet0(usuarioId: string) {
+  const [totalFichas, totalNegocios, totalProductos] = await Promise.all([
+    AppDataSource.getRepository(Experto).count({ where: { usuario_id: usuarioId } }),
+    AppDataSource.getRepository(Negocio).count({ where: { usuario_id: usuarioId } }),
+    AppDataSource.getRepository(Producto).count({ where: { usuario_id: usuarioId } }),
+  ]);
+
+  const negociosActivos = Math.max(totalNegocios, totalProductos);
+  const limitePermitido = Math.max(2, negociosActivos);
+  const puedeCrear = totalFichas < limitePermitido;
+
+  return {
+    fichas_actuales: totalFichas,
+    limite_permitido: limitePermitido,
+    negocios_activos: negociosActivos,
+    puede_crear: puedeCrear,
+  };
+}
+
+/** Consulta rápida del cupo de perfiles disponibles en Net0. */
+router.get(
+  '/cupo',
+  ah(async (req: AuthRequest, res: Response) => {
+    const cupo = await obtenerCupoNet0(req.userId!);
+    res.json(cupo);
+  })
+);
+
+/** Las fichas propias con su cupo disponible y lista de negocios vinculables. */
 router.get(
   '/mis-fichas',
   ah(async (req: AuthRequest, res: Response) => {
-    const fichas = await AppDataSource.getRepository(Experto).find({
-      where: { usuario_id: req.userId! },
-      order: { fecha_creacion: 'DESC' },
+    const usuarioId = req.userId!;
+    const [fichas, totalNegocios, totalProductos, negociosEntidades] = await Promise.all([
+      AppDataSource.getRepository(Experto).find({
+        where: { usuario_id: usuarioId },
+        order: { fecha_creacion: 'DESC' },
+      }),
+      AppDataSource.getRepository(Negocio).count({ where: { usuario_id: usuarioId } }),
+      AppDataSource.getRepository(Producto).count({ where: { usuario_id: usuarioId } }),
+      AppDataSource.getRepository(Negocio).find({
+        where: { usuario_id: usuarioId },
+        select: ['id', 'nombre', 'emoji', 'descripcion'],
+        order: { fecha_creacion: 'ASC' },
+      }),
+    ]);
+
+    const negociosActivos = Math.max(totalNegocios, totalProductos);
+    const limitePermitido = Math.max(2, negociosActivos);
+    const fichasCount = fichas.length;
+    const puedeCrear = fichasCount < limitePermitido;
+
+    let negociosDisponibles = negociosEntidades.map((n) => ({
+      id: n.id,
+      nombre: n.nombre,
+      emoji: n.emoji || '💼',
+      descripcion: n.descripcion || '',
+    }));
+
+    if (negociosDisponibles.length === 0 && totalProductos > 0) {
+      const productos = await AppDataSource.getRepository(Producto).find({
+        where: { usuario_id: usuarioId },
+        select: ['id', 'nombre', 'descripcion'],
+        take: 20,
+        order: { fecha_creacion: 'ASC' },
+      });
+      negociosDisponibles = productos.map((p) => ({
+        id: p.id,
+        nombre: p.nombre,
+        emoji: '🚀',
+        descripcion: p.descripcion || '',
+      }));
+    }
+
+    res.json({
+      fichas: fichas.map(sinClaveDocumento),
+      cupo: {
+        fichas_actuales: fichasCount,
+        limite_permitido: limitePermitido,
+        negocios_activos: negociosActivos,
+        puede_crear: puedeCrear,
+      },
+      negocios_disponibles: negociosDisponibles,
     });
-    res.json({ fichas: fichas.map(sinClaveDocumento) });
   })
 );
 
 /**
- * Alta. Entra siempre como `pendiente` y sin verificar, pase lo que pase en el
- * cuerpo de la petición: esos dos campos ni se leen de aquí.
+ * Alta. Entra siempre como `pendiente` y sin verificar.
+ * Valida el cupo de perfiles permitidos y unicidad por categoría.
  */
 router.post(
   '/expertos',
@@ -355,6 +437,22 @@ router.post(
     }
 
     const repo = AppDataSource.getRepository(Experto);
+
+    // ─── Control de cupo inteligente y anti-fraude ──────────────────────────────
+    // 2 perfiles base para independientes.
+    // 1 perfil por cada negocio activo analizado en BI 0 A 100 (mínimo 2).
+    const cupo = await obtenerCupoNet0(req.userId!);
+    if (!cupo.puede_crear) {
+      return res.status(403).json({
+        error: `Has alcanzado el límite de ${cupo.limite_permitido} perfil${cupo.limite_permitido > 1 ? 'es' : ''} en Net0. ${
+          cupo.negocios_activos === 0
+            ? 'Las cuentas independientes tienen un cupo base de 2 perfiles. Registra y analiza tus negocios con IA en BI 0 A 100 para desbloquear 1 perfil adicional por cada negocio.'
+            : 'Para crear un perfil adicional en Net0, registra y valida un nuevo negocio en la plataforma.'
+        }`,
+        cupo,
+      });
+    }
+
     const yaTiene = await repo.findOne({
       where: { usuario_id: req.userId!, categoria: parsed.data.categoria },
     });

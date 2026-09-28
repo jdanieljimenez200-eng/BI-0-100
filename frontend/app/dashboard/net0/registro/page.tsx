@@ -6,7 +6,16 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { Sparkles, Check, ArrowLeft, ShieldCheck } from 'lucide-react';
 import FormularioFicha, { type FicherosFicha } from '@/components/network/FormularioFicha';
 import EditorContenido from '@/components/network/EditorContenido';
-import { crearFicha, subirAvatar, subirDocumento, type DatosFicha, type FichaPropia } from '@/lib/network';
+import {
+  crearFicha,
+  subirAvatar,
+  subirDocumento,
+  misFichas,
+  type DatosFicha,
+  type FichaPropia,
+  type CupoNet0,
+  type NegocioDisponibleNet0,
+} from '@/lib/network';
 import { useHaySesion } from '@/lib/useSesion';
 import { ENTRADA_SEGURA, MOTION_SPRINGS } from '@/lib/motion/tokens';
 
@@ -19,10 +28,29 @@ export default function RegistroNet0Page() {
   const [ficha, setFicha] = useState<FichaPropia | null>(null);
   const [fallos, setFallos] = useState<string[]>([]);
   const [bienvenida, setBienvenida] = useState(false);
+  const [cupo, setCupo] = useState<CupoNet0 | null>(null);
+  const [negociosDisponibles, setNegociosDisponibles] = useState<NegocioDisponibleNet0[]>([]);
+  const [cargandoCupo, setCargandoCupo] = useState(true);
 
   useEffect(() => {
     setBienvenida(new URLSearchParams(window.location.search).get('bienvenida') === '1');
   }, []);
+
+  useEffect(() => {
+    if (!haySesion) {
+      setCargandoCupo(false);
+      return;
+    }
+    misFichas()
+      .then((res) => {
+        if ('cupo' in res && res.cupo) {
+          setCupo(res.cupo);
+          setNegociosDisponibles(res.negocios_disponibles || []);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setCargandoCupo(false));
+  }, [haySesion]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -129,12 +157,58 @@ export default function RegistroNet0Page() {
               </Link>
             </div>
           </div>
+        ) : cupo && !cupo.puede_crear ? (
+          <div className="rounded-2xl border border-white/10 bg-[#090E17]/80 backdrop-blur-xl p-8 sm:p-10 text-center space-y-5 max-w-xl mx-auto">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto text-amber-400">
+              <ShieldCheck className="w-7 h-7" />
+            </div>
+            <div className="space-y-2">
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-sans font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                Límite de perfiles alcanzado ({cupo.fichas_actuales} de {cupo.limite_permitido})
+              </span>
+              <h3 className="text-xl sm:text-2xl font-sans font-extrabold text-white">
+                Has alcanzado el límite de perfiles en Net0
+              </h3>
+              <p className="text-zinc-400 text-xs sm:text-sm font-sans leading-relaxed">
+                {cupo.negocios_activos === 0
+                  ? 'Las cuentas independientes cuentan con 2 perfiles base para ofrecer o contratar servicios. Si operas múltiples empresas, marcas o proyectos, crea y valida tus negocios con IA en BI 0 A 100 para desbloquear 1 perfil profesional por cada negocio activo.'
+                  : `Tienes ${cupo.fichas_actuales} perfiles para tus ${cupo.negocios_activos} negocios registrados. Para habilitar un perfil adicional en el directorio Net0, crea y analiza un nuevo negocio con IA en la plataforma.`}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-3">
+              <Link
+                href="/dashboard/nuevo"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-[#070E17] font-sans font-bold text-xs sm:text-sm hover:bg-slate-100 transition-all shadow-sm"
+              >
+                <Sparkles className="w-4 h-4 text-[#070E17]" />
+                <span>Validar un nuevo negocio con IA</span>
+              </Link>
+              <Link
+                href="/dashboard/net0/mis-fichas"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-white/15 text-white/80 font-sans font-semibold text-xs sm:text-sm hover:bg-white/5 transition-all"
+              >
+                <span>Gestionar mis perfiles actuales</span>
+              </Link>
+            </div>
+          </div>
         ) : paso === 0 ? (
           <div className="space-y-6">
-            <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 text-xs font-sans text-zinc-400 leading-relaxed">
-              Tu perfil pasa por una revisión para asegurar la calidad de la red Net0. La insignia de verificación comprobada se otorga al validar tus acreditaciones; salir destacado es opcional mediante impulsos territoriales.
+            <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-sans text-zinc-400 leading-relaxed">
+              <span>
+                Tu perfil pasa por una revisión para asegurar la calidad de la red Net0. La insignia de verificación comprobada se otorga al validar tus acreditaciones; salir destacado es opcional mediante impulsos territoriales.
+              </span>
+              {cupo && (
+                <span className="shrink-0 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-zinc-300 font-medium">
+                  Perfil {cupo.fichas_actuales + 1} de {cupo.limite_permitido} disponibles
+                </span>
+              )}
             </div>
-            <FormularioFicha alGuardar={guardar} textoBoton="Guardar y seguir a fotos" />
+            <FormularioFicha
+              alGuardar={guardar}
+              textoBoton="Guardar y seguir a fotos"
+              negociosDisponibles={negociosDisponibles}
+            />
           </div>
         ) : paso === 1 && ficha ? (
           <div className="space-y-6">

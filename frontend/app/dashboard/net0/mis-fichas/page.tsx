@@ -26,6 +26,8 @@ import {
   type FichaPropia,
   type Impulso,
   type Patrocinio,
+  type CupoNet0,
+  type NegocioDisponibleNet0,
 } from '@/lib/network';
 import { ENTRADA_SEGURA, MOTION_SPRINGS } from '@/lib/motion/tokens';
 
@@ -66,6 +68,8 @@ function MisFichasContent() {
   const params = useSearchParams();
   const shouldReduce = useReducedMotion();
   const [fichas, setFichas] = useState<FichaPropia[] | null>(null);
+  const [cupo, setCupo] = useState<CupoNet0 | null>(null);
+  const [negociosDisponibles, setNegociosDisponibles] = useState<NegocioDisponibleNet0[]>([]);
   const [patrocinios, setPatrocinios] = useState<Patrocinio[]>([]);
   const [impulsos, setImpulsos] = useState<Impulso[]>([]);
   const [abierta, setAbierta] = useState<string | null>(null);
@@ -76,8 +80,13 @@ function MisFichasContent() {
 
   const cargar = useCallback(async () => {
     try {
-      const [f, p, i] = await Promise.all([misFichas(), misPatrocinios(), misImpulsos()]);
+      const [resFichas, p, i] = await Promise.all([misFichas(), misPatrocinios(), misImpulsos()]);
+      const f = Array.isArray(resFichas) ? resFichas : resFichas.fichas;
       setFichas(f);
+      if ('cupo' in resFichas && resFichas.cupo) {
+        setCupo(resFichas.cupo);
+        setNegociosDisponibles(resFichas.negocios_disponibles || []);
+      }
       setPatrocinios(p);
       setImpulsos(i);
       if (f.length === 1) setAbierta((actual) => actual ?? f[0].id);
@@ -201,14 +210,76 @@ function MisFichasContent() {
             </p>
           </div>
 
-          <Link
-            href="/dashboard/net0/registro"
-            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl text-xs sm:text-sm font-sans font-semibold text-[#070E17] bg-white hover:bg-slate-100 transition-all shadow-sm"
-          >
-            <Plus className="w-4 h-4 text-[#070E17]" />
-            <span>Crear otro perfil</span>
-          </Link>
+          {cupo && !cupo.puede_crear ? (
+            <Link
+              href="/dashboard/nuevo"
+              className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl text-xs sm:text-sm font-sans font-semibold text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 transition-all shadow-sm"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Desbloquear más perfiles</span>
+            </Link>
+          ) : (
+            <Link
+              href="/dashboard/net0/registro"
+              className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl text-xs sm:text-sm font-sans font-semibold text-[#070E17] bg-white hover:bg-slate-100 transition-all shadow-sm"
+            >
+              <Plus className="w-4 h-4 text-[#070E17]" />
+              <span>Crear otro perfil</span>
+            </Link>
+          )}
         </div>
+
+        {/* ── Banner Inteligente de Cupo y Anti-Fraude ── */}
+        {cupo && (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 backdrop-blur-md">
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-sans font-bold uppercase tracking-wider text-white/90">
+                  Cupo Net0
+                </span>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-sans font-semibold bg-white/10 text-white/90 border border-white/10">
+                  {cupo.fichas_actuales} de {cupo.limite_permitido} perfiles utilizados
+                </span>
+                {cupo.negocios_activos > 0 ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-sans font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <ShieldCheck className="w-3 h-3" />
+                    {cupo.negocios_activos} {cupo.negocios_activos === 1 ? 'negocio activo' : 'negocios activos'} en plataforma
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-sans font-medium bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                    Cuenta independiente (2 perfiles base)
+                  </span>
+                )}
+              </div>
+
+              <p className="text-xs font-sans text-zinc-400 leading-relaxed max-w-2xl">
+                {cupo.negocios_activos > 0
+                  ? `Tu cuenta dispone de 1 perfil en Net0 por cada negocio que analices y valides en BI 0 A 100 (con un mínimo base de 2 perfiles).`
+                  : `Cuentas con 2 perfiles base para ofrecer o contratar servicios. Si operas marcas o proyectos adicionales, analízalos con IA en BI 0 A 100 para desbloquear 1 perfil extra por cada negocio.`}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0">
+              {cupo.puede_crear ? (
+                <Link
+                  href="/dashboard/net0/registro"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-sans font-semibold text-[#070E17] bg-white hover:bg-slate-100 transition-all shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5 text-[#070E17]" />
+                  <span>Crear perfil</span>
+                </Link>
+              ) : (
+                <Link
+                  href="/dashboard/nuevo"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-sans font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 transition-all shadow-sm"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Validar nuevo negocio</span>
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
 
         {aviso && (
           <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] p-4 text-xs font-sans text-emerald-300">

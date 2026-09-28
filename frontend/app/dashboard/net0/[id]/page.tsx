@@ -336,14 +336,14 @@ export default function FichaNet0DetailPage() {
                 {ficha.servicios.map((s) => (
                   <div key={s.id} className="py-3.5 first:pt-0 last:pb-0 flex items-start justify-between gap-4">
                     <div>
-                      <h3 className="text-white text-xs sm:text-sm font-sans font-semibold">{s.titulo}</h3>
+                      <h3 className="text-white text-xs sm:text-sm font-sans font-semibold">{s.nombre}</h3>
                       {s.descripcion && (
                         <p className="text-zinc-400 text-xs font-sans mt-0.5 leading-relaxed">{s.descripcion}</p>
                       )}
                     </div>
-                    {s.precio && (
+                    {s.precio_desde !== null && s.precio_desde !== undefined && (
                       <span className="text-xs font-sans font-bold text-white whitespace-nowrap bg-white/[0.04] px-2.5 py-1 rounded-lg border border-white/[0.08]">
-                        {pesosMx(s.precio)}
+                        {pesosMx(s.precio_desde)}
                       </span>
                     )}
                   </div>
@@ -363,8 +363,8 @@ export default function FichaNet0DetailPage() {
                 {resenas.map((r) => (
                   <div key={r.id} className="pt-3.5 first:pt-0 space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-white font-sans font-semibold">{r.autor_nombre}</span>
-                      <Estrellas valor={r.rating} />
+                      <span className="text-white font-sans font-semibold">{r.autor}</span>
+                      <Estrellas valor={r.puntuacion} />
                     </div>
                     <p className="text-zinc-300 text-xs sm:text-sm font-sans leading-relaxed">{r.comentario}</p>
                   </div>
@@ -375,7 +375,11 @@ export default function FichaNet0DetailPage() {
             )}
 
             <div className="pt-4 border-t border-white/[0.06]">
-              <FormularioResena expertoId={ficha.id} alPublicar={cargar} />
+              <FormularioResena
+                expertoId={ficha.id}
+                miResena={resenas.find((r) => r.es_mia) ?? null}
+                alGuardar={cargar}
+              />
             </div>
           </div>
         </div>
