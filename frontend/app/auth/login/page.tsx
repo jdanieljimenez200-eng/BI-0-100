@@ -11,6 +11,7 @@ import PasswordStrength from '@/components/auth/PasswordStrength';
 import AuthMountain from '@/components/auth/AuthMountain';
 import BotonGoogle, { ERRORES_GOOGLE } from '@/components/auth/BotonGoogle';
 import { validateEmail, getPasswordStrength, getEmailError } from '@/components/auth/AuthValidation';
+import { destinoSeguro } from '@/lib/rutaSegura';
 import { ENTRADA_SEGURA, MOTION_DURATIONS, MOTION_EASINGS, MOTION_SPRINGS } from '@/lib/motion/tokens';
 
 const VALUE_PROPOSITIONS = [
@@ -74,7 +75,9 @@ export default function LoginPage() {
         })
       );
 
-      const destino = user.tipo_cuenta === 'experto' ? '/dashboard/net0/mis-fichas' : '/dashboard';
+      const next = new URLSearchParams(window.location.search).get('next');
+      const porDefecto = user.tipo_cuenta === 'experto' ? '/net0/mis-fichas' : '/dashboard';
+      const destino = destinoSeguro(next, porDefecto);
       router.push(destino);
     } catch (err: unknown) {
       const errorMsg =

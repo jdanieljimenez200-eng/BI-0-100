@@ -23,6 +23,7 @@ import PasswordStrength from '@/components/auth/PasswordStrength';
 import AuthBackground from '@/components/auth/AuthBackground';
 import BotonGoogle, { ERRORES_GOOGLE } from '@/components/auth/BotonGoogle';
 import { validateEmail, getPasswordStrength, getEmailError, getPasswordError } from '@/components/auth/AuthValidation';
+import { destinoSeguro } from '@/lib/rutaSegura';
 import { ENTRADA_SEGURA, MOTION_DURATIONS, MOTION_EASINGS } from '@/lib/motion/tokens';
 
 const PROGRAM_AREAS = [
@@ -173,8 +174,10 @@ export default function SignupPage() {
       }
       localStorage.removeItem('refreshToken');
 
-      const destino =
-        data.user?.tipo_cuenta === 'experto' ? '/dashboard/net0/registro?bienvenida=1' : '/dashboard';
+      const next = new URLSearchParams(window.location.search).get('next');
+      const porDefecto =
+        data.user?.tipo_cuenta === 'experto' ? '/net0/registro?bienvenida=1' : '/dashboard';
+      const destino = destinoSeguro(next, porDefecto);
       router.push(destino);
     } catch (err: unknown) {
       const errorInfo = interpretarErrorApi(err, 'Error al crear la cuenta.');

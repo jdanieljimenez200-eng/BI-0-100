@@ -193,7 +193,7 @@ function MisFichasContent() {
       {/* ── Encabezado y Regreso ── */}
       <div className="space-y-3">
         <Link
-          href="/dashboard/net0"
+          href="/net0"
           className="inline-flex items-center gap-2 text-xs font-sans font-medium text-zinc-400 hover:text-white transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
@@ -220,7 +220,7 @@ function MisFichasContent() {
             </Link>
           ) : (
             <Link
-              href="/dashboard/net0/registro"
+              href="/net0/registro"
               className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl text-xs sm:text-sm font-sans font-semibold text-[#070E17] bg-white hover:bg-slate-100 transition-all shadow-sm"
             >
               <Plus className="w-4 h-4 text-[#070E17]" />
@@ -262,7 +262,7 @@ function MisFichasContent() {
             <div className="flex items-center gap-3 shrink-0">
               {cupo.puede_crear ? (
                 <Link
-                  href="/dashboard/net0/registro"
+                  href="/net0/registro"
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-sans font-semibold text-[#070E17] bg-white hover:bg-slate-100 transition-all shadow-sm"
                 >
                   <Plus className="w-3.5 h-3.5 text-[#070E17]" />
@@ -300,7 +300,7 @@ function MisFichasContent() {
           <div className="rounded-2xl border border-white/10 bg-[#090E17]/80 backdrop-blur-xl p-8 text-center space-y-3">
             <p className="text-white font-sans font-bold">Inicia sesión para gestionar tus perfiles</p>
             <Link
-              href="/auth/login"
+              href="/auth/login?next=/net0/mis-fichas"
               className="inline-block mt-2 px-5 py-2 rounded-xl bg-white text-[#070E17] font-sans font-bold text-xs"
             >
               Iniciar sesión
@@ -317,7 +317,7 @@ function MisFichasContent() {
               Registra tu especialidad u oficio para figurar en el directorio Net0 y comenzar a recibir solicitudes directas de los negocios de la plataforma.
             </p>
             <Link
-              href="/dashboard/net0/registro"
+              href="/net0/registro"
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-[#070E17] font-sans font-bold text-xs sm:text-sm hover:bg-slate-100 transition-all shadow-sm"
             >
               <Plus className="w-4 h-4" />
@@ -389,7 +389,7 @@ function MisFichasContent() {
                   <div className="flex flex-wrap items-center gap-2">
                     {ficha.estado === 'aprobado' && (
                       <Link
-                        href={`/dashboard/net0/${ficha.id}`}
+                        href={`/net0/${ficha.id}`}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/15 bg-white/[0.04] text-white/80 hover:text-white text-xs font-sans font-medium transition-colors"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />

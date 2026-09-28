@@ -94,7 +94,7 @@ export default function ModeracionImpulsos() {
               {impulsos.map((i) => (
                 <tr key={i.id} className="text-white/70">
                   <td className="p-3">
-                    <Link href={`/network/${i.experto_id}`} className="font-bold text-white hover:underline">
+                    <Link href={`/net0/${i.experto_id}`} className="font-bold text-white hover:underline">
                       {i.nombre_comercial}
                     </Link>
                     <span className="block text-white/35">{NOMBRE_CATEGORIA[i.categoria]}</span>

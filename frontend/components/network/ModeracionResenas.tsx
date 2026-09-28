@@ -145,7 +145,7 @@ export default function ModeracionResenas() {
                       </div>
                       <span className="text-white/30 text-xs">sobre</span>
                       <Link
-                        href={`/network/${r.experto_id}`}
+                        href={`/net0/${r.experto_id}`}
                         target="_blank"
                         className="text-white/80 text-sm font-semibold hover:text-white inline-flex items-center gap-1"
                       >

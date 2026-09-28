@@ -178,7 +178,7 @@ export default function AdminNetworkPage() {
                 </div>
                 {ficha.estado === 'aprobado' && (
                   <Link
-                    href={`/network/${ficha.id}`}
+                    href={`/net0/${ficha.id}`}
                     target="_blank"
                     className="px-3 py-1.5 rounded-lg border border-white/15 text-white/70 text-xs font-bold hover:bg-white/5"
                   >

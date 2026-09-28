@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { Loader2 } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/config';
+import { destinoSeguro } from '@/lib/rutaSegura';
 
 /**
  * Vuelta de Google. El backend ya dejó la sesión en la cookie HttpOnly del
@@ -36,8 +37,15 @@ export default function VueltaDeGoogle() {
           'usuario',
           JSON.stringify({ ...user, nombre: user.name ?? user.nombre ?? '', name: user.name ?? user.nombre ?? '' })
         );
-        const destino =
-          user.tipo_cuenta === 'experto' ? (nuevo ? '/dashboard/net0/registro?bienvenida=1' : '/dashboard/net0/mis-fichas') : '/dashboard';
+        const guardadoNext = sessionStorage.getItem('bi_next');
+        sessionStorage.removeItem('bi_next');
+        const porDefecto =
+          user.tipo_cuenta === 'experto'
+            ? nuevo
+              ? '/net0/registro?bienvenida=1'
+              : '/net0/mis-fichas'
+            : '/dashboard';
+        const destino = destinoSeguro(guardadoNext, porDefecto);
         router.replace(destino);
       } catch {
         router.replace('/auth/login?error=google_failed');

@@ -1,4 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
+import { EntityManager, IsNull } from 'typeorm';
 import { exigirUuid } from '../middleware/validate';
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
@@ -12,6 +13,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermiso } from '../middleware/requireAdmin';
 import { ah } from '../utils/asyncHandler';
 import { filasSql } from '../utils/filasSql';
+import { urlApp } from '../utils/urlApp';
 import * as expertosService from '../services/network/expertosService';
 import * as resenasService from '../services/network/resenasService';
 import * as patrociniosService from '../services/network/patrociniosService';
@@ -337,21 +339,47 @@ router.use(authenticate);
  * - Base para cuentas independientes (búsqueda o servicio): 2 perfiles.
  * - Cuentas con negocios validados/analizados con IA: 1 perfil por cada negocio activo (mínimo 2).
  */
-async function obtenerCupoNet0(usuarioId: string) {
-  const [totalFichas, totalNegocios, totalProductos] = await Promise.all([
-    AppDataSource.getRepository(Experto).count({ where: { usuario_id: usuarioId } }),
-    AppDataSource.getRepository(Negocio).count({ where: { usuario_id: usuarioId } }),
-    AppDataSource.getRepository(Producto).count({ where: { usuario_id: usuarioId } }),
+export async function obtenerCupoNet0(
+  usuarioId: string,
+  manager: EntityManager = AppDataSource.manager
+) {
+  const [resNegocios, resFichas] = await Promise.all([
+    manager.query(
+      `
+      SELECT COUNT(DISTINCT p.id)::int AS total
+      FROM productos p
+      WHERE p.usuario_id = $1
+        AND (
+          EXISTS (SELECT 1 FROM analisis_mercado WHERE producto_id = p.id AND estado_analisis = 'completado' AND resultado_estimado = false)
+          OR EXISTS (SELECT 1 FROM analisis_marketing WHERE producto_id = p.id AND estado_analisis = 'completado' AND resultado_estimado = false)
+          OR EXISTS (SELECT 1 FROM analisis_finanzas WHERE producto_id = p.id AND estado_analisis = 'completado' AND resultado_estimado = false)
+          OR EXISTS (SELECT 1 FROM analisis_legal WHERE producto_id = p.id AND estado_analisis = 'completado' AND resultado_estimado = false)
+          OR EXISTS (SELECT 1 FROM analisis_ventas WHERE producto_id = p.id AND estado_analisis = 'completado' AND resultado_estimado = false)
+          OR EXISTS (SELECT 1 FROM analisis_brief WHERE producto_id = p.id AND estado_analisis = 'completado' AND resultado_estimado = false)
+        )
+      `,
+      [usuarioId]
+    ),
+    manager.query(
+      `
+      SELECT COUNT(*)::int AS total
+      FROM expertos
+      WHERE usuario_id = $1
+        AND eliminado_en IS NULL
+      `,
+      [usuarioId]
+    ),
   ]);
 
-  const negociosActivos = Math.max(totalNegocios, totalProductos);
-  const limitePermitido = Math.max(2, negociosActivos);
-  const puedeCrear = totalFichas < limitePermitido;
+  const totalAnalizados = Number(resNegocios?.[0]?.total ?? 0);
+  const fichasActuales = Number(resFichas?.[0]?.total ?? 0);
+  const limitePermitido = Math.max(2, totalAnalizados);
+  const puedeCrear = fichasActuales < limitePermitido;
 
   return {
-    fichas_actuales: totalFichas,
+    fichas_actuales: fichasActuales,
     limite_permitido: limitePermitido,
-    negocios_activos: negociosActivos,
+    negocios_activos: totalAnalizados,
     puede_crear: puedeCrear,
   };
 }
@@ -370,24 +398,24 @@ router.get(
   '/mis-fichas',
   ah(async (req: AuthRequest, res: Response) => {
     const usuarioId = req.userId!;
-    const [fichas, totalNegocios, totalProductos, negociosEntidades] = await Promise.all([
+    const [fichas, cupo, negociosEntidades, productos] = await Promise.all([
       AppDataSource.getRepository(Experto).find({
-        where: { usuario_id: usuarioId },
+        where: { usuario_id: usuarioId, eliminado_en: IsNull() },
         order: { fecha_creacion: 'DESC' },
       }),
-      AppDataSource.getRepository(Negocio).count({ where: { usuario_id: usuarioId } }),
-      AppDataSource.getRepository(Producto).count({ where: { usuario_id: usuarioId } }),
+      obtenerCupoNet0(usuarioId),
       AppDataSource.getRepository(Negocio).find({
         where: { usuario_id: usuarioId },
         select: ['id', 'nombre', 'emoji', 'descripcion'],
         order: { fecha_creacion: 'ASC' },
       }),
+      AppDataSource.getRepository(Producto).find({
+        where: { usuario_id: usuarioId },
+        select: ['id', 'nombre', 'descripcion'],
+        take: 20,
+        order: { fecha_creacion: 'ASC' },
+      }),
     ]);
-
-    const negociosActivos = Math.max(totalNegocios, totalProductos);
-    const limitePermitido = Math.max(2, negociosActivos);
-    const fichasCount = fichas.length;
-    const puedeCrear = fichasCount < limitePermitido;
 
     let negociosDisponibles = negociosEntidades.map((n) => ({
       id: n.id,
@@ -396,13 +424,7 @@ router.get(
       descripcion: n.descripcion || '',
     }));
 
-    if (negociosDisponibles.length === 0 && totalProductos > 0) {
-      const productos = await AppDataSource.getRepository(Producto).find({
-        where: { usuario_id: usuarioId },
-        select: ['id', 'nombre', 'descripcion'],
-        take: 20,
-        order: { fecha_creacion: 'ASC' },
-      });
+    if (negociosDisponibles.length === 0 && productos.length > 0) {
       negociosDisponibles = productos.map((p) => ({
         id: p.id,
         nombre: p.nombre,
@@ -413,12 +435,7 @@ router.get(
 
     res.json({
       fichas: fichas.map(sinClaveDocumento),
-      cupo: {
-        fichas_actuales: fichasCount,
-        limite_permitido: limitePermitido,
-        negocios_activos: negociosActivos,
-        puede_crear: puedeCrear,
-      },
+      cupo,
       negocios_disponibles: negociosDisponibles,
     });
   })
@@ -436,52 +453,53 @@ router.post(
       return res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
     }
 
-    const repo = AppDataSource.getRepository(Experto);
+    return await AppDataSource.transaction(async (manager) => {
+      // Cerrojo consultivo de transacción por usuario para evitar condiciones de carrera en altas simultáneas
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['net0:cupo:' + req.userId]);
 
-    // ─── Control de cupo inteligente y anti-fraude ──────────────────────────────
-    // 2 perfiles base para independientes.
-    // 1 perfil por cada negocio activo analizado en BI 0 A 100 (mínimo 2).
-    const cupo = await obtenerCupoNet0(req.userId!);
-    if (!cupo.puede_crear) {
-      return res.status(403).json({
-        error: `Has alcanzado el límite de ${cupo.limite_permitido} perfil${cupo.limite_permitido > 1 ? 'es' : ''} en Net0. ${
-          cupo.negocios_activos === 0
-            ? 'Las cuentas independientes tienen un cupo base de 2 perfiles. Registra y analiza tus negocios con IA en BI 0 A 100 para desbloquear 1 perfil adicional por cada negocio.'
-            : 'Para crear un perfil adicional en Net0, registra y valida un nuevo negocio en la plataforma.'
-        }`,
-        cupo,
-      });
-    }
-
-    const yaTiene = await repo.findOne({
-      where: { usuario_id: req.userId!, categoria: parsed.data.categoria },
-    });
-    if (yaTiene) {
-      return res.status(409).json({
-        error: 'Ya tienes una ficha en esta categoría. Edítala en vez de crear otra.',
-        experto_id: yaTiene.id,
-      });
-    }
-
-    try {
-      const experto = await repo.save(
-        repo.create({
-          ...parsed.data,
-          usuario_id: req.userId!,
-          estado: 'pendiente',
-          verificado: false,
-          rating_promedio: 0,
-          total_resenas: 0,
-        })
-      );
-      res.status(201).json({ experto: sinClaveDocumento(experto), mensaje: 'Ficha enviada a revisión' });
-    } catch (e) {
-      // El índice único es la red de seguridad ante dos altas simultáneas.
-      if ((e as { code?: string }).code === '23505') {
-        return res.status(409).json({ error: 'Ya tienes una ficha en esta categoría.' });
+      const cupo = await obtenerCupoNet0(req.userId!, manager);
+      if (!cupo.puede_crear) {
+        return res.status(403).json({
+          error: `Has alcanzado el límite de ${cupo.limite_permitido} perfil${cupo.limite_permitido > 1 ? 'es' : ''} en Net0. ${
+            cupo.negocios_activos === 0
+              ? 'Las cuentas independientes tienen un cupo base de 2 perfiles. Registra y analiza tus negocios con IA en BI 0 A 100 para desbloquear 1 perfil adicional por cada negocio.'
+              : 'Para crear un perfil adicional en Net0, registra y valida un nuevo negocio con análisis de IA en la plataforma.'
+          }`,
+          cupo,
+        });
       }
-      throw e;
-    }
+
+      const repo = manager.getRepository(Experto);
+      const yaTiene = await repo.findOne({
+        where: { usuario_id: req.userId!, categoria: parsed.data.categoria, eliminado_en: IsNull() },
+      });
+      if (yaTiene) {
+        return res.status(409).json({
+          error: 'Ya tienes una ficha en esta categoría. Edítala en vez de crear otra.',
+          experto_id: yaTiene.id,
+        });
+      }
+
+      try {
+        const experto = await repo.save(
+          repo.create({
+            ...parsed.data,
+            usuario_id: req.userId!,
+            estado: 'pendiente',
+            verificado: false,
+            rating_promedio: 0,
+            total_resenas: 0,
+          })
+        );
+        return res.status(201).json({ experto: sinClaveDocumento(experto), mensaje: 'Ficha enviada a revisión' });
+      } catch (e) {
+        // El índice único es la red de seguridad ante dos altas simultáneas.
+        if ((e as { code?: string }).code === '23505') {
+          return res.status(409).json({ error: 'Ya tienes una ficha en esta categoría.' });
+        }
+        throw e;
+      }
+    });
   })
 );
 
@@ -1063,13 +1081,12 @@ router.post(
       });
     }
 
-    const base = process.env.FRONTEND_URL ?? 'http://localhost:3000';
     const url = await createSponsorshipCheckoutSession({
       customerId,
       expertoId: experto.id,
       categoria: categoriaPatrocinio,
-      successUrl: `${base}/network/mis-fichas?patrocinio=ok`,
-      cancelUrl: `${base}/network/mis-fichas?patrocinio=cancelado`,
+      successUrl: `${urlApp()}/net0/mis-fichas?patrocinio=ok`,
+      cancelUrl: `${urlApp()}/net0/mis-fichas?patrocinio=cancelado`,
     });
 
     res.json({ url });
@@ -1173,14 +1190,13 @@ router.post(
         await AppDataSource.getRepository(Usuario).update(usuario.id, { stripe_customer_id: customerId });
       }
       const lugar = d.alcance === 'nacional' ? 'todo el país' : d.ciudad!.trim();
-      const base = process.env.FRONTEND_URL ?? 'http://localhost:3000';
       const sesion = await createImpulsoCheckoutSession({
         customerId,
         impulsoId: reserva.impulsoId,
         montoMxn: reserva.monto,
         descripcion: `Impulso de ${d.dias} días en ${lugar} — ${experto.nombre_comercial}`.slice(0, 250),
-        successUrl: `${base}/network/mis-fichas?impulso=ok`,
-        cancelUrl: `${base}/network/mis-fichas?impulso=cancelado`,
+        successUrl: `${urlApp()}/net0/mis-fichas?impulso=ok`,
+        cancelUrl: `${urlApp()}/net0/mis-fichas?impulso=cancelado`,
       });
       await impulsos.guardarSesion(reserva.impulsoId, sesion.id);
       res.json({ url: sesion.url, impulso_id: reserva.impulsoId, monto_mxn: reserva.monto });

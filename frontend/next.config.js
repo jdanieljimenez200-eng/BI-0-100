@@ -12,24 +12,24 @@ const nextConfig = {
   async redirects() {
     return [
       {
+        source: '/dashboard/net0',
+        destination: '/net0',
+        permanent: true,
+      },
+      {
+        source: '/dashboard/net0/:path*',
+        destination: '/net0/:path*',
+        permanent: true,
+      },
+      {
         source: '/network',
-        destination: '/dashboard/net0',
-        permanent: false,
+        destination: '/net0',
+        permanent: true,
       },
       {
         source: '/network/:path*',
-        destination: '/dashboard/net0/:path*',
-        permanent: false,
-      },
-      {
-        source: '/net0',
-        destination: '/dashboard/net0',
-        permanent: false,
-      },
-      {
-        source: '/net0/:path*',
-        destination: '/dashboard/net0/:path*',
-        permanent: false,
+        destination: '/net0/:path*',
+        permanent: true,
       },
     ];
   },

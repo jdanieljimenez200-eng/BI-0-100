@@ -1,4 +1,5 @@
 import { logger } from '../../utils/logger';
+import { urlApp } from '../../utils/urlApp';
 import { AppDataSource } from '../../config/database';
 import { Usuario } from '../../models/Usuario';
 import nodemailer, { Transporter } from 'nodemailer';
@@ -216,9 +217,8 @@ export const notificarRevisionFicha = async (params: {
   motivo?: string | null;
   expertoId: string;
 }): Promise<boolean> => {
-  const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const ficha = `${base}/network/${params.expertoId}`;
-  const misFichas = `${base}/network/mis-fichas`;
+  const ficha = `${urlApp()}/net0/${params.expertoId}`;
+  const misFichas = `${urlApp()}/net0/mis-fichas`;
 
   let asunto: string;
   let cuerpo: string;

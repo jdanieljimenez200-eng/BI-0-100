@@ -95,7 +95,8 @@ function limpiarSesionYRedirigir() {
   // Evita un loop de redirect si la petición que falló ocurrió en una página
   // pública o en la propia pantalla de login.
   if (window.location.pathname !== '/auth/login') {
-    window.location.href = '/auth/login';
+    const destino = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.href = `/auth/login?next=${destino}`;
   }
 }
 

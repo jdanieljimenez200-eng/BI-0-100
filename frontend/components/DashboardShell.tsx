@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronsLeft,
   CreditCard,
+  ExternalLink,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -135,6 +136,7 @@ function SidebarLink({
   collapsed,
   onNavigate,
   badge,
+  externo,
 }: {
   href: string;
   label: string;
@@ -143,19 +145,12 @@ function SidebarLink({
   collapsed: boolean;
   onNavigate: () => void;
   badge?: string;
+  externo?: boolean;
 }) {
-  return (
-    <Link
-      href={href}
-      onClick={onNavigate}
-      aria-current={active ? 'page' : undefined}
-      className={cn(
-        'group relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17]',
-        collapsed && 'justify-center px-2 py-2',
-        active ? 'text-white' : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200'
-      )}
-    >
-      {active && (
+  const estaActivo = externo ? false : active;
+  const contenido = (
+    <>
+      {estaActivo && (
         <motion.span
           layoutId="sidebar-active-pill"
           transition={MOTION_SPRINGS.pill}
@@ -166,7 +161,7 @@ function SidebarLink({
       <span
         className={cn(
           'relative z-10 shrink-0 transition-colors duration-150',
-          active ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-200'
+          estaActivo ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-200'
         )}
       >
         <Icon className="h-4 w-4" strokeWidth={1.8} />
@@ -180,7 +175,41 @@ function SidebarLink({
         </span>
       )}
 
+      {!collapsed && externo && (
+        <ExternalLink className="relative z-10 h-3 w-3 shrink-0 text-zinc-500 transition-colors group-hover:text-zinc-300" strokeWidth={1.8} />
+      )}
+
       {collapsed && <RailTooltip>{label}</RailTooltip>}
+    </>
+  );
+
+  const className = cn(
+    'group relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17]',
+    collapsed && 'justify-center px-2 py-2',
+    estaActivo ? 'text-white' : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200'
+  );
+
+  if (externo) {
+    return (
+      <a
+        href={href}
+        target="net0"
+        onClick={onNavigate}
+        className={className}
+      >
+        {contenido}
+      </a>
+    );
+  }
+
+  return (
+    <Link
+      href={href}
+      onClick={onNavigate}
+      aria-current={estaActivo ? 'page' : undefined}
+      className={className}
+    >
+      {contenido}
     </Link>
   );
 }
@@ -628,10 +657,11 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
           />
 
           <SidebarLink
-            href="/dashboard/net0"
+            href="/net0"
             label="Net0"
             Icon={Users}
-            active={pathname.startsWith('/dashboard/net0')}
+            externo
+            active={false}
             collapsed={col}
             onNavigate={cerrarDrawer}
           />

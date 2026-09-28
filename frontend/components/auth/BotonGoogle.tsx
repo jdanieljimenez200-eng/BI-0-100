@@ -103,7 +103,16 @@ export default function BotonGoogle({ modo, tipoCuenta, codigoInvitacion, forma 
       {/* Variante oscura oficial de Google (#131314 / borde #8E918F / texto #E3E3E3). */}
       <a
         href={`${API_BASE_URL}/auth/google?${params.toString()}`}
-        onClick={(e) => { if (inactivo) { e.preventDefault(); return; } setYendo(true); }}
+        onClick={(e) => {
+          if (inactivo) { e.preventDefault(); return; }
+          const next = new URLSearchParams(window.location.search).get('next');
+          if (next) {
+            sessionStorage.setItem('bi_next', next);
+          } else {
+            sessionStorage.removeItem('bi_next');
+          }
+          setYendo(true);
+        }}
         aria-disabled={inactivo}
         className={`w-full inline-flex items-center justify-center gap-3 h-12 ${forma === 'pastilla' ? 'rounded-full' : 'rounded-xl'} bg-[#131314] border border-[#8E918F] text-[#E3E3E3] text-sm font-medium hover:bg-[#1C1C1E] hover:border-[#A5A8A6] active:scale-[0.98] transition-all duration-150 ${inactivo ? 'opacity-60 pointer-events-none' : 'cursor-pointer'}`}
       >

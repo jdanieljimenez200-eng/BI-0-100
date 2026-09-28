@@ -108,7 +108,7 @@ function Avatar({ experto, acento }: { experto: ExpertoPublico; acento: (typeof 
 
 export default function ExpertoCard({
   experto,
-  basePath = '/dashboard/net0',
+  basePath = '/net0',
 }: {
   experto: ExpertoPublico;
   basePath?: string;

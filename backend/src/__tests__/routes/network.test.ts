@@ -6,6 +6,8 @@ import { AppDataSource } from '../../config/database';
 import { Usuario } from '../../models/Usuario';
 import { Experto } from '../../models/Experto';
 import { Negocio } from '../../models/Negocio';
+import { Producto } from '../../models/Producto';
+import { AnalisisMercado } from '../../models/AnalisisMercado';
 
 /**
  * Lo que se prueba aquí no es "que la ruta responda 200": es que las tres
@@ -120,8 +122,23 @@ describeWithDb('Red de expertos (/api/network)', () => {
       expect(res.status).toBe(401);
     });
 
-    it('aplica la regla inteligente de cupo (2 fichas base, ampliable por cada negocio)', async () => {
+    it('aplica la regla inteligente de cupo (2 fichas base, ampliable por cada producto con análisis completado)', async () => {
       const usuario = await signupTestUser();
+      const repoProducto = AppDataSource.getRepository(Producto);
+      const repoMercado = AppDataSource.getRepository(AnalisisMercado);
+
+      // 1. Usuario nuevo sin negocios -> 0 perfiles -> cupo 2, puede crear
+      const rCupoInicial = await request.default(app)
+        .get('/api/network/cupo')
+        .set('Authorization', `Bearer ${usuario.accessToken}`);
+      expect(rCupoInicial.status).toBe(200);
+      expect(rCupoInicial.body).toEqual({
+        fichas_actuales: 0,
+        limite_permitido: 2,
+        negocios_activos: 0,
+        puede_crear: true,
+      });
+
       // 1ª ficha: permitida (categoría 'legal')
       const r1 = await crearFicha(usuario.accessToken, { ...baseLegal, categoria: 'legal' });
       expect(r1.status).toBe(201);
@@ -130,25 +147,64 @@ describeWithDb('Red de expertos (/api/network)', () => {
       const r2 = await crearFicha(usuario.accessToken, { ...baseLegal, categoria: 'marketing' });
       expect(r2.status).toBe(201);
 
-      // 3ª ficha: rechazada con 403 (cupo excedido, usuario independiente con 0 negocios)
+      // 2. Usuario crea 2 fichas -> cupo 2 -> ya no puede crear más (403 con mensaje explicativo)
       const r3 = await alta(usuario.accessToken, { ...baseLegal, categoria: 'diseno' });
       expect(r3.status).toBe(403);
       expect(r3.body.error).toContain('Has alcanzado el límite de 2 perfiles');
 
-      // Se agregan negocios para el usuario en la plataforma
-      const repoNegocio = AppDataSource.getRepository(Negocio);
-      await repoNegocio.save([
-        repoNegocio.create({ usuario_id: usuario.id, nombre: 'Negocio 1' }),
-        repoNegocio.create({ usuario_id: usuario.id, nombre: 'Negocio 2' }),
-        repoNegocio.create({ usuario_id: usuario.id, nombre: 'Negocio 3' }),
+      // 4. Los análisis en borrador / estimados NO cuentan para el cupo
+      const prodBorrador = await repoProducto.save(
+        repoProducto.create({ usuario_id: usuario.id, nombre: 'Borrador', status: 'activo' })
+      );
+      await repoMercado.save(
+        repoMercado.create({
+          producto_id: prodBorrador.id,
+          usuario_id: usuario.id,
+          estado_analisis: 'procesando',
+          resultado_estimado: false,
+        })
+      );
+      const prodEstimado = await repoProducto.save(
+        repoProducto.create({ usuario_id: usuario.id, nombre: 'Estimado', status: 'activo' })
+      );
+      await repoMercado.save(
+        repoMercado.create({
+          producto_id: prodEstimado.id,
+          usuario_id: usuario.id,
+          estado_analisis: 'completado',
+          resultado_estimado: true,
+        })
+      );
+
+      // Sigue sin poder crear porque ni borrador ni estimado aumentan el cupo
+      const r3IntentoInvalido = await alta(usuario.accessToken, { ...baseLegal, categoria: 'diseno' });
+      expect(r3IntentoInvalido.status).toBe(403);
+
+      // 3. Usuario tiene 3 negocios con análisis completados -> cupo 3 -> puede crear la 3ª
+      const p1 = await repoProducto.save(repoProducto.create({ usuario_id: usuario.id, nombre: 'P1', status: 'activo' }));
+      const p2 = await repoProducto.save(repoProducto.create({ usuario_id: usuario.id, nombre: 'P2', status: 'activo' }));
+      const p3 = await repoProducto.save(repoProducto.create({ usuario_id: usuario.id, nombre: 'P3', status: 'activo' }));
+
+      await repoMercado.save([
+        repoMercado.create({ producto_id: p1.id, usuario_id: usuario.id, estado_analisis: 'completado', resultado_estimado: false }),
+        repoMercado.create({ producto_id: p2.id, usuario_id: usuario.id, estado_analisis: 'completado', resultado_estimado: false }),
+        repoMercado.create({ producto_id: p3.id, usuario_id: usuario.id, estado_analisis: 'completado', resultado_estimado: false }),
       ]);
 
-      // Con 3 negocios activos, el límite es 3: la 3ª ficha ahora es permitida
+      const rCupoConTres = await request.default(app)
+        .get('/api/network/cupo')
+        .set('Authorization', `Bearer ${usuario.accessToken}`);
+      expect(rCupoConTres.status).toBe(200);
+      expect(rCupoConTres.body.limite_permitido).toBe(3);
+      expect(rCupoConTres.body.puede_crear).toBe(true);
+
+      // Con 3 negocios analizados con IA, la 3ª ficha ahora es permitida
       const r3Permitida = await crearFicha(usuario.accessToken, { ...baseLegal, categoria: 'diseno' });
       expect(r3Permitida.status).toBe(201);
 
-      // Limpieza de negocios creados
-      await repoNegocio.delete({ usuario_id: usuario.id });
+      // Limpieza
+      await repoMercado.delete({ usuario_id: usuario.id });
+      await repoProducto.delete({ usuario_id: usuario.id });
     });
   });
 

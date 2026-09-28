@@ -87,7 +87,7 @@ function DirectorioNet0Content() {
     if (ciudad.trim()) qs.set('ciudad', ciudad.trim());
     if (busqueda.trim()) qs.set('q', busqueda.trim());
     const cadena = qs.toString();
-    router.replace(cadena ? `/dashboard/net0?${cadena}` : '/dashboard/net0', { scroll: false });
+    router.replace(cadena ? `/net0?${cadena}` : '/net0', { scroll: false });
   }, [categoria, ciudad, busqueda, router]);
 
   const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
@@ -124,7 +124,7 @@ function DirectorioNet0Content() {
           {/* Acciones principales de Net0 */}
           <div className="flex flex-wrap items-center gap-3 flex-shrink-0">
             <Link
-              href="/dashboard/net0/registro"
+              href="/net0/registro"
               className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-xs sm:text-sm font-sans font-semibold text-[#070E17] bg-white hover:bg-slate-100 active:scale-95 transition-all shadow-[0_2px_10px_rgba(255,255,255,0.2)] whitespace-nowrap cursor-pointer"
             >
               <Plus className="w-4 h-4 text-[#070E17]" />
@@ -132,7 +132,7 @@ function DirectorioNet0Content() {
             </Link>
 
             <Link
-              href="/dashboard/net0/mis-fichas"
+              href="/net0/mis-fichas"
               className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-xs sm:text-sm font-sans font-medium text-white/80 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 active:scale-95 transition-all whitespace-nowrap cursor-pointer"
             >
               <User className="w-4 h-4 text-zinc-400" />
@@ -269,7 +269,7 @@ function DirectorioNet0Content() {
             </p>
             <div className="pt-2">
               <Link
-                href="/dashboard/net0/registro"
+                href="/net0/registro"
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-[#070E17] font-sans font-bold text-xs sm:text-sm hover:bg-slate-100 transition-all shadow-md"
               >
                 <span>Publicar mi ficha en Net0</span>
@@ -288,7 +288,7 @@ function DirectorioNet0Content() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {promocionados.map((e) => (
-                    <ExpertoCard key={e.id} experto={e} basePath="/dashboard/net0" />
+                    <ExpertoCard key={e.id} experto={e} />
                   ))}
                 </div>
               </div>
@@ -304,7 +304,7 @@ function DirectorioNet0Content() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {expertos.map((e) => (
-                <ExpertoCard key={e.id} experto={e} basePath="/dashboard/net0" />
+                <ExpertoCard key={e.id} experto={e} />
               ))}
             </div>
 

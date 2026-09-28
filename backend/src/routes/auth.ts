@@ -12,6 +12,7 @@ import { redisClient } from '../config/redis';
 import { isEmailAvailable, sendPasswordResetEmail } from '../services/email/emailService';
 import { loginLimiter, signupLimiter, passwordResetLimiter } from '../middleware/cors';
 import { authenticate, AuthRequest, claveBloqueo } from '../middleware/auth';
+import { urlApp } from '../utils/urlApp';
 import {
   ErrorLoginGoogle,
   IntentoGoogle,
@@ -750,14 +751,7 @@ function opcionesCookieGoogle(): CookieOptions {
   };
 }
 
-/** URL de la app; los destinos son fijos (nunca de la petición): no hay redirección abierta. */
-function urlApp(ruta: string, params: Record<string, string> = {}): string {
-  const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.FRONTEND_URL?.split(',')[0] || 'http://localhost:3000')
-    .trim()
-    .replace(/\/+$/, '');
-  const qs = new URLSearchParams(params).toString();
-  return `${base}${ruta}${qs ? `?${qs}` : ''}`;
-}
+
 
 /** Métodos de acceso disponibles, para que la pantalla no muestre botones muertos. */
 router.get('/proveedores', (_req: Request, res: Response) => {

@@ -190,7 +190,7 @@ export default function FichaNet0DetailPage() {
             : 'Ocurrió un problema de conexión. Intenta nuevamente en unos instantes.'}
         </p>
         <Link
-          href="/dashboard/net0"
+          href="/net0"
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-[#070E17] font-sans font-bold text-xs"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -221,7 +221,7 @@ export default function FichaNet0DetailPage() {
       {/* ── Regreso y Categoría ── */}
       <div>
         <Link
-          href={`/dashboard/net0?categoria=${ficha.categoria}`}
+          href={`/net0?categoria=${ficha.categoria}`}
           className="inline-flex items-center gap-2 text-xs font-sans font-medium text-zinc-400 hover:text-white transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />

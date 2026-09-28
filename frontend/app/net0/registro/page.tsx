@@ -90,7 +90,7 @@ export default function RegistroNet0Page() {
       {/* ── Encabezado y Navegación de Regreso ── */}
       <div className="space-y-4">
         <Link
-          href="/dashboard/net0"
+          href="/net0"
           className="inline-flex items-center gap-2 text-xs font-sans font-medium text-zinc-400 hover:text-white transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
@@ -150,7 +150,7 @@ export default function RegistroNet0Page() {
                 Crear cuenta de especialista
               </Link>
               <Link
-                href="/auth/login"
+                href="/auth/login?next=/net0/registro"
                 className="px-5 py-2.5 rounded-xl border border-white/15 text-white/80 font-sans font-semibold text-xs sm:text-sm hover:bg-white/5 transition-colors"
               >
                 Ya tengo cuenta
@@ -185,7 +185,7 @@ export default function RegistroNet0Page() {
                 <span>Validar un nuevo negocio con IA</span>
               </Link>
               <Link
-                href="/dashboard/net0/mis-fichas"
+                href="/net0/mis-fichas"
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-white/15 text-white/80 font-sans font-semibold text-xs sm:text-sm hover:bg-white/5 transition-all"
               >
                 <span>Gestionar mis perfiles actuales</span>
@@ -251,7 +251,7 @@ export default function RegistroNet0Page() {
             </p>
             <div className="pt-4">
               <Link
-                href="/dashboard/net0/mis-fichas"
+                href="/net0/mis-fichas"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white text-[#070E17] font-sans font-bold text-xs sm:text-sm hover:bg-slate-100 transition-all shadow-md"
               >
                 <span>Ir a mis perfiles Net0</span>
