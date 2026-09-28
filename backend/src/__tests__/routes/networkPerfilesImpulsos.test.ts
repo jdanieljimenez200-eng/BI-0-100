@@ -135,7 +135,7 @@ describeWithDb('Red: perfiles e impulsos', () => {
 
     it('no pasa del límite de la galería', async () => {
       const [{ total }] = await q(`SELECT count(*)::int AS total FROM experto_imagenes WHERE experto_id = $1`, [fichaId]);
-      for (let i = total; i < 12; i++) {
+      for (let i = total; i < 15; i++) {
         await q(`INSERT INTO experto_imagenes (experto_id, url, orden) VALUES ($1, $2, $3)`, [fichaId, `/uploads/images/r${i}.png`, i]);
       }
       const res = await api()

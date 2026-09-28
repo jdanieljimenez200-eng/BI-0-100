@@ -87,6 +87,7 @@ export interface ImagenPerfil {
   id: string;
   url: string;
   descripcion: string;
+  tipo?: 'imagen' | 'video';
 }
 
 export interface ServicioPerfil {
@@ -342,12 +343,65 @@ export async function contenidoFicha(id: string) {
 
 export async function subirImagenGaleria(id: string, fichero: File, descripcion = '') {
   const datos = new FormData();
+  datos.append('archivo', fichero);
   datos.append('imagen', fichero);
-  datos.append('descripcion', descripcion);
+  if (descripcion) datos.append('descripcion', descripcion);
   const { data } = await api.post<{ imagen: ImagenPerfil }>(`/network/expertos/${id}/imagenes`, datos, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return data.imagen;
+}
+
+export async function insertarVideoGaleria(id: string, url: string, descripcion = '') {
+  const { data } = await api.post<{ imagen: ImagenPerfil }>(`/network/expertos/${id}/videos`, {
+    url,
+    descripcion,
+  });
+  return data.imagen;
+}
+
+/**
+ * Detecta si un recurso de la galería es un vídeo (por su tipo explícito, extensión o dominio).
+ */
+export function esUrlVideo(url?: string | null, tipo?: string): boolean {
+  if (tipo === 'video') return true;
+  if (!url) return false;
+  const limpio = url.split('?')[0].toLowerCase();
+  if (/\.(mp4|webm|mov|m4v)$/i.test(limpio)) return true;
+  if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|vimeo\.com|tiktok\.com)/i.test(url)) return true;
+  return false;
+}
+
+/** Extrae el ID de un vídeo de YouTube si la URL corresponde a esta plataforma. */
+export function obtenerYoutubeId(url?: string | null): string | null {
+  if (!url) return null;
+  const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+  return match ? match[1] : null;
+}
+
+/** Extrae el ID de un vídeo de Vimeo si la URL corresponde a esta plataforma. */
+export function obtenerVimeoId(url?: string | null): string | null {
+  if (!url) return null;
+  const match = url.match(/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/([^\/]*)\/videos\/|album\/(\d+)\/video\/|)(\d+)/i);
+  return match ? match[3] : null;
+}
+
+/** Retorna la URL de inserción (embed) para reproductores iframe de YouTube o Vimeo. */
+export function obtenerEmbedVideoUrl(url?: string | null): string | null {
+  if (!url) return null;
+  const ytId = obtenerYoutubeId(url);
+  if (ytId) return `https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0`;
+  const vimeoId = obtenerVimeoId(url);
+  if (vimeoId) return `https://player.vimeo.com/video/${vimeoId}?autoplay=1`;
+  return null;
+}
+
+/** Obtiene la miniatura optimizada de un vídeo (ej. YouTube hqdefault). */
+export function obtenerMiniaturaVideo(url?: string | null): string | null {
+  if (!url) return null;
+  const ytId = obtenerYoutubeId(url);
+  if (ytId) return `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
+  return null;
 }
 
 export async function borrarImagenGaleria(id: string, imagenId: string) {

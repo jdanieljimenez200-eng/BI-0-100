@@ -265,6 +265,7 @@ export interface ImagenPublica {
   id: string;
   url: string;
   descripcion: string;
+  tipo?: string;
 }
 
 export interface ServicioPublico {
@@ -277,7 +278,10 @@ export interface ServicioPublico {
 
 export async function imagenesDe(expertoId: string): Promise<ImagenPublica[]> {
   return AppDataSource.query(
-    `SELECT id, url, descripcion FROM experto_imagenes WHERE experto_id = $1 ORDER BY orden, fecha_creacion`,
+    `SELECT id, url, descripcion, COALESCE(tipo, 'imagen') AS tipo
+       FROM experto_imagenes
+      WHERE experto_id = $1
+      ORDER BY orden, fecha_creacion`,
     [expertoId]
   );
 }

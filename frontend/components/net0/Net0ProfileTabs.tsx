@@ -16,6 +16,7 @@ import {
   X,
   ExternalLink,
   MapPin,
+  Play,
 } from 'lucide-react';
 import type {
   FichaExperto,
@@ -24,7 +25,13 @@ import type {
   ImagenPerfil,
   ServicioPerfil,
 } from '@/lib/network';
-import { pesosMx, obtenerEnlaceGoogleMaps } from '@/lib/network';
+import {
+  pesosMx,
+  obtenerEnlaceGoogleMaps,
+  esUrlVideo,
+  obtenerEmbedVideoUrl,
+  obtenerMiniaturaVideo,
+} from '@/lib/network';
 import FormularioResena from '@/components/network/FormularioResena';
 
 type TabTipo = 'portafolio' | 'servicios' | 'resenas' | 'info';
@@ -159,29 +166,61 @@ export default function Net0ProfileTabs({
         <section aria-label="Portafolio de trabajos">
           {ficha.imagenes.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
-              {ficha.imagenes.map((img, i) => (
-                <button
-                  key={img.id}
-                  type="button"
-                  onClick={() => setLightboxIndex(i)}
-                  className="group relative aspect-square rounded-2xl overflow-hidden border border-white/[0.08] bg-[#141416] cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/40"
-                  aria-label={img.descripcion || `Ver foto de trabajo ${i + 1}`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={img.url}
-                    alt={img.descripcion}
-                    loading="lazy"
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  {/* Overlay sutil al hover */}
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3 text-left">
-                    <p className="text-white text-xs font-sans font-medium line-clamp-2">
-                      {img.descripcion || 'Ver trabajo ampliado'}
-                    </p>
-                  </div>
-                </button>
-              ))}
+              {ficha.imagenes.map((img, i) => {
+                const esVid = esUrlVideo(img.url, img.tipo);
+                const miniaturaYt = esVid ? obtenerMiniaturaVideo(img.url) : null;
+                return (
+                  <button
+                    key={img.id}
+                    type="button"
+                    onClick={() => setLightboxIndex(i)}
+                    className="group relative aspect-square rounded-2xl overflow-hidden border border-white/[0.08] bg-[#141416] cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/40"
+                    aria-label={img.descripcion || `Ver ${esVid ? 'vídeo' : 'foto'} de trabajo ${i + 1}`}
+                  >
+                    {esVid ? (
+                      miniaturaYt ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={miniaturaYt}
+                          alt={img.descripcion}
+                          loading="lazy"
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                      ) : (
+                        <video
+                          src={img.url + '#t=0.5'}
+                          preload="metadata"
+                          muted
+                          playsInline
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 pointer-events-none"
+                        />
+                      )
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={img.url}
+                        alt={img.descripcion}
+                        loading="lazy"
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    )}
+
+                    {/* Badge TikTok/Instagram para vídeos */}
+                    {esVid && (
+                      <div className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-black/70 backdrop-blur-md flex items-center justify-center text-white border border-white/20 shadow-lg pointer-events-none z-10 transition-transform group-hover:scale-110">
+                        <Play className="w-3.5 h-3.5 fill-white text-white ml-0.5" />
+                      </div>
+                    )}
+
+                    {/* Overlay sutil al hover */}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3 text-left">
+                      <p className="text-white text-xs font-sans font-medium line-clamp-2">
+                        {img.descripcion || (esVid ? 'Reproducir vídeo' : 'Ver trabajo ampliado')}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <div className="rounded-2xl border border-white/[0.08] bg-[#141416] p-12 text-center space-y-2">
@@ -512,71 +551,97 @@ export default function Net0ProfileTabs({
         </section>
       )}
 
-      {/* ── 3. Lightbox Inmersivo para Fotografías del Portafolio ── */}
-      {fotoActual && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Visor inmersivo de proyecto"
-          onClick={() => setLightboxIndex(null)}
-          className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 backdrop-blur-none animate-in fade-in duration-200"
-        >
-          <figure
-            onClick={(e) => e.stopPropagation()}
-            className="max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center relative space-y-4"
+      {/* ── 3. Lightbox Inmersivo para Fotografías y Vídeos del Portafolio ── */}
+      {fotoActual && (() => {
+        const esVidActual = esUrlVideo(fotoActual.url, fotoActual.tipo);
+        const embedUrl = esVidActual ? obtenerEmbedVideoUrl(fotoActual.url) : null;
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Visor inmersivo de proyecto"
+            onClick={() => setLightboxIndex(null)}
+            className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 backdrop-blur-none animate-in fade-in duration-200"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={fotoActual.url}
-              alt={fotoActual.descripcion}
-              className="max-h-[75vh] w-auto max-w-full rounded-2xl object-contain shadow-2xl border border-white/10"
-            />
+            <figure
+              onClick={(e) => e.stopPropagation()}
+              className="max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center relative space-y-4"
+            >
+              {esVidActual ? (
+                embedUrl ? (
+                  <div className="w-full aspect-video max-h-[75vh] max-w-4xl rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black">
+                    <iframe
+                      src={embedUrl}
+                      title={fotoActual.descripcion || 'Vídeo de portafolio'}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      className="w-full h-full border-0"
+                    />
+                  </div>
+                ) : (
+                  <video
+                    src={fotoActual.url}
+                    controls
+                    autoPlay
+                    playsInline
+                    className="max-h-[75vh] w-auto max-w-full rounded-2xl object-contain shadow-2xl border border-white/10 bg-black"
+                  />
+                )
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={fotoActual.url}
+                  alt={fotoActual.descripcion}
+                  className="max-h-[75vh] w-auto max-w-full rounded-2xl object-contain shadow-2xl border border-white/10"
+                />
+              )}
 
-            <figcaption className="w-full flex items-center justify-between gap-4 text-zinc-300 text-xs sm:text-sm font-sans px-2">
-              <span className="truncate">{fotoActual.descripcion || 'Proyecto de portafolio'}</span>
+              <figcaption className="w-full flex items-center justify-between gap-4 text-zinc-300 text-xs sm:text-sm font-sans px-2">
+                <span className="truncate">{fotoActual.descripcion || 'Proyecto de portafolio'}</span>
 
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setLightboxIndex((i) =>
-                      i === null ? null : (i - 1 + ficha.imagenes.length) % ficha.imagenes.length
-                    )
-                  }
-                  aria-label="Foto anterior"
-                  className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLightboxIndex((i) =>
+                        i === null ? null : (i - 1 + ficha.imagenes.length) % ficha.imagenes.length
+                      )
+                    }
+                    aria-label="Elemento anterior"
+                    className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
 
-                <span className="font-mono text-xs text-zinc-400 px-2">
-                  {(lightboxIndex ?? 0) + 1} / {ficha.imagenes.length}
-                </span>
+                  <span className="font-mono text-xs text-zinc-400 px-2">
+                    {(lightboxIndex ?? 0) + 1} / {ficha.imagenes.length}
+                  </span>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setLightboxIndex((i) => (i === null ? null : (i + 1) % ficha.imagenes.length))
-                  }
-                  aria-label="Siguiente foto"
-                  className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLightboxIndex((i) => (i === null ? null : (i + 1) % ficha.imagenes.length))
+                    }
+                    aria-label="Siguiente elemento"
+                    className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => setLightboxIndex(null)}
-                  aria-label="Cerrar visor"
-                  className="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition-colors cursor-pointer ml-2"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </figcaption>
-          </figure>
-        </div>
-      )}
+                  <button
+                    type="button"
+                    onClick={() => setLightboxIndex(null)}
+                    aria-label="Cerrar visor"
+                    className="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition-colors cursor-pointer ml-2"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </figcaption>
+            </figure>
+          </div>
+        );
+      })()}
     </div>
   );
 }

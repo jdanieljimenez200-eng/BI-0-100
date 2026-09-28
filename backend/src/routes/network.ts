@@ -673,7 +673,8 @@ router.post(
 // Contenido del perfil: galería y servicios (autenticado, solo el dueño)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const MAX_IMAGENES = 12;
+export const MAX_MULTIMEDIA = 15;
+export const MAX_IMAGENES = MAX_MULTIMEDIA;
 export const MAX_SERVICIOS = 15;
 
 /** La ficha propia, o null. La pertenencia va en el `where`. */
@@ -695,14 +696,20 @@ router.get(
       expertosService.imagenesDe(experto.id),
       expertosService.serviciosDe(experto.id),
     ]);
-    res.json({ imagenes, servicios, max_imagenes: MAX_IMAGENES, max_servicios: MAX_SERVICIOS });
+    res.json({
+      imagenes,
+      servicios,
+      max_imagenes: MAX_MULTIMEDIA,
+      max_multimedia: MAX_MULTIMEDIA,
+      max_servicios: MAX_SERVICIOS,
+    });
   })
 );
 
 /**
- * Añade una imagen a la galería. Se publica sin pasar por revisión, como una
- * foto en un perfil de Facebook: la ficha ya está aprobada y moderación puede
- * retirarla. Lo que sí vuelve a revisión es cambiar quién dices ser.
+ * Añade una imagen o vídeo a la galería desde archivo. Se publica sin pasar
+ * por revisión, como en un perfil de redes: la ficha ya está aprobada y moderación
+ * puede retirarla.
  */
 router.post(
   '/expertos/:id/imagenes',
@@ -710,10 +717,14 @@ router.post(
   ah(async (req: AuthRequest, res: Response) => {
     const experto = await fichaPropia(req);
     if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
-    if (!req.file) return res.status(400).json({ error: 'No llegó ninguna imagen' });
+    if (!req.file) return res.status(400).json({ error: 'No llegó ningún archivo' });
     const descripcion = texto(200).safeParse(req.body?.descripcion ?? '');
 
-    const url = await StorageService.uploadFile(req.file.buffer, req.file.originalname, req.file.mimetype, 'images');
+    const esVideo = req.file.mimetype.split(';')[0].trim().toLowerCase().startsWith('video/');
+    const prefijo = esVideo ? 'videos' : 'images';
+    const tipo = esVideo ? 'video' : 'imagen';
+
+    const url = await StorageService.uploadFile(req.file.buffer, req.file.originalname, req.file.mimetype, prefijo);
 
     // Candado por ficha: dos subidas simultáneas no pueden pasar ambas el límite.
     const imagen = await AppDataSource.transaction(async (manager) => {
@@ -722,20 +733,73 @@ router.post(
         `SELECT count(*)::int AS total FROM experto_imagenes WHERE experto_id = $1`,
         [experto.id]
       );
-      if (total >= MAX_IMAGENES) return null;
+      if (total >= MAX_MULTIMEDIA) return null;
       const [fila] = await manager.query(
-        `INSERT INTO experto_imagenes (experto_id, url, descripcion, orden)
-         VALUES ($1, $2, $3, $4) RETURNING id, url, descripcion`,
-        [experto.id, url, descripcion.success ? descripcion.data : '', total]
+        `INSERT INTO experto_imagenes (experto_id, url, descripcion, orden, tipo)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, url, descripcion, tipo`,
+        [experto.id, url, descripcion.success ? descripcion.data : '', total, tipo]
       );
       return fila;
     });
 
     if (!imagen) {
-      await StorageService.deleteFile(url, 'images');
-      return res.status(409).json({ error: `La galería admite hasta ${MAX_IMAGENES} imágenes` });
+      await StorageService.deleteFile(url, prefijo);
+      return res.status(409).json({ error: `La galería admite hasta ${MAX_MULTIMEDIA} fotos y vídeos` });
     }
     res.status(201).json({ imagen });
+  })
+);
+
+/**
+ * Inserta un vídeo en la galería por enlace (YouTube, Vimeo, TikTok o URL directa .mp4/.webm).
+ */
+router.post(
+  '/expertos/:id/videos',
+  ah(async (req: AuthRequest, res: Response) => {
+    const experto = await fichaPropia(req);
+    if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
+
+    const VideoBodySchema = z.object({
+      url: z.string().trim().url('URL inválida').max(500),
+      descripcion: texto(200).optional().default(''),
+    });
+    const parsed = VideoBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || 'URL inválida' });
+    }
+
+    const { url, descripcion } = parsed.data;
+
+    const esVideoValido =
+      /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|vimeo\.com|tiktok\.com)\/.+/i.test(url) ||
+      /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(url);
+
+    if (!esVideoValido) {
+      return res.status(400).json({
+        error: 'El enlace debe ser de YouTube, Vimeo, TikTok o un archivo de vídeo (.mp4, .webm, .mov)',
+      });
+    }
+
+    const item = await AppDataSource.transaction(async (manager) => {
+      await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`galeria:${experto.id}`]);
+      const [{ total }] = await manager.query(
+        `SELECT count(*)::int AS total FROM experto_imagenes WHERE experto_id = $1`,
+        [experto.id]
+      );
+      if (total >= MAX_MULTIMEDIA) return null;
+      const [fila] = await manager.query(
+        `INSERT INTO experto_imagenes (experto_id, url, descripcion, orden, tipo)
+         VALUES ($1, $2, $3, $4, 'video') RETURNING id, url, descripcion, tipo`,
+        [experto.id, url, descripcion, total]
+      );
+      return fila;
+    });
+
+    if (!item) {
+      return res.status(409).json({ error: `La galería admite hasta ${MAX_MULTIMEDIA} fotos y vídeos` });
+    }
+
+    res.status(201).json({ imagen: item });
   })
 );
 
@@ -745,7 +809,7 @@ router.put(
   ah(async (req: AuthRequest, res: Response) => {
     const experto = await fichaPropia(req);
     if (!experto) return res.status(404).json({ error: 'Ficha no encontrada' });
-    const parsed = z.object({ ids: z.array(UUID).max(MAX_IMAGENES) }).safeParse(req.body);
+    const parsed = z.object({ ids: z.array(UUID).max(MAX_MULTIMEDIA) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'Orden inválido' });
 
     await AppDataSource.query(
@@ -763,7 +827,7 @@ router.delete(
   ah(async (req: AuthRequest, res: Response) => {
     const experto = await fichaPropia(req);
     if (!experto || !UUID.safeParse(req.params.imagenId).success) {
-      return res.status(404).json({ error: 'Imagen no encontrada' });
+      return res.status(404).json({ error: 'Elemento no encontrado' });
     }
     const [borrada] = filasSql<{ url: string }>(
       await AppDataSource.query(`DELETE FROM experto_imagenes WHERE id = $1 AND experto_id = $2 RETURNING url`, [
@@ -771,9 +835,9 @@ router.delete(
         experto.id,
       ])
     );
-    if (!borrada) return res.status(404).json({ error: 'Imagen no encontrada' });
-    await StorageService.deleteFile(borrada.url, 'images');
-    res.json({ mensaje: 'Imagen eliminada' });
+    if (!borrada) return res.status(404).json({ error: 'Elemento no encontrado' });
+    await StorageService.deleteFile(borrada.url);
+    res.json({ mensaje: 'Elemento eliminado' });
   })
 );
 
@@ -907,7 +971,7 @@ router.delete(
     await documentos.borrarDocumento(experto.documento_url);
     await StorageService.deleteFile(experto.avatar_url, 'images');
     await StorageService.deleteFile(experto.portada_url, 'images');
-    for (const { url } of galeria) await StorageService.deleteFile(url, 'images');
+    for (const { url } of galeria) await StorageService.deleteFile(url);
 
     res.json({ mensaje: 'Ficha eliminada' });
   })
@@ -1593,7 +1657,7 @@ adminNetworkRouter.delete(
       return fila;
     });
     if (!borrada) return res.status(404).json({ error: 'Imagen no encontrada' });
-    await StorageService.deleteFile(borrada.url, 'images');
+    await StorageService.deleteFile(borrada.url);
     res.json({ mensaje: 'Imagen retirada' });
   })
 );

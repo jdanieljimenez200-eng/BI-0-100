@@ -478,4 +478,91 @@ function recibirImagenRed(campo: string, maxMb: number) {
 
 export const recibirAvatarExperto = recibirImagenRed('avatar', 3);
 export const recibirPortadaExperto = recibirImagenRed('portada', 5);
-export const recibirImagenGaleria = recibirImagenRed('imagen', 5);
+
+/**
+ * Multimedia para la galería de expertos (fotos hasta 5 MB, vídeos hasta 40 MB).
+ * Acepta campos 'imagen', 'archivo' o 'video' en el FormData para máxima compatibilidad.
+ */
+function recibirMultimediaGaleriaMiddleware(maxMbImagen = 5, maxMbVideo = 40) {
+  const maxBytes = Math.max(maxMbImagen, maxMbVideo) * 1024 * 1024;
+  const multi = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: maxBytes },
+    fileFilter: (_req, file, cb) => {
+      const mime = file.mimetype.split(';')[0].trim().toLowerCase();
+      if (mime.startsWith('image/')) {
+        if (mime === 'image/svg+xml') {
+          cb(new Error('Formato SVG no permitido por seguridad'));
+          return;
+        }
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (!ALLOWED_IMAGE_EXTENSIONS.has(ext)) {
+          cb(new Error('La imagen debe ser jpg, png, webp o gif'));
+          return;
+        }
+        cb(null, true);
+        return;
+      }
+      if (mime.startsWith('video/')) {
+        let ext = path.extname(file.originalname).toLowerCase();
+        if (!ALLOWED_VIDEO_EXTENSIONS.has(ext)) {
+          const derivada = EXT_POR_MIME[mime];
+          if (!derivada || !ALLOWED_VIDEO_EXTENSIONS.has(derivada)) {
+            cb(new Error('El vídeo debe ser mp4, webm o mov'));
+            return;
+          }
+          ext = derivada;
+          file.originalname = `video${ext}`;
+        }
+        cb(null, true);
+        return;
+      }
+      cb(new Error('Solo se permiten imágenes (jpg, png, webp, gif) o vídeos (mp4, webm, mov)'));
+    },
+  }).fields([
+    { name: 'imagen', maxCount: 1 },
+    { name: 'archivo', maxCount: 1 },
+    { name: 'video', maxCount: 1 },
+  ]);
+
+  return (req: Request, res: Response, next: NextFunction): void => {
+    multi(req, res, (err: unknown) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          const esTamano = err.code === 'LIMIT_FILE_SIZE';
+          res.status(esTamano ? 413 : 400).json({
+            error: esTamano
+              ? `El archivo supera el tamaño permitido (máx. ${maxMbImagen} MB para fotos, ${maxMbVideo} MB para vídeos)`
+              : 'Archivo inválido',
+          });
+          return;
+        }
+        res.status(400).json({ error: err instanceof Error ? err.message : 'Archivo inválido' });
+        return;
+      }
+
+      // Normalizar req.file a partir de los campos posibles
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      const archivo = req.file || files?.['imagen']?.[0] || files?.['archivo']?.[0] || files?.['video']?.[0];
+      req.file = archivo;
+
+      if (req.file) {
+        const mime = req.file.mimetype.split(';')[0].trim().toLowerCase();
+        if (mime.startsWith('image/') && req.file.size > maxMbImagen * 1024 * 1024) {
+          res.status(413).json({ error: `La imagen supera el máximo de ${maxMbImagen} MB` });
+          return;
+        }
+        if (mime.startsWith('video/') && req.file.size > maxMbVideo * 1024 * 1024) {
+          res.status(413).json({ error: `El vídeo supera el máximo de ${maxMbVideo} MB` });
+          return;
+        }
+      }
+
+      next();
+    });
+  };
+}
+
+export const recibirMultimediaGaleria = recibirMultimediaGaleriaMiddleware(5, 40);
+export const recibirImagenGaleria = recibirMultimediaGaleria;
+

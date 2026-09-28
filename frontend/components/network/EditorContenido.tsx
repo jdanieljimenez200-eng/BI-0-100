@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ImageIcon, ArrowLeft, ArrowRight, Plus } from 'lucide-react';
+import { ImageIcon, ArrowLeft, ArrowRight, Plus, Video, Play, Link2, X } from 'lucide-react';
 import {
   borrarImagenGaleria,
   borrarServicio,
@@ -9,6 +9,9 @@ import {
   crearServicio,
   editarServicio,
   errorLegible,
+  esUrlVideo,
+  insertarVideoGaleria,
+  obtenerMiniaturaVideo,
   ordenarGaleria,
   pesosMx,
   subirImagenGaleria,
@@ -19,21 +22,37 @@ import {
 
 /**
  * Lo que hace que un perfil venda: portada, galería de trabajos y catálogo de
- * servicios. Se guarda al momento, sin botón de «guardar»: cada foto o servicio
+ * servicios. Se guarda al momento, sin botón de «guardar»: cada foto, vídeo o servicio
  * es una petición propia, y nada de esto devuelve la ficha a revisión.
  */
 
 const IMAGEN_MAX = 5 * 1024 * 1024;
 const IMAGEN_TIPOS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const VIDEO_MAX = 40 * 1024 * 1024;
+const VIDEO_TIPOS = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v'];
+const MULTIMEDIA_TIPOS = [...IMAGEN_TIPOS, ...VIDEO_TIPOS];
 
 const etiqueta = 'block text-xs font-semibold text-white/50 mb-1.5';
 const campo =
   'w-full px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-white/30';
 
-function validarImagen(f: File): string | null {
+function validarImagenPortada(f: File): string | null {
   if (!IMAGEN_TIPOS.includes(f.type)) return `«${f.name}» no es jpg, png, webp o gif.`;
   if (f.size > IMAGEN_MAX) return `«${f.name}» supera los 5 MB.`;
   return null;
+}
+
+function validarArchivoGaleria(f: File): string | null {
+  const mime = f.type.split(';')[0].trim().toLowerCase();
+  if (IMAGEN_TIPOS.includes(mime)) {
+    if (f.size > IMAGEN_MAX) return `«${f.name}» supera los 5 MB para imágenes.`;
+    return null;
+  }
+  if (VIDEO_TIPOS.includes(mime) || /\.(mp4|webm|mov|m4v)$/i.test(f.name)) {
+    if (f.size > VIDEO_MAX) return `«${f.name}» supera los 40 MB para vídeos.`;
+    return null;
+  }
+  return `«${f.name}» no es un formato permitido (fotos: jpg, png, webp, gif; vídeos: mp4, webm, mov).`;
 }
 
 type BorradorServicio = { nombre: string; descripcion: string; precio: string; unidad: string };
@@ -48,7 +67,7 @@ export default function EditorContenido({
 }) {
   const [imagenes, setImagenes] = useState<ImagenPerfil[] | null>(null);
   const [servicios, setServicios] = useState<ServicioPerfil[]>([]);
-  const [maxImagenes, setMaxImagenes] = useState(12);
+  const [maxImagenes, setMaxImagenes] = useState(15);
   const [maxServicios, setMaxServicios] = useState(15);
   const [portada, setPortada] = useState<string | null>(portadaUrl ?? null);
   const [subiendo, setSubiendo] = useState(0);
@@ -58,13 +77,19 @@ export default function EditorContenido({
   const [guardandoServicio, setGuardandoServicio] = useState(false);
   const inputGaleria = useRef<HTMLInputElement>(null);
 
+  // Estado para inserción de vídeo por enlace
+  const [mostrarFormVideo, setMostrarFormVideo] = useState(false);
+  const [urlVideo, setUrlVideo] = useState('');
+  const [descripcionVideo, setDescripcionVideo] = useState('');
+  const [guardandoVideo, setGuardandoVideo] = useState(false);
+
   const cargar = useCallback(async () => {
     try {
       const d = await contenidoFicha(expertoId);
       setImagenes(d.imagenes);
       setServicios(d.servicios);
-      setMaxImagenes(d.max_imagenes);
-      setMaxServicios(d.max_servicios);
+      setMaxImagenes(d.max_imagenes || 15);
+      setMaxServicios(d.max_servicios || 15);
     } catch (e) {
       setImagenes([]);
       setError(errorLegible(e, 'No pudimos cargar tus fotos y servicios.'));
@@ -77,7 +102,7 @@ export default function EditorContenido({
 
   const cambiarPortada = async (f?: File) => {
     if (!f) return;
-    const mal = validarImagen(f);
+    const mal = validarImagenPortada(f);
     if (mal) return setError(mal);
     setError(null);
     setSubiendo((n) => n + 1);
@@ -90,18 +115,16 @@ export default function EditorContenido({
     }
   };
 
-  const agregarImagenes = async (lista: FileList | null) => {
+  const agregarArchivos = async (lista: FileList | null) => {
     if (!lista || !imagenes) return;
     setError(null);
     const libres = maxImagenes - imagenes.length;
     const ficheros = Array.from(lista);
     if (ficheros.length > libres) {
-      setError(`Solo caben ${libres} fotos más. Se subirán las primeras.`);
+      setError(`Solo caben ${libres} elementos más. Se subirán los primeros.`);
     }
-    // Una a una: el servidor comprueba el límite en cada subida y así cada fallo
-    // se dice por su nombre en vez de perder el lote entero.
     for (const f of ficheros.slice(0, Math.max(libres, 0))) {
-      const mal = validarImagen(f);
+      const mal = validarArchivoGaleria(f);
       if (mal) {
         setError(mal);
         continue;
@@ -119,13 +142,35 @@ export default function EditorContenido({
     if (inputGaleria.current) inputGaleria.current.value = '';
   };
 
+  const agregarVideoPorUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!urlVideo.trim()) return setError('Ingresa la URL del vídeo.');
+    if (imagenes && imagenes.length >= maxImagenes) {
+      return setError(`La galería admite hasta ${maxImagenes} elementos.`);
+    }
+    setError(null);
+    setGuardandoVideo(true);
+    try {
+      const nueva = await insertarVideoGaleria(expertoId, urlVideo.trim(), descripcionVideo.trim());
+      setImagenes((prev) => [...(prev ?? []), nueva]);
+      setUrlVideo('');
+      setDescripcionVideo('');
+      setMostrarFormVideo(false);
+    } catch (err) {
+      setError(errorLegible(err, 'No se pudo insertar el enlace del vídeo. Verifica la URL.'));
+    } finally {
+      setGuardandoVideo(false);
+    }
+  };
+
   const quitarImagen = async (img: ImagenPerfil) => {
-    if (!window.confirm('¿Quitar esta foto de tu perfil?')) return;
+    const esVid = esUrlVideo(img.url, img.tipo);
+    if (!window.confirm(`¿Quitar este ${esVid ? 'vídeo' : 'elemento'} de tu perfil?`)) return;
     try {
       await borrarImagenGaleria(expertoId, img.id);
       setImagenes((prev) => (prev ?? []).filter((i) => i.id !== img.id));
     } catch (e) {
-      setError(errorLegible(e, 'No se pudo quitar la foto.'));
+      setError(errorLegible(e, 'No se pudo quitar el elemento.'));
     }
   };
 
@@ -220,65 +265,168 @@ export default function EditorContenido({
 
       {/* ── Galería ─────────────────────────────────────────────────────── */}
       <fieldset className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-        <legend className="px-2 text-xs font-bold uppercase tracking-widest text-white/40">
-          Galería de trabajos ({imagenes.length}/{maxImagenes})
-        </legend>
+        <div className="flex items-center justify-between mb-3 px-1">
+          <legend className="text-xs font-bold uppercase tracking-widest text-white/40">
+            Galería de trabajos ({imagenes.length}/{maxImagenes})
+          </legend>
+          {imagenes.length < maxImagenes && (
+            <button
+              type="button"
+              onClick={() => setMostrarFormVideo((v) => !v)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-white/15 bg-white/5 hover:bg-white/10 text-white text-xs font-medium transition-colors cursor-pointer"
+            >
+              <Link2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{mostrarFormVideo ? 'Cerrar enlace' : 'Insertar vídeo por URL'}</span>
+            </button>
+          )}
+        </div>
+
+        {mostrarFormVideo && (
+          <form
+            onSubmit={agregarVideoPorUrl}
+            className="mb-4 p-4 rounded-xl bg-white/[0.04] border border-white/15 space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white flex items-center gap-2">
+                <Video className="w-4 h-4 text-emerald-400" />
+                Insertar vídeo por enlace
+              </span>
+              <button
+                type="button"
+                onClick={() => setMostrarFormVideo(false)}
+                className="text-white/40 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div>
+              <label className={etiqueta}>URL del vídeo (YouTube, Vimeo, TikTok o enlace directo .mp4)</label>
+              <input
+                type="url"
+                placeholder="https://www.youtube.com/watch?v=... o https://...video.mp4"
+                value={urlVideo}
+                onChange={(e) => setUrlVideo(e.target.value)}
+                required
+                className={campo}
+              />
+            </div>
+            <div>
+              <label className={etiqueta}>Descripción corta del trabajo o proyecto (opcional)</label>
+              <input
+                type="text"
+                maxLength={200}
+                placeholder="Ej. Recorrido del taller, demostración del servicio..."
+                value={descripcionVideo}
+                onChange={(e) => setDescripcionVideo(e.target.value)}
+                className={campo}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setMostrarFormVideo(false)}
+                className="px-3 py-1.5 rounded-lg border border-white/10 text-white/60 hover:text-white text-xs font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={guardandoVideo}
+                className="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+              >
+                {guardandoVideo ? 'Insertando...' : 'Añadir a la galería'}
+              </button>
+            </div>
+          </form>
+        )}
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {imagenes.map((img, i) => (
-            <figure key={img.id} className="group relative aspect-square rounded-xl overflow-hidden border border-white/10 bg-white/5">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={img.url} alt={img.descripcion} className="w-full h-full object-cover" />
-              <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 p-1.5 bg-gradient-to-t from-black/80 to-transparent opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity">
-                <div className="flex gap-1">
+          {imagenes.map((img, i) => {
+            const esVid = esUrlVideo(img.url, img.tipo);
+            const miniaturaYt = esVid ? obtenerMiniaturaVideo(img.url) : null;
+            return (
+              <figure
+                key={img.id}
+                className="group relative aspect-square rounded-xl overflow-hidden border border-white/10 bg-[#141416]"
+              >
+                {esVid ? (
+                  miniaturaYt ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={miniaturaYt} alt={img.descripcion} className="w-full h-full object-cover" />
+                  ) : (
+                    <video
+                      src={img.url + '#t=0.5'}
+                      preload="metadata"
+                      muted
+                      playsInline
+                      className="w-full h-full object-cover pointer-events-none"
+                    />
+                  )
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={img.url} alt={img.descripcion} className="w-full h-full object-cover" />
+                )}
+
+                {/* Badge indicador de vídeo */}
+                {esVid && (
+                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/80 border border-white/20 text-white text-[10px] font-bold flex items-center gap-1 backdrop-blur-sm z-10 pointer-events-none shadow">
+                    <Play className="w-2.5 h-2.5 fill-emerald-400 text-emerald-400" />
+                    <span>Vídeo</span>
+                  </div>
+                )}
+
+                <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 p-1.5 bg-gradient-to-t from-black/80 to-transparent opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity z-20">
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => mover(i, -1)}
+                      disabled={i === 0}
+                      aria-label="Mover antes"
+                      className="w-7 h-7 rounded-md bg-white/15 text-white text-xs disabled:opacity-30 flex items-center justify-center cursor-pointer"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => mover(i, 1)}
+                      disabled={i === imagenes.length - 1}
+                      aria-label="Mover después"
+                      className="w-7 h-7 rounded-md bg-white/15 text-white text-xs disabled:opacity-30 flex items-center justify-center cursor-pointer"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => mover(i, -1)}
-                    disabled={i === 0}
-                    aria-label="Mover antes"
-                    className="w-7 h-7 rounded-md bg-white/15 text-white text-xs disabled:opacity-30 flex items-center justify-center"
+                    onClick={() => quitarImagen(img)}
+                    aria-label="Quitar elemento"
+                    className="px-2 h-7 rounded-md bg-rose-500/80 hover:bg-rose-500 text-white text-[11px] font-bold cursor-pointer"
                   >
-                    <ArrowLeft className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => mover(i, 1)}
-                    disabled={i === imagenes.length - 1}
-                    aria-label="Mover después"
-                    className="w-7 h-7 rounded-md bg-white/15 text-white text-xs disabled:opacity-30 flex items-center justify-center"
-                  >
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    Quitar
                   </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => quitarImagen(img)}
-                  aria-label="Quitar foto"
-                  className="px-2 h-7 rounded-md bg-rose-500/80 text-white text-[11px] font-bold"
-                >
-                  Quitar
-                </button>
-              </div>
-            </figure>
-          ))}
+              </figure>
+            );
+          })}
 
           {imagenes.length < maxImagenes && (
-            <label className="aspect-square rounded-xl border border-dashed border-white/15 hover:border-white/35 flex flex-col items-center justify-center gap-1.5 text-white/50 hover:text-white text-xs font-semibold cursor-pointer transition-colors">
-              <Plus className="w-6 h-6 text-white/40" />
-              Añadir fotos
+            <label className="aspect-square rounded-xl border border-dashed border-white/15 hover:border-white/35 flex flex-col items-center justify-center gap-2 text-white/50 hover:text-white text-xs font-semibold cursor-pointer transition-colors p-2 text-center">
+              <Plus className="w-6 h-6 text-emerald-400" />
+              <span>Subir fotos o vídeos</span>
+              <span className="text-[10px] text-white/30 font-normal">JPG, PNG, WEBP, MP4, MOV</span>
               <input
                 ref={inputGaleria}
                 type="file"
                 multiple
-                accept={IMAGEN_TIPOS.join(',')}
+                accept={MULTIMEDIA_TIPOS.join(',')}
                 className="sr-only"
-                onChange={(e) => agregarImagenes(e.target.files)}
+                onChange={(e) => agregarArchivos(e.target.files)}
               />
             </label>
           )}
         </div>
-        <p className="text-white/25 text-[11px] mt-3">
-          Trabajos reales, tu local, tu equipo o productos. La primera foto es la que más se ve. Máx. 5 MB cada una.
+        <p className="text-white/30 text-[11px] mt-3">
+          Fotos (máx. 5 MB) y vídeos (máx. 40 MB, o enlaces de YouTube/Vimeo/TikTok). Máximo 15 elementos en total.
         </p>
       </fieldset>
 
