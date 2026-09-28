@@ -386,8 +386,10 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
         )}
       >
         <div className={cn('flex items-center gap-2.5', col && 'justify-center')}>
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white shadow-sm transition-colors group-hover:border-white/20 group-hover:bg-white/[0.06]">
-            <span className="font-mono text-[10px] font-bold tracking-wider text-white/90">BI</span>
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-b from-white to-slate-200 shadow-[0_2px_8px_rgba(255,255,255,0.25)] transition-transform duration-200 group-hover:scale-105 active:scale-95">
+            <span className="text-[11px] text-[#070E17] font-black leading-none tracking-tight font-sans select-none">
+              BI
+            </span>
           </div>
 
           {!col && (
@@ -817,8 +819,8 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
               <Menu className="h-4 w-4" />
             </button>
             <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.04]">
-                <span className="font-mono text-[9px] font-bold text-white/90">BI</span>
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-b from-white to-slate-200 shadow-[0_2px_6px_rgba(255,255,255,0.25)]">
+                <span className="text-[10px] text-[#070E17] font-black leading-none tracking-tight font-sans select-none">BI</span>
               </div>
               <span className="text-xs font-semibold tracking-tight text-white/90">
                 {tema?.nombre_sistema || 'BI 0 A 100'}
