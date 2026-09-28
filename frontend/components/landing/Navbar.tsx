@@ -37,21 +37,21 @@ export default function Navbar() {
   return (
     <header className="fixed top-0 inset-x-0 z-50 px-3 sm:px-6 pt-3 sm:pt-4 pointer-events-none">
       <nav
-        className={`pointer-events-auto max-w-6xl mx-auto rounded-full border transition-all duration-300 px-4 sm:px-6 h-13 sm:h-14 flex items-center justify-between gap-2 ${
+        className={`pointer-events-auto max-w-5xl mx-auto rounded-full border transition-all duration-300 px-4 sm:px-5 h-13 sm:h-14 flex items-center justify-between gap-3 shadow-[0_8px_32px_rgba(0,0,0,0.55)] ${
           scrolled
-            ? "bg-[#070E17]/92 backdrop-blur-xl border-white/[0.14] shadow-[0_8px_32px_rgba(0,0,0,0.55)] border-t-white/25"
-            : "bg-[#090E17]/75 backdrop-blur-md border-white/[0.09] shadow-[0_4px_20px_rgba(0,0,0,0.35)] border-t-white/15"
+            ? "bg-[#070E17]/92 backdrop-blur-xl border-white/[0.14] border-t-white/25"
+            : "bg-[#090E17]/80 backdrop-blur-md border-white/[0.10] border-t-white/15"
         }`}
         aria-label="Navegación principal"
       >
-        {/* Brand / Isotipo (Izquierda - Ancho equilibrado) */}
-        <div className="flex items-center flex-shrink-0 min-w-[120px] sm:min-w-[140px]">
+        {/* 1. Izquierda: Marca / Logo (Ancho fijo proporcional para centrado perfecto) */}
+        <div className="flex items-center flex-shrink-0 w-auto lg:w-[170px] justify-start">
           <Link
             href="/"
-            className="inline-flex items-center gap-2.5 group focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded-full p-1"
+            className="inline-flex items-center gap-2.5 group focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded-full py-1 pr-2"
             aria-label="BI 0 A 100 Inicio"
           >
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-b from-white to-slate-200 flex items-center justify-center shadow-[0_2px_8px_rgba(255,255,255,0.2)] transition-transform duration-200 active:scale-95 flex-shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-b from-white to-slate-200 flex items-center justify-center shadow-[0_2px_8px_rgba(255,255,255,0.25)] transition-transform duration-200 active:scale-95 flex-shrink-0">
               <span className="text-[11px] text-[#070E17] font-black leading-none tracking-tight font-sans select-none">
                 BI
               </span>
@@ -62,31 +62,33 @@ export default function Navbar() {
           </Link>
         </div>
 
-        {/* Center Nav Links (Desktop perfectamente centrado con flex-1 y sin colisiones) */}
-        <div className="hidden lg:flex items-center justify-center gap-1 xl:gap-2 flex-1 px-2">
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="h-8 px-3 xl:px-3.5 rounded-full text-xs xl:text-[13px] font-sans font-medium text-slate-300 hover:text-white hover:bg-white/[0.08] transition-all duration-150 whitespace-nowrap flex items-center leading-none"
-            >
-              {link.label}
-            </Link>
-          ))}
+        {/* 2. Centro: Los 5 enlaces unificados en cápsula horizontal (Una sola línea garantizada) */}
+        <div className="hidden lg:flex items-center justify-center flex-1">
+          <div className="flex items-center gap-1 p-1 rounded-full bg-white/[0.04] border border-white/[0.07]">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="h-7.5 px-3 rounded-full text-xs font-sans font-medium text-slate-300 hover:text-white hover:bg-white/[0.08] transition-all whitespace-nowrap flex items-center leading-none"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
         </div>
 
-        {/* Right Actions (Derecha - Ancho equilibrado con izquierda) */}
-        <div className="flex items-center justify-end gap-2 sm:gap-2.5 flex-shrink-0 min-w-[120px] sm:min-w-[140px]">
+        {/* 3. Derecha: Acciones (Ancho fijo proporcional para centrado perfecto) */}
+        <div className="flex items-center justify-end gap-2 sm:gap-2.5 flex-shrink-0 w-auto lg:w-[170px]">
           <Link
             href="/auth/login"
-            className="hidden sm:inline-flex items-center h-8 px-3 rounded-full text-xs font-sans font-medium text-slate-300 hover:text-white hover:bg-white/[0.06] transition-colors whitespace-nowrap leading-none"
+            className="hidden xl:inline-flex items-center h-8 px-2.5 rounded-full text-xs font-sans font-medium text-slate-300 hover:text-white hover:bg-white/[0.06] transition-colors whitespace-nowrap leading-none"
           >
             Iniciar sesión
           </Link>
 
           <Link
             href="/auth/signup"
-            className="relative inline-flex items-center justify-center h-8 sm:h-8.5 px-3.5 sm:px-4 rounded-full text-xs font-sans font-semibold text-white bg-gradient-to-b from-[#EF4444] via-[#DC2626] to-[#B91C1C] hover:brightness-110 active:scale-[0.98] transition-all duration-200 shadow-[0_2px_14px_rgba(239,68,68,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] border border-white/20 overflow-hidden group cursor-pointer whitespace-nowrap leading-none"
+            className="relative inline-flex items-center justify-center h-8 px-3.5 sm:px-4 rounded-full text-xs font-sans font-semibold text-white bg-gradient-to-b from-[#EF4444] via-[#DC2626] to-[#B91C1C] hover:brightness-110 active:scale-[0.98] transition-all duration-200 shadow-[0_2px_14px_rgba(239,68,68,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] border border-white/20 overflow-hidden group cursor-pointer whitespace-nowrap leading-none"
           >
             <span className="relative z-10 flex items-center gap-1.5">
               <span>Comenzar gratis</span>
@@ -94,7 +96,7 @@ export default function Navbar() {
             </span>
           </Link>
 
-          {/* Mobile Menu Button */}
+          {/* Botón de Menú Móvil / Tablet (< 1024px) */}
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -107,7 +109,7 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* Mobile / Tablet Drawer */}
+      {/* Menú Desplegable Móvil / Tablet */}
       <AnimatePresence>
         {mobileMenuOpen && (
           <motion.div
@@ -116,7 +118,7 @@ export default function Navbar() {
             animate={{ opacity: 1, y: 0 }}
             exit={shouldReduce ? undefined : { opacity: 0, y: -8 }}
             transition={MOTION_SPRINGS.snappy}
-            className="pointer-events-auto lg:hidden max-w-6xl mx-auto mt-2 rounded-2xl bg-[#070E17]/95 backdrop-blur-2xl border border-white/[0.12] p-4 shadow-2xl flex flex-col gap-1.5"
+            className="pointer-events-auto lg:hidden max-w-5xl mx-auto mt-2 rounded-2xl bg-[#070E17]/95 backdrop-blur-2xl border border-white/[0.12] p-4 shadow-2xl flex flex-col gap-1.5"
           >
             {NAV_LINKS.map((link) => (
               <Link
