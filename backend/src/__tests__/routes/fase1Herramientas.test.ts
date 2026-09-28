@@ -202,7 +202,8 @@ describeWithDb('Fase 1 — escala y control de las herramientas', () => {
         await c.api.post('/cotizaciones', { cliente_nombre: `Q${i}`, items: [] });
       }
       const insumo = await c.api.post('/inventario/insumos', { nombre: 'Leche', stock_actual: 10 });
-      for (let i = 0; i < 3; i++) await c.api.post('/inventario/movimientos', { insumo_id: insumo.body.id, tipo: 'merma', cantidad: 1 });
+      // Tres movimientos: el inventario inicial y dos mermas.
+      for (let i = 0; i < 2; i++) await c.api.post('/inventario/movimientos', { insumo_id: insumo.body.id, tipo: 'merma', cantidad: 1 });
       const emp = await c.api.post('/nomina/empleados', { nombre: 'Ana', salario: 1000, moneda: 'MXN' });
       for (const d of ['01', '02', '03']) {
         await c.api.post('/nomina/pagos', { empleado_id: emp.body.id, periodo_inicio: `2026-09-${d}`, periodo_fin: `2026-09-${d}`, fecha_pago: `2026-09-${d}` });

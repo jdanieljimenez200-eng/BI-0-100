@@ -94,10 +94,17 @@ export function generarRiesgosMock(ctx: RiesgosContexto): RiesgosNegocio {
       'por falta de clientes: mueren por matemáticas rotas disfrazadas de "mal mes".',
     riesgos: [
       {
-        titulo: 'Margen insuficiente para absorber imprevistos',
-        descripcion:
-          `Con un margen neto promedio de ${margen}%, cualquier imprevisto (devolución, descuento, costo que sube) ` +
-          'puede convertir un mes rentable en uno negativo.',
+        // El título depende del margen: con un 27 % la plantilla decía «margen
+        // insuficiente» mientras las recomendaciones lo llamaban «por encima del
+        // benchmark».
+        titulo: margen < 15
+          ? 'Margen insuficiente para absorber imprevistos'
+          : 'Un margen sano que se erosiona sin avisar',
+        descripcion: margen < 15
+          ? `Con un margen neto promedio de ${margen}%, cualquier imprevisto (devolución, descuento, costo que sube) ` +
+            'puede convertir un mes rentable en uno negativo.'
+          : `Tu margen neto promedio de ${margen}% da colchón, pero se come poco a poco: descuentos sin control, ` +
+            'costos de proveedor que suben y precios que no se revisan en meses.',
         senales_alerta: [
           'Vendes todos los días y el dinero no alcanza a fin de mes',
           'Repones inventario o insumos con tarjeta de crédito',
@@ -108,10 +115,15 @@ export function generarRiesgosMock(ctx: RiesgosContexto): RiesgosNegocio {
       },
       {
         titulo: 'Flujo de caja antes de llegar al punto de equilibrio',
+        // Sin inversión declarada no hay payback que medir: decir «no la
+        // recupera» describía un negocio malo que nadie dijo que lo fuera.
         descripcion: payback
           ? `Recuperar la inversión toma ${payback} meses — es el periodo más frágil: cualquier caída de ventas ` +
             'en esa ventana puede dejarte sin efectivo antes de romper parejo.'
-          : 'Con las unidades y precio actuales, el negocio no recupera la inversión en el horizonte proyectado.',
+          : ctx.payback_no_disponible === 'sin_inversion_declarada'
+            ? 'Los primeros meses son los más frágiles: cualquier caída de ventas antes de tener reservas ' +
+              'puede dejarte sin efectivo para cubrir los costos fijos.'
+            : 'Con las unidades y precio actuales, el negocio no recupera la inversión en el horizonte proyectado.',
         senales_alerta: [
           'Cobras "la próxima quincena" mientras pagas de contado',
           'Postergas pagos a proveedores seguido',

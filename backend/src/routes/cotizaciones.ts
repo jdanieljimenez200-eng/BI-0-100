@@ -11,13 +11,16 @@ import { Plan } from '../models/Usuario';
 import { getPlanFromDB } from '../middleware/requirePlan';
 import { resolveMarca } from '../services/branding/brandingService';
 import { ah } from '../utils/asyncHandler';
-import { monedaDeCuenta } from '../utils/monedaCuenta';
+import { monedaDeCuenta, paisDeCuenta } from '../utils/monedaCuenta';
+import { telefonoWhatsApp } from '../utils/whatsapp';
 import { siguienteFolio, siguienteFolioVenta } from '../utils/folios';
 import { Venta } from '../models/Venta';
 import { requireHerramientaAccess as requireHerramienta } from '../middleware/requirePlan';
 import { VentaItem } from '../models/VentaItem';
 import { MovimientoContable } from '../models/MovimientoContable';
 import { Producto } from '../models/Producto';
+import { Negocio } from '../models/Negocio';
+import { Cliente } from '../models/Cliente';
 import { hoyDePeticion } from '../utils/fechaLocal';
 import { idempotente } from '../middleware/idempotency';
 import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
@@ -35,11 +38,16 @@ const CotizacionItemSchema = z.object({
   subtotal: z.number().optional(),
 });
 
+// Texto opcional que también admite null: el formulario manda `campo || null`
+// en los vacíos, y con `z.string().optional()` a secas crear una cotización sin
+// empresa, email, teléfono o notas respondía 400. Mismo helper que clientes.
+const textoOpcional = (max: number) => z.string().trim().max(max).nullable().optional();
+
 const CrearCotizacionSchema = z.object({
   cliente_nombre: z.string().trim().min(1, 'cliente_nombre es requerido').max(200),
-  cliente_empresa: z.string().max(200).optional(),
-  cliente_email: z.string().max(200).optional(),
-  cliente_telefono: z.string().max(30).optional(),
+  cliente_empresa: textoOpcional(200),
+  cliente_email: textoOpcional(200),
+  cliente_telefono: textoOpcional(30),
   // Vinculo opcional con el CRM; los campos cliente_* de arriba quedan como
   // snapshot para el PDF.
   cliente_id: z.string().uuid().nullable().optional(),
@@ -53,7 +61,7 @@ const CrearCotizacionSchema = z.object({
   moneda: z.string().trim().max(3).optional(), // sin valor: la del país del producto (monedaDeCuenta)
   estado: z.enum(['borrador', 'enviada', 'aceptada', 'rechazada', 'vencida']).optional().default('borrador'),
   fecha_vencimiento: fechaISOOpcional('fecha_vencimiento inválida (YYYY-MM-DD)'),
-  notas: z.string().optional(),
+  notas: textoOpcional(5000),
   negocio_id: z.string().uuid().nullable().optional(),
   producto_id: z.string().uuid().nullable().optional(),
 });
@@ -76,6 +84,22 @@ const contarCotizaciones = (cuentaId: string) =>
 const repo = () => AppDataSource.getRepository(Cotizacion);
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
+
+/** Venta vigente (no cancelada) de cada cotización, por id de cotización. */
+async function ventasVigentes(ids: string[]): Promise<Map<string, { id: string; numero_ticket: string }>> {
+  if (!ids.length) return new Map();
+  const filas: { id: string; numero_ticket: string; cotizacion_id: string }[] = await AppDataSource.query(
+    `SELECT id, numero_ticket, cotizacion_id FROM ventas WHERE cotizacion_id = ANY($1::uuid[]) AND estado <> 'cancelada'`,
+    [ids]
+  );
+  return new Map(filas.map((f) => [f.cotizacion_id, { id: f.id, numero_ticket: f.numero_ticket }]));
+}
+
+/** La cotización con su venta vigente, para que la interfaz sepa si falta convertirla. */
+function conVenta(cot: Cotizacion, ventas: Map<string, { id: string; numero_ticket: string }>) {
+  const v = ventas.get(cot.id);
+  return { ...cot, venta_id: v?.id ?? null, venta_ticket: v?.numero_ticket ?? null };
+}
 
 function validateItems(items: CotizacionItem[]): string | null {
   for (let i = 0; i < items.length; i++) {
@@ -153,14 +177,15 @@ router.get('/', ah(async (req: AuthRequest, res: Response) => {
     leerLimite(req.query.limite)
   );
   if (!pagina) { res.status(400).json({ error: 'Cursor de paginación inválido' }); return; }
-  responderPagina(res, pagina);
+  const ventas = await ventasVigentes(pagina.filas.map((c) => c.id));
+  responderPagina(res, { ...pagina, filas: pagina.filas.map((c) => conVenta(c, ventas)) });
 }));
 
 // ─── GET /api/cotizaciones/:id ────────────────────────────────────────────────
 router.get('/:id', ah(async (req: AuthRequest, res: Response) => {
   const row = await repo().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!row) { res.status(404).json({ error: 'Cotización no encontrada' }); return; }
-  res.json(row);
+  res.json(conVenta(row, await ventasVigentes([row.id])));
 }));
 
 // ─── POST /api/cotizaciones ───────────────────────────────────────────────────
@@ -168,8 +193,9 @@ router.post('/', idempotente('cotizacion'), requireHerramientaAccess('cotizacion
   const {
     cliente_nombre, cliente_empresa, cliente_email, cliente_telefono,
     items = [], descuento_pct = 0, impuesto_tasa = 0, impuesto_nombre = 'IVA',
-    moneda, estado = 'borrador', fecha_vencimiento, notas, negocio_id, producto_id,
+    moneda, estado = 'borrador', fecha_vencimiento, notas, negocio_id, producto_id, cliente_id,
   } = req.body as {
+    cliente_id?: string | null;
     cliente_nombre: string;
     cliente_empresa?: string;
     cliente_email?: string;
@@ -194,6 +220,22 @@ router.post('/', idempotente('cotizacion'), requireHerramientaAccess('cotizacion
   const itemError = validateItems(items);
   if (itemError) { res.status(400).json({ error: itemError }); return; }
 
+  // Negocio, producto y cliente tienen que ser de ESTA cuenta. El esquema
+  // aceptaba cliente_id pero el alta lo descartaba: ninguna cotización quedaba
+  // ligada a su expediente del CRM.
+  if (negocio_id && !(await AppDataSource.getRepository(Negocio).exists({ where: { id: negocio_id, usuario_id: req.userId! } }))) {
+    res.status(404).json({ error: 'Negocio no encontrado' });
+    return;
+  }
+  if (producto_id && !(await AppDataSource.getRepository(Producto).exists({ where: { id: producto_id, usuario_id: req.userId! } }))) {
+    res.status(404).json({ error: 'Producto no encontrado' });
+    return;
+  }
+  if (cliente_id && !(await AppDataSource.getRepository(Cliente).exists({ where: { id: cliente_id, usuario_id: req.userId! } }))) {
+    res.status(404).json({ error: 'Cliente no encontrado' });
+    return;
+  }
+
   const { subtotal, descuento_monto, impuesto_monto, total } = calcTotales(items, descuento_pct, impuesto_tasa);
   const plan = (await getPlanFromDB(req.cuentaEfectivaId ?? req.userId!)) as Plan;
   const marcaSnap = await getMarcaSnapshot(req.userId!, plan);
@@ -206,6 +248,7 @@ router.post('/', idempotente('cotizacion'), requireHerramientaAccess('cotizacion
       negocio_id:       negocio_id ?? null,
       producto_id:      producto_id ?? null,
       numero,
+      cliente_id:       cliente_id ?? null,
       cliente_nombre:   cliente_nombre.trim(),
       cliente_empresa:  cliente_empresa?.trim() || null,
       cliente_email:    cliente_email?.trim() || null,
@@ -266,7 +309,7 @@ router.patch('/:id', validateBody(EditarCotizacionSchema), ah(async (req: AuthRe
   Object.assign(cot, recalc);
 
   await repo().save(cot);
-  res.json(cot);
+  res.json(conVenta(cot, await ventasVigentes([cot.id])));
 }));
 
 // ─── DELETE /api/cotizaciones/:id ─────────────────────────────────────────────
@@ -283,7 +326,9 @@ router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
     if (!cot) { res.status(404).json({ error: 'Cotización no encontrada' }); return; }
 
     const { mensaje } = req.body as { mensaje?: string };
-    const tel = (cot.cliente_telefono || '').replace(/[^\d]/g, '');
+    const tel = cot.cliente_telefono
+      ? telefonoWhatsApp(cot.cliente_telefono, await paisDeCuenta(req.userId!, cot.producto_id))
+      : '';
     const base = tel ? `https://wa.me/${tel}` : 'https://wa.me/';
     const msgDefault = `Hola ${cot.cliente_nombre.split(' ')[0]}, te envío la cotización *${cot.numero}* por *${cot.moneda} $${Number(cot.total).toFixed(2)}*. ¿Tienes alguna pregunta?`;
     const url = `${base}?text=${encodeURIComponent(mensaje?.trim() || msgDefault)}`;
@@ -294,7 +339,7 @@ router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
       await repo().save(cot);
     }
 
-    res.json({ whatsapp_url: url, cotizacion: cot });
+    res.json({ whatsapp_url: url, cotizacion: conVenta(cot, await ventasVigentes([cot.id])) });
   }));
 
   // ─── POST /api/cotizaciones/:id/convertir-venta ──────────────────────────────
@@ -304,19 +349,32 @@ router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
   //
   // La venta se crea con el MISMO folio correlativo y el mismo advisory lock que
   // el POS (utils/folios.ts), asi que ambos caminos comparten una sola secuencia.
+  // Mismo conteo que el POS (routes/pos.ts): el tope es de la herramienta, no del camino.
   const contarVentasPOS = (cuentaId: string) =>
-    AppDataSource.getRepository(Venta).count({ where: { usuario_id: cuentaId } });
+    AppDataSource.getRepository(Venta).count({ where: { usuario_id: cuentaId, estado: 'completada' } });
+
+  // Sin esquema, cualquier texto acababa en `ventas.metodo_pago` (varchar sin
+  // CHECK) y aparecía como un método más en Reportes.
+  const ConvertirVentaSchema = z.object({
+    producto_id: z.string().uuid().optional(),
+    metodo_pago: z.enum(['efectivo', 'tarjeta', 'transferencia', 'otro']).optional(),
+  });
 
   router.post(
     '/:id/convertir-venta',
     idempotente('cotizacion_venta'),
     requireHerramienta('pos', contarVentasPOS),
+    validateBody(ConvertirVentaSchema),
     ah(async (req: AuthRequest, res: Response) => {
     const cot = await repo().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
     if (!cot) { res.status(404).json({ error: 'Cotización no encontrada' }); return; }
 
-    if (cot.estado === 'aceptada') {
-      res.status(409).json({ error: 'Esta cotización ya se convirtió en venta' });
+    // Lo que dice si ya se vendió es la venta vigente, no el estado: «Aceptar»
+    // marca 'aceptada' sin crear venta, y antes eso dejaba la cotización sin
+    // forma de convertirse (409 «ya se convirtió» sin venta detrás).
+    const previa = (await ventasVigentes([cot.id])).get(cot.id);
+    if (previa) {
+      res.status(409).json({ error: `Esta cotización ya se convirtió en la venta ${previa.numero_ticket}`, venta_id: previa.id });
       return;
     }
     if (!Array.isArray(cot.items) || cot.items.length === 0) {
@@ -326,10 +384,7 @@ router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
 
     // El producto define pais y moneda. Se acepta por body para cotizaciones
     // antiguas que se guardaron sin producto_id.
-    const { producto_id: productoIdBody, metodo_pago } = req.body as {
-      producto_id?: string;
-      metodo_pago?: 'efectivo' | 'tarjeta' | 'transferencia' | 'otro';
-    };
+    const { producto_id: productoIdBody, metodo_pago } = req.body as z.infer<typeof ConvertirVentaSchema>;
     const productoId = cot.producto_id || productoIdBody;
     if (!productoId) {
       res.status(400).json({ error: 'producto_id es requerido (define el país y la moneda de la venta)' });
@@ -343,15 +398,21 @@ router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
     const hoy = await hoyDePeticion(req);
     const venta = await AppDataSource.transaction(async manager => {
       // Primero se "toma" la cotización: el UPDATE bloquea la fila, así que dos
-      // conversiones simultáneas no pueden pasar las dos. Antes la comprobación
-      // de estado iba fuera de la transacción y tres clics creaban tres ventas.
+      // conversiones simultáneas se ponen en fila y la segunda ya ve la venta
+      // de la primera. Antes la comprobación iba fuera de la transacción y tres
+      // clics creaban tres ventas.
       const tomada = await manager
         .createQueryBuilder()
         .update(Cotizacion)
         .set({ estado: 'aceptada' })
-        .where('id = :id AND usuario_id = :uid AND estado <> :aceptada', { id: cot.id, uid: req.userId!, aceptada: 'aceptada' })
+        .where('id = :id AND usuario_id = :uid', { id: cot.id, uid: req.userId! })
         .execute();
       if (!tomada.affected) return null;
+      const [yaVendida] = await manager.query(
+        `SELECT 1 FROM ventas WHERE cotizacion_id = $1 AND estado <> 'cancelada' LIMIT 1`,
+        [cot.id]
+      );
+      if (yaVendida) return null;
 
       const numeroTicket = await siguienteFolioVenta(manager, req.userId!);
 
@@ -408,6 +469,28 @@ router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
         referencia_id:    cot.id,
       });
       await manager.save(MovimientoContable, mov);
+
+      // El impuesto cobrado se aparta como en el POS («IVA por pagar», hijo del
+      // ingreso): sin él, la venta de una cotización inflaba la utilidad y el
+      // IVA a declarar salía corto.
+      if (Number(cot.impuesto_monto) > 0) {
+        await manager.save(MovimientoContable, manager.create(MovimientoContable, {
+          usuario_id:           req.userId!,
+          creado_por_id:        req.trabajadorRealId ?? null,
+          producto_id:          productoId,
+          tipo:                 'egreso',
+          descripcion:          `${cot.impuesto_nombre} por pagar — ${numeroTicket}`,
+          categoria:            `${cot.impuesto_nombre} por pagar`,
+          monto:                Number(cot.impuesto_monto),
+          fecha:                v.fecha,
+          parent_movimiento_id: mov.id,
+          es_auto_generado:     true,
+          tiene_cfdi:           true,
+          fuente:               'cotizacion',
+          referencia_tipo:      'cotizacion',
+          referencia_id:        cot.id,
+        }));
+      }
 
       v.movimiento_contable_id = mov.id;
       await manager.save(Venta, v);

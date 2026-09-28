@@ -12,6 +12,8 @@ import { ah } from '../utils/asyncHandler';
 import { resolverClienteParaVenta } from '../services/crm/resolverCliente';
 import { encolarBorrarEvento, encolarGuardarCita } from '../workers/calendarQueue';
 import { hoyDePeticion } from '../utils/fechaLocal';
+import { paisDeCuenta } from '../utils/monedaCuenta';
+import { telefonoWhatsApp } from '../utils/whatsapp';
 import { idempotente } from '../middleware/idempotency';
 import lugaresRouter from './calendarioLugares';
 import esperaRouter from './calendarioEspera';
@@ -260,7 +262,9 @@ router.post('/:id/whatsapp', ah(async (req: AuthRequest, res: Response) => {
   const cita = await repo().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!cita) { res.status(404).json({ error: 'Cita no encontrada' }); return; }
 
-  const tel = (cita.cliente_telefono || '').replace(/[^\d]/g, '');
+  const tel = cita.cliente_telefono
+    ? telefonoWhatsApp(cita.cliente_telefono, await paisDeCuenta(req.userId!, cita.producto_id))
+    : '';
   if (!tel) { res.status(400).json({ error: 'El cliente no tiene teléfono' }); return; }
 
   const fechaFmt = new Date(cita.fecha + 'T12:00:00Z').toLocaleDateString('es-MX', {

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, CheckCircle, Check, CreditCard } from 'lucide-react';
 import api from '@/lib/api';
+import { hoyLocal } from '@/lib/fechaLocal';
 
 interface MovimientoLiquidacion {
   id: string;
@@ -81,7 +82,7 @@ export default function LiquidacionesPanel({
     setConciliandoId(id);
     try {
       await api.patch(`/contabilidad/liquidaciones/${id}/conciliar`, {
-        fecha_liquidacion: new Date().toISOString().slice(0, 10),
+        fecha_liquidacion: hoyLocal(),
       });
       await cargarDatos();
       if (onMovimientosCambio) onMovimientosCambio();

@@ -143,7 +143,8 @@ describeWithDb('Fila de espera y lugares', () => {
     expect(llamada.body.turno.estado).toBe('llamado');
     expect(llamada.body.turno.hora_llamado).toBeTruthy();
     // El mensaje va listo para enviar; la app nunca lo manda sola.
-    expect(llamada.body.whatsapp_url).toContain('https://wa.me/5512345678?text=');
+    // Con la lada de México: el número nacional a secas no abre ningún chat.
+    expect(llamada.body.whatsapp_url).toContain('https://wa.me/525512345678?text=');
     expect(decodeURIComponent(llamada.body.whatsapp_url)).toContain('Ana');
 
     const sentada = await espera().estado(turno.id, { estado: 'atendido', lugar_id: mesa });

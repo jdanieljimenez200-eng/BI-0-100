@@ -37,6 +37,9 @@ import MotionModal from '@/components/motion/MotionModal';
 import ProductoGate from '@/components/herramientas/ProductoGate';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
 import { ProductoActivo } from '@/lib/productoActivo';
+import { getTaxConfig } from '@/lib/taxConfig';
+import { enlaceWhatsApp, telefonoWhatsApp } from '@/lib/whatsapp';
+import { fechaLocal, hoyLocal } from '@/lib/fechaLocal';
 import { Breadcrumbs, SearchInput, Toast } from '@/components/ui';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -88,36 +91,38 @@ function fmtDate(s: string | null) {
   catch { return s; }
 }
 
-function today() { return new Date().toISOString().slice(0, 10); }
+// Día local, no UTC: un pago hecho el 30 por la tarde quedaba con fecha del 1
+// (y su egreso en el mes siguiente de Contabilidad).
+const today = hoyLocal;
 
 function periodoPorTipo(tipo: Empleado['tipo_pago']): { inicio: string; fin: string } {
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth();
   if (tipo === 'mensual') {
-    const inicio = new Date(y, m, 1).toISOString().slice(0, 10);
-    const fin    = new Date(y, m + 1, 0).toISOString().slice(0, 10);
-    return { inicio, fin };
+    return { inicio: fechaLocal(new Date(y, m, 1)), fin: fechaLocal(new Date(y, m + 1, 0)) };
   }
   if (tipo === 'quincenal') {
     const d = now.getDate();
-    if (d <= 15) return { inicio: new Date(y, m, 1).toISOString().slice(0, 10), fin: new Date(y, m, 15).toISOString().slice(0, 10) };
-    return { inicio: new Date(y, m, 16).toISOString().slice(0, 10), fin: new Date(y, m + 1, 0).toISOString().slice(0, 10) };
+    if (d <= 15) return { inicio: fechaLocal(new Date(y, m, 1)), fin: fechaLocal(new Date(y, m, 15)) };
+    return { inicio: fechaLocal(new Date(y, m, 16)), fin: fechaLocal(new Date(y, m + 1, 0)) };
   }
   // semanal: lunes a domingo
   const day = now.getDay() || 7;
   const lunes = new Date(now); lunes.setDate(now.getDate() - day + 1);
   const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6);
-  return { inicio: lunes.toISOString().slice(0, 10), fin: domingo.toISOString().slice(0, 10) };
+  return { inicio: fechaLocal(lunes), fin: fechaLocal(domingo) };
 }
 
 
 
 // ─── Modal: Empleado ──────────────────────────────────────────────────────────
 
-function EmpleadoModal({ empleado, negocioId, productoId, onClose, onSaved }: {
+function EmpleadoModal({ empleado, negocioId, productoId, monedaCuenta, onClose, onSaved }: {
   empleado: Empleado | null;
   negocioId: string | null;
   productoId: string;
+  /** Moneda del país del producto (MXN en México). */
+  monedaCuenta: string;
   onClose: () => void;
   onSaved: (e: Empleado) => void;
 }) {
@@ -125,7 +130,9 @@ function EmpleadoModal({ empleado, negocioId, productoId, onClose, onSaved }: {
   const [cargo,       setCargo]      = useState(empleado?.cargo ?? '');
   const [salario,     setSalario]    = useState(String(empleado?.salario ?? ''));
   const [tipoPago,    setTipoPago]   = useState<Empleado['tipo_pago']>(empleado?.tipo_pago ?? 'mensual');
-  const [moneda,      setMoneda]     = useState(empleado?.moneda ?? 'USD');
+  // La del país del producto, no 'USD' fijo: el formulario siempre la manda y
+  // un negocio mexicano daba de alta los sueldos en dólares.
+  const [moneda,      setMoneda]     = useState(empleado?.moneda ?? monedaCuenta);
   const [telefono,    setTelefono]   = useState(empleado?.telefono ?? '');
   const [email,       setEmail]      = useState(empleado?.email ?? '');
   const [fechaInicio, setFechaInicio]= useState(empleado?.fecha_inicio ?? '');
@@ -187,7 +194,7 @@ function EmpleadoModal({ empleado, negocioId, productoId, onClose, onSaved }: {
             </div>
             <div>
               <label className="text-xs text-white/40 mb-1 block">Moneda</label>
-              <CustomSelect value={moneda} onChange={setMoneda} options={MONEDAS.map(m => ({ value: m, label: m }))} />
+              <CustomSelect value={moneda} onChange={setMoneda} options={(MONEDAS.includes(monedaCuenta) ? MONEDAS : [monedaCuenta, ...MONEDAS]).map(m => ({ value: m, label: m }))} />
             </div>
           </div>
 
@@ -493,7 +500,7 @@ function PersonalInner({ producto, cambiarProducto }: { producto: ProductoActivo
 
   function handleSharePagoWhatsApp(p: Pago) {
     const emp = allEmpleados.find(e => e.id === p.empleado_id);
-    const tel = emp?.telefono ? emp.telefono.replace(/[^\d]/g, '') : '';
+    const tel = telefonoWhatsApp(emp?.telefono, producto.pais);
     const msg = `Hola ${p.empleado_nombre}. Te compartimos el comprobante de pago de tu nómina por ${p.moneda} $${Number(p.monto).toFixed(2)} correspondiente al periodo ${fmtDate(p.periodo_inicio)} al ${fmtDate(p.periodo_fin)}. Fecha de pago: ${fmtDate(p.fecha_pago)}. ¡Gracias por tu dedicación!`;
     const url = tel ? `https://wa.me/${tel}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
     window.open(url, '_blank', 'noopener');
@@ -771,7 +778,7 @@ function PersonalInner({ producto, cambiarProducto }: { producto: ProductoActivo
 
                       {emp.telefono && (
                         <a
-                          href={`https://wa.me/${emp.telefono.replace(/[^\d]/g, '')}`}
+                          href={enlaceWhatsApp(emp.telefono, producto.pais)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
@@ -939,7 +946,7 @@ function PersonalInner({ producto, cambiarProducto }: { producto: ProductoActivo
       {/* Modals */}
       <AnimatePresence>
         {(modalNuevo || editando) && (
-          <EmpleadoModal empleado={editando} negocioId={producto.negocio_id} productoId={producto.id} onClose={() => { setModalNuevo(false); setEditando(null); }} onSaved={handleSavedEmpleado} />
+          <EmpleadoModal empleado={editando} negocioId={producto.negocio_id} productoId={producto.id} monedaCuenta={getTaxConfig(producto.pais).moneda} onClose={() => { setModalNuevo(false); setEditando(null); }} onSaved={handleSavedEmpleado} />
         )}
         {pagando && (
           <PagoModal empleado={pagando} onClose={() => setPagando(null)} onPagado={handlePagado} />

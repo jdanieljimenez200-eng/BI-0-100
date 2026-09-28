@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -20,7 +20,7 @@ import {
   Filter,
   Download,
 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { hayRespuestaDelServidor, nuevaClaveIdempotencia } from '@/lib/api';
 import { getTaxConfig } from '@/lib/taxConfig';
 import ProductoGate from '@/components/herramientas/ProductoGate';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
@@ -166,6 +166,7 @@ function InventarioInner({
     cantidad: '', costo_unitario: '', stock_objetivo: '', motivo: '', proveedor: '', registrar_en_finanzas: true,
   });
   const [opEnCurso, setOpEnCurso] = useState(false);
+  const claveOp = useRef(nuevaClaveIdempotencia());
 
   const taxCfg = useMemo(() => getTaxConfig(producto.pais ?? 'MX'), [producto.pais]);
   const negocioId = producto.negocio_id;
@@ -329,10 +330,14 @@ function InventarioInner({
           body.proveedor = opForm.proveedor || undefined;
         }
       }
-      await api.post(`/inventario/movimientos`, body);
+      // Una compra genera un egreso: la clave evita que un doble clic o un
+      // reintento tras un corte de red la registre dos veces.
+      await api.post(`/inventario/movimientos`, body, { headers: { 'Idempotency-Key': claveOp.current } });
+      claveOp.current = nuevaClaveIdempotencia();
       await cargarDatos();
       setModalOp(null);
     } catch (err: unknown) {
+      if (hayRespuestaDelServidor(err)) claveOp.current = nuevaClaveIdempotencia();
       const ax = err as { response?: { data?: { error?: string } } };
       alert(`Error: ${ax.response?.data?.error ?? (err instanceof Error ? err.message : 'No se pudo aplicar el movimiento')}`);
     } finally {

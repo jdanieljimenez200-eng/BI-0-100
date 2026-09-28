@@ -14,6 +14,12 @@ export interface FinanzasInput {
    * lo presentaba como «recuperas tu inversión en 1 mes».
    */
   inversion_inicial?: number | null;
+  /**
+   * Mes calendario (1-12) en que arranca la proyección: el día local de quien
+   * lo pide. Sin él los meses se llamaban Enero…Diciembre aunque el análisis se
+   * hiciera en septiembre, y «tu peor mes: Enero» era en realidad el primero.
+   */
+  mes_inicio?: number;
 }
 
 export interface MesProyeccion {

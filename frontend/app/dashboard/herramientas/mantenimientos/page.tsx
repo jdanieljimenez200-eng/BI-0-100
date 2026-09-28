@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarClock,
   Check,
@@ -13,7 +13,8 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { hayRespuestaDelServidor, nuevaClaveIdempotencia } from '@/lib/api';
+import { hoyLocal } from '@/lib/fechaLocal';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
 import { Breadcrumbs, SearchInput } from '@/components/ui';
 
@@ -88,7 +89,9 @@ const ESTILO_ESTADO: Record<Estado, { etiqueta: string; chip: string; punto: str
   sin_registro: { etiqueta: 'Sin registro', chip: 'border-white/15 bg-white/5 text-white/60', punto: 'bg-white/40' },
 };
 
-const hoyISO = () => new Date().toISOString().slice(0, 10);
+// Día local: en UTC, desde las 18:00 en México proponía la fecha de mañana y el
+// backend rechazaba el registro por «fecha futura».
+const hoyISO = hoyLocal;
 
 function textoProximo(equipo: Equipo): string {
   if (equipo.estado === 'sin_registro') return 'Registra el último servicio para activar el aviso';
@@ -362,6 +365,8 @@ function FormularioRegistro({ equipo, onListo, onCerrar }: { equipo: Equipo; onL
   const [notas, setNotas] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Con costo genera un egreso: la clave evita registrarlo dos veces.
+  const clave = useRef(nuevaClaveIdempotencia());
 
   const guardar = async () => {
     setGuardando(true);
@@ -372,9 +377,11 @@ function FormularioRegistro({ equipo, onListo, onCerrar }: { equipo: Equipo; onL
         costo: costo ? Number(costo) : null,
         responsable: responsable.trim() || null,
         notas: notas.trim() || null,
-      });
+      }, { headers: { 'Idempotency-Key': clave.current } });
+      clave.current = nuevaClaveIdempotencia();
       onListo();
     } catch (err) {
+      if (hayRespuestaDelServidor(err)) clave.current = nuevaClaveIdempotencia();
       setError(mensajeDeError(err, 'No se pudo registrar el mantenimiento.'));
     } finally {
       setGuardando(false);
@@ -531,6 +538,7 @@ function MantenimientosContenido() {
       </header>
 
       <div className="mx-auto max-w-5xl px-5 py-7">
+        <h1 className="mb-1.5 text-2xl font-bold tracking-tight text-white">Mantenimientos</h1>
         <p className="mb-5 text-sm text-white/55">
           Registra lo que necesita servicio y te decimos cada cuánto conviene dárselo, según el equipo y cuánto lo usas.
         </p>

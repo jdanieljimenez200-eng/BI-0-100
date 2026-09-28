@@ -33,6 +33,7 @@ import {
 import api, { hayRespuestaDelServidor, nuevaClaveIdempotencia } from '@/lib/api';
 import RecetaEditor from './RecetaEditor';
 import { getTaxConfig, TaxConfig } from '@/lib/taxConfig';
+import { fechaLocal, hoyLocal } from '@/lib/fechaLocal';
 import { abrirMenuPdf } from './MenuPdf';
 import ProductoGate from '@/components/herramientas/ProductoGate';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
@@ -393,10 +394,12 @@ function PosInner({
     void cargarClientesCRM();
   }, [cargarClientesCRM]);
 
-  // Canales de cobro para comisiones automáticas en el POS
+  // Canales de cobro para comisiones automáticas en el POS. Van por /pos (con el
+  // permiso de la caja), no por /contabilidad: un cajero sin Contabilidad
+  // recibía 403 y no podía elegir con qué terminal cobraba.
   useEffect(() => {
     api
-      .get(`/contabilidad/${producto.id}/canales`)
+      .get(`/pos/canales?producto_id=${producto.id}`)
       .then(({ data }) => setCanalesCobro(Array.isArray(data) ? data.filter((c: CanalCobroMin) => c.activo) : []))
       .catch(() => setCanalesCobro([]));
   }, [producto.id]);
@@ -485,10 +488,12 @@ function PosInner({
   // Ventas filtradas para historial con filtros temporales y de método
   const ventasFiltradas = useMemo(() => {
     const query = searchHistorial.toLowerCase().trim();
-    const hoyStr = new Date().toISOString().slice(0, 10);
+    // Día local: `v.fecha` es el día local de la venta, y en UTC «hoy» cambia a
+    // mañana desde las 18:00 en México (el filtro se quedaba vacío por la tarde).
+    const hoyStr = hoyLocal();
     const hace7dias = new Date();
     hace7dias.setDate(hace7dias.getDate() - 7);
-    const hace7diasStr = hace7dias.toISOString().slice(0, 10);
+    const hace7diasStr = fechaLocal(hace7dias);
     const mesStr = hoyStr.slice(0, 7); // YYYY-MM
 
     return ventas.filter((v) => {
@@ -523,7 +528,7 @@ function PosInner({
     const totalHistorico = validas.reduce((acc, v) => acc + n(v.total), 0);
     const countHistorico = validas.length;
 
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = hoyLocal();
     const ventasHoy = validas.filter((v) => v.fecha?.startsWith(hoy));
     const totalHoy = ventasHoy.reduce((acc, v) => acc + n(v.total), 0);
     const countHoy = ventasHoy.length;
@@ -894,6 +899,36 @@ function PosInner({
       setVentaDetalle(data as Venta);
     } catch {
       setVentaDetalle(v);
+    }
+  }, []);
+
+  // ── Cancelar una venta ──────────────────────────────────────────────────
+  // El backend ya lo hacía todo (asientos inversos con fecha de hoy, devolución
+  // al almacén, auditoría y permiso `cancelar_ventas` para cajeros), pero ningún
+  // botón lo llamaba: una venta hecha por error no se podía anular.
+  const [cancelandoVenta, setCancelandoVenta] = useState(false);
+  const cancelarVenta = useCallback(async (v: Venta) => {
+    const motivo = window.prompt(
+      `¿Cancelar la venta ${v.numero_ticket}?\n\n` +
+      'Se devolverá el stock al almacén y se registrarán los asientos contables inversos con fecha de hoy. ' +
+      'La venta no se borra: queda marcada como cancelada.\n\nMotivo (opcional):',
+    );
+    if (motivo === null) return; // el usuario cerró el diálogo
+    setCancelandoVenta(true);
+    try {
+      const { data } = await api.post(`/pos/ventas/${v.id}/cancelar`, { motivo: motivo.trim() || undefined });
+      const cancelada = { ...v, ...(data?.venta ?? {}), estado: 'cancelada' } as Venta;
+      setVentas((prev) => prev.map((x) => (x.id === v.id ? { ...x, ...cancelada } : x)));
+      setVentaDetalle(cancelada);
+    } catch (err: unknown) {
+      const ax = err as { response?: { status?: number; data?: { error?: string } } };
+      alert(
+        ax.response?.status === 403
+          ? 'No tienes permiso para cancelar ventas. Pídeselo al dueño de la cuenta.'
+          : `No se pudo cancelar la venta: ${ax.response?.data?.error ?? 'error de conexión'}`,
+      );
+    } finally {
+      setCancelandoVenta(false);
     }
   }, []);
 
@@ -2563,6 +2598,21 @@ function PosInner({
                   WhatsApp
                 </button>
               </div>
+
+              {ventaDetalle.estado === 'cancelada' ? (
+                <p className="mt-3 text-center text-xs text-red-300/80 bg-red-500/[0.06] border border-red-500/20 rounded-xl py-2">
+                  Venta cancelada — se devolvió el stock y se registraron los asientos inversos.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => cancelarVenta(ventaDetalle)}
+                  disabled={cancelandoVenta}
+                  className="mt-3 w-full py-2 rounded-xl border border-red-500/25 text-red-300/90 text-xs font-semibold hover:bg-red-500/10 transition disabled:opacity-50"
+                >
+                  {cancelandoVenta ? 'Cancelando…' : 'Cancelar venta'}
+                </button>
+              )}
             </motion.div>
           </motion.div>
         )}

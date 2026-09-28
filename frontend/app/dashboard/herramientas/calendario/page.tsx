@@ -126,8 +126,10 @@ function toIsoDate(year: number, month: number, day: number) {
 
 // ─── Modal: Crear / Editar ────────────────────────────────────────────────────
 
-function CitaModal({ cita, defaultFecha, negocioId, productoId, onClose, onSaved }: {
+function CitaModal({ cita, clientePrefill, defaultFecha, negocioId, productoId, onClose, onSaved }: {
   cita: Cita | null;
+  /** Cliente del CRM con el que se abre una cita nueva («Agendar cita» desde su ficha). */
+  clientePrefill?: { id: string; nombre: string; telefono: string | null; email: string | null } | null;
   defaultFecha: string;
   negocioId: string | null;
   productoId: string;
@@ -140,12 +142,12 @@ function CitaModal({ cita, defaultFecha, negocioId, productoId, onClose, onSaved
   const [horaFin,     setHoraFin]     = useState(cita?.hora_fin?.slice(0,5) ?? '10:00');
   // Vínculo real con el CRM. null = contacto escrito a mano: la cita se guarda
   // igual, pero no alimenta el historial del cliente.
-  const [clienteId, setClienteId] = useState<string | null>(cita?.cliente_id ?? null);
+  const [clienteId, setClienteId] = useState<string | null>(cita ? cita.cliente_id : clientePrefill?.id ?? null);
   const [crmClientes, setCrmClientes] = useState<{ id: string; nombre: string; telefono: string | null }[]>([]);
   const [altaCliente, setAltaCliente] = useState<{ nombre: string; telefono: string } | null>(null);
-  const [clienteNombre, setClienteNombre] = useState(cita?.cliente_nombre ?? '');
-  const [clienteTel,  setClienteTel]  = useState(cita?.cliente_telefono ?? '');
-  const [clienteEmail,setClienteEmail]= useState(cita?.cliente_email ?? '');
+  const [clienteNombre, setClienteNombre] = useState(cita ? cita.cliente_nombre ?? '' : clientePrefill?.nombre ?? '');
+  const [clienteTel,  setClienteTel]  = useState(cita ? cita.cliente_telefono ?? '' : clientePrefill?.telefono ?? '');
+  const [clienteEmail,setClienteEmail]= useState(cita ? cita.cliente_email ?? '' : clientePrefill?.email ?? '');
   const [estado,      setEstado]      = useState<Cita['estado']>(cita?.estado ?? 'pendiente');
   const [notas,       setNotas]       = useState(cita?.notas ?? '');
   const [color,       setColor]       = useState(cita?.color ?? '#3B82F6');
@@ -544,8 +546,24 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
   const [viewMode,    setViewMode]    = useState<'mes' | 'agenda' | 'fila'>('mes');
   const [searchAgenda, setSearchAgenda] = useState('');
   const [filtroEstadoAgenda, setFiltroEstadoAgenda] = useState<string>('');
+  const [clientePrefill, setClientePrefill] = useState<{ id: string; nombre: string; telefono: string | null; email: string | null } | null>(null);
 
   useEffect(() => { loadCitas(); }, [year, month]);
+
+  // «Agendar cita» desde la ficha de un cliente llega con ?cliente=<id>: se abre
+  // la cita nueva con ese cliente ya elegido, en vez de dejar la agenda vacía.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('cliente');
+    if (!id) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    api.get(`/clientes/${id}`)
+      .then(({ data }) => {
+        setClientePrefill({ id: data.id, nombre: data.nombre, telefono: data.telefono ?? null, email: data.email ?? null });
+        setEditando(null);
+        setModalNuevo(true);
+      })
+      .catch(() => setToast('No se encontró el cliente'));
+  }, []);
 
   async function loadCitas() {
     setLoading(true);
@@ -580,6 +598,7 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
     });
     setModalNuevo(false);
     setEditando(null);
+    setClientePrefill(null);
     setToast(isEdit ? 'Cita actualizada' : 'Cita creada');
   }
 
@@ -1147,10 +1166,11 @@ function CalendarioInner({ producto, cambiarProducto }: { producto: ProductoActi
           <CitaModal
             key="cita-modal"
             cita={editando}
+            clientePrefill={editando ? null : clientePrefill}
             defaultFecha={selectedDay ?? today}
             negocioId={producto.negocio_id}
             productoId={producto.id}
-            onClose={() => { setModalNuevo(false); setEditando(null); }}
+            onClose={() => { setModalNuevo(false); setEditando(null); setClientePrefill(null); }}
             onSaved={handleSaved}
           />
         )}

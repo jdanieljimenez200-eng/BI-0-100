@@ -39,4 +39,18 @@ describe('riesgosService.generarRiesgosMock', () => {
     expect(riesgoFlujoCon?.descripcion).toContain('6 meses');
     expect(riesgoFlujoSin?.descripcion).toContain('no recupera la inversión');
   });
+
+  it('sin inversión declarada no habla de recuperarla', () => {
+    const r = generarRiesgosMock({ ...ctxBase, meses_para_recuperar_inversion: null, payback_no_disponible: 'sin_inversion_declarada' });
+    const flujo = r.riesgos.find((x) => x.titulo.includes('Flujo de caja'));
+    expect(flujo?.descripcion).not.toMatch(/recupera/i);
+  });
+
+  it('un margen sano no se titula «insuficiente»', () => {
+    const sano = generarRiesgosMock({ ...ctxBase, margen_neto_promedio: 27 });
+    const flaco = generarRiesgosMock({ ...ctxBase, margen_neto_promedio: 8 });
+    expect(sano.riesgos[0].titulo).not.toMatch(/insuficiente/i);
+    expect(sano.riesgos[0].descripcion).toContain('27%');
+    expect(flaco.riesgos[0].titulo).toMatch(/insuficiente/i);
+  });
 });

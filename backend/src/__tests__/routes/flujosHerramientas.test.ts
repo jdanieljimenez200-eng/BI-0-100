@@ -307,17 +307,25 @@ describeWithDb('Flujos entre herramientas', () => {
 
       expect((await api().post(`/pos/ventas/${ventaId}/cancelar`, {})).status).toBe(200);
       expect((await api().get(`/cotizaciones/${cot.body.id}`)).body.estado).toBe('enviada');
-      // El ingreso de la cotización sigue, con su inverso al lado: neto cero.
+      // El ingreso de la cotización y su IVA por pagar siguen, cada uno con su
+      // inverso al lado: neto cero. (Antes esta consulta solo miraba los asientos
+      // de la venta, y como la cancelación no invertía los de la cotización, el
+      // neto salía cero sin que hubiera inverso alguno.)
       const asientos = await q(
-        `SELECT tipo, monto::float AS monto FROM movimientos_contables WHERE referencia_id = $1`,
+        `SELECT tipo, categoria, monto::float AS monto FROM movimientos_contables WHERE referencia_id = $1 ORDER BY tipo`,
         [cot.body.id]
       );
-      expect(asientos).toHaveLength(1);
+      expect(asientos).toEqual([
+        { tipo: 'egreso', categoria: 'IVA por pagar', monto: 160 },
+        { tipo: 'ingreso', categoria: 'Ventas', monto: 1160 },
+      ]);
       const netoCot = await q(
-        `SELECT COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE -monto END), 0)::float AS neto
-           FROM movimientos_contables WHERE referencia_tipo = 'venta' AND referencia_id = $1`,
-        [ventaId]
+        `SELECT COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE -monto END), 0)::float AS neto, COUNT(*)::int AS n
+           FROM movimientos_contables
+          WHERE (referencia_tipo = 'venta' AND referencia_id = $1) OR referencia_id = $2`,
+        [ventaId, cot.body.id]
       );
+      expect(netoCot[0].n).toBe(4);
       expect(netoCot[0].neto).toBe(0);
     });
 
@@ -423,7 +431,7 @@ describeWithDb('Flujos entre herramientas', () => {
       expect((await api(tokenOtra).delete(`/clientes/${c.body.id}`)).status).toBe(404);
 
       const wa = await api().post(`/clientes/${c.body.id}/whatsapp`, {});
-      expect(wa.body.whatsapp_url).toContain('wa.me/5511112222');
+      expect(wa.body.whatsapp_url).toContain('wa.me/525511112222'); // con la lada del país
 
       expect((await api().delete(`/clientes/${c.body.id}`)).status).toBe(200);
       expect((await api().get(`/clientes/${c.body.id}`)).status).toBe(404);

@@ -12,6 +12,8 @@ import { Producto } from '../models/Producto';
 import { camposExpedientePorVertical, filtrarAtributosPermitidos } from '../services/vertical/camposExpediente';
 import { ah } from '../utils/asyncHandler';
 import { hoyDePeticion } from '../utils/fechaLocal';
+import { paisDeCuenta } from '../utils/monedaCuenta';
+import { telefonoWhatsApp } from '../utils/whatsapp';
 import { idempotente } from '../middleware/idempotency';
 import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
 
@@ -212,7 +214,9 @@ router.post('/:id/whatsapp', ah(async (req: AuthRequest, res: Response) => {
   if (!cliente) { res.status(404).json({ error: 'Cliente no encontrado' }); return; }
 
   const { mensaje } = req.body as { mensaje?: string };
-  const telefonoLimpio = (cliente.telefono || '').replace(/[^\d]/g, '');
+  const telefonoLimpio = cliente.telefono
+    ? telefonoWhatsApp(cliente.telefono, await paisDeCuenta(req.userId!, cliente.producto_id))
+    : '';
   const base = telefonoLimpio ? `https://wa.me/${telefonoLimpio}` : 'https://wa.me/';
   const msgFinal = mensaje?.trim() || `Hola ${cliente.nombre.split(' ')[0]}.`;
   const url = `${base}?text=${encodeURIComponent(msgFinal)}`;

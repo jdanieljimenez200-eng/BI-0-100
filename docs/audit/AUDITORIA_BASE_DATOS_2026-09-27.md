@@ -210,7 +210,7 @@ entidades; la base no cambia.
 | Comprobación | Resultado |
 |---|---|
 | `npm run typecheck` backend | ✅ 0 errores |
-| Suite completa del backend | ✅ 98/98 suites, 1170/1170 tests |
+| Suite completa del backend | ✅ 98/98 suites, 1178/1178 tests |
 | Tests nuevos | 5 de `synchronize`, 7 del manejador de errores, 5 de Cotizaciones |
 | ESLint de lo tocado | ✅ 0 errores |
 | Migración nueva | ✅ aplicada en referencia, test, copia de dev y `bi0a100_db`; su `down` probado |

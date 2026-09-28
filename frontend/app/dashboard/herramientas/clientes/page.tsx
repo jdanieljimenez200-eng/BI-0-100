@@ -28,6 +28,7 @@ import {
   Download,
 } from 'lucide-react';
 import api from '../../../../lib/api';
+import { enlaceWhatsApp } from '@/lib/whatsapp';
 import CustomSelect from '../../../../components/ui/CustomSelect';
 import ProductoGate from '@/components/herramientas/ProductoGate';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
@@ -127,10 +128,8 @@ function formatDate(dateStr: string | null): string {
   } catch { return dateStr; }
 }
 
-function buildWhatsAppUrl(telefono: string, nombre: string): string {
-  const digits = telefono.replace(/[^\d]/g, '');
-  const msg = encodeURIComponent(`Hola ${nombre.split(' ')[0]}.`);
-  return digits ? `https://wa.me/${digits}?text=${msg}` : `https://wa.me/?text=${msg}`;
+function buildWhatsAppUrl(telefono: string, nombre: string, pais: string): string {
+  return enlaceWhatsApp(telefono, pais, `Hola ${nombre.split(' ')[0]}.`);
 }
 
 
@@ -438,12 +437,12 @@ function ClienteDetalle({
 
   const handleAgendar = () => {
     onClose();
-    router.push('/dashboard/herramientas/calendario');
+    router.push(`/dashboard/herramientas/calendario?cliente=${cliente.id}`);
   };
 
   const handleCotizar = () => {
     onClose();
-    router.push('/dashboard/herramientas/cotizaciones');
+    router.push(`/dashboard/herramientas/cotizaciones?cliente=${cliente.id}`);
   };
 
   return (
@@ -682,7 +681,7 @@ function ClientesTool({ producto, cambiarProducto }: { producto: ProductoActivo;
       window.open(whatsapp_url, '_blank', 'noopener');
     } catch {
       // Fallback: open wa.me directly
-      if (cliente.telefono) window.open(buildWhatsAppUrl(cliente.telefono, cliente.nombre), '_blank', 'noopener');
+      if (cliente.telefono) window.open(buildWhatsAppUrl(cliente.telefono, cliente.nombre, producto.pais), '_blank', 'noopener');
     }
   }
 
@@ -996,7 +995,7 @@ function ClientesTool({ producto, cambiarProducto }: { producto: ProductoActivo;
                     )}
                     <button
                       type="button"
-                      onClick={() => router.push('/dashboard/herramientas/calendario')}
+                      onClick={() => router.push(`/dashboard/herramientas/calendario?cliente=${c.id}`)}
                       title="Agendar Cita"
                       className="p-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 hover:bg-cyan-500/20 transition-colors"
                     >
@@ -1004,7 +1003,7 @@ function ClientesTool({ producto, cambiarProducto }: { producto: ProductoActivo;
                     </button>
                     <button
                       type="button"
-                      onClick={() => router.push('/dashboard/herramientas/cotizaciones')}
+                      onClick={() => router.push(`/dashboard/herramientas/cotizaciones?cliente=${c.id}`)}
                       title="Crear Cotización"
                       className="p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 hover:bg-blue-500/20 transition-colors"
                     >

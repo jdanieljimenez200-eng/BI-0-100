@@ -128,7 +128,7 @@ export default function LugaresPanel({
         <div className="bg-[#0b1522] border border-white/10 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-semibold text-white">Tus lugares</h3>
-            <button type="button" onClick={() => { setAbierto(false); limpiar(); }} className="text-white/40 hover:text-white">
+            <button type="button" aria-label="Cerrar" onClick={() => { setAbierto(false); limpiar(); }} className="text-white/40 hover:text-white">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -139,6 +139,7 @@ export default function LugaresPanel({
               onChange={(e) => setNombre(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') guardar(); }}
               placeholder="Mesa 4, Silla 2, Consultorio B…"
+              aria-label="Nombre del lugar"
               maxLength={60}
               className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 h-10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-500/50"
             />
@@ -146,6 +147,7 @@ export default function LugaresPanel({
               value={capacidad}
               onChange={(e) => setCapacidad(e.target.value.replace(/\D/g, '').slice(0, 3))}
               placeholder="Cupo"
+              aria-label="Cupo (personas)"
               inputMode="numeric"
               className="w-20 bg-white/5 border border-white/10 rounded-xl px-3 h-10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-500/50"
             />
@@ -153,6 +155,8 @@ export default function LugaresPanel({
               type="button"
               onClick={guardar}
               disabled={!nombre.trim() || guardando}
+              aria-label={editando ? 'Guardar nombre' : 'Añadir lugar'}
+              title={editando ? 'Guardar nombre' : 'Añadir lugar'}
               className="px-3 h-10 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium transition-colors"
             >
               {editando ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}

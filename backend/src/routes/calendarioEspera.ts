@@ -12,6 +12,8 @@ import { Negocio } from '../models/Negocio';
 import { Producto } from '../models/Producto';
 import { ah } from '../utils/asyncHandler';
 import { hoyDePeticion } from '../utils/fechaLocal';
+import { paisDeCuenta } from '../utils/monedaCuenta';
+import { telefonoWhatsApp } from '../utils/whatsapp';
 import { resolverClienteParaVenta } from '../services/crm/resolverCliente';
 
 /**
@@ -228,7 +230,10 @@ router.post('/:id/llamar', ah(async (req: AuthRequest, res: Response) => {
   turno.hora_llamado = new Date();
   await repo().save(turno);
 
-  const tel = (turno.cliente_telefono || '').replace(/[^\d]/g, '');
+  // Con la lada del país: «33 1234 5678» a secas no abre ningún chat.
+  const tel = turno.cliente_telefono
+    ? telefonoWhatsApp(turno.cliente_telefono, await paisDeCuenta(req.userId!, turno.producto_id))
+    : '';
   let whatsapp_url: string | null = null;
   if (tel) {
     const lugar = turno.lugar_id

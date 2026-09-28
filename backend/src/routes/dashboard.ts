@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { Not } from 'typeorm';
+import { In, Not } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { Usuario } from '../models/Usuario';
 import { Producto } from '../models/Producto';
@@ -10,13 +10,14 @@ import { AnalisisVentas } from '../models/AnalisisVentas';
 import { AnalisisFinanzas } from '../models/AnalisisFinanzas';
 import { AnalisisLegal } from '../models/AnalisisLegal';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { getLimites } from '../services/billing/planService';
+import { getLimites, computePermisosEfectivos } from '../services/billing/planService';
+import { AsignacionTrabajador } from '../models/AsignacionTrabajador';
 import { extraerAlertas, resumirNiveles } from '../services/alertas/extractorAnalisis';
 import { generarAlertasOperativas } from '../services/alertas/agregadorOperativo';
 import { hoyDePeticion } from '../utils/fechaLocal';
 import { generarResumenIaAlertas } from '../services/alertas/resumenIaService';
 import { generarResumenCompleto } from '../services/alertas/resumenCompletoService';
-import { requirePlanFeature, getPlanFromDB } from '../middleware/requirePlan';
+import { requirePlanFeature, getPlanFromDB, productosAsignados } from '../middleware/requirePlan';
 import { conCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
 import { parseFlagQuery } from '../utils/queryFlags';
 import { logger } from '../utils/logger';
@@ -26,6 +27,23 @@ const router = Router();
 async function findUsuario(req: AuthRequest): Promise<Usuario | null> {
   const usuarioRepo = AppDataSource.getRepository(Usuario);
   return usuarioRepo.findOne({ where: { id: req.userId } });
+}
+
+/**
+ * De quién es el panel que se pide. El dueño ve su cuenta entera; un trabajador,
+ * la cuenta del dueño limitada a los productos que tiene asignados y a los
+ * módulos que tiene permitidos. Antes todo se filtraba por `req.userId`, y un
+ * trabajador veía «Todavía no hay nada que analizar» aunque tuviera productos.
+ */
+async function alcancePanel(usuarioId: string) {
+  const { cuentaId, ids } = await productosAsignados(usuarioId);
+  if (ids === null) return { cuentaId, ids: null, permisos: null };
+  const asignaciones = await AppDataSource.getRepository(AsignacionTrabajador).find({
+    select: ['permisos'],
+    where: { trabajador_id: usuarioId, cuenta_id: cuentaId, activo: true },
+  });
+  const permisos = computePermisosEfectivos('trabajador', asignaciones.map((a) => a.permisos));
+  return { cuentaId, ids, permisos };
 }
 
 // PUT /dashboard/perfil — este router se monta en /api/dashboard, así que la ruta
@@ -72,13 +90,17 @@ router.put('/perfil', authenticate, async (req: AuthRequest, res: Response) => {
 // ProductoConAnalisis[] en frontend/app/dashboard/page.tsx)
 router.get('/resumen', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const usuario = await findUsuario(req);
+    const { cuentaId, ids, permisos } = await alcancePanel(req.userId!);
+    // Los límites del plan son los de la cuenta (el dueño), no los del trabajador.
+    const usuario = await AppDataSource.getRepository(Usuario).findOne({ where: { id: cuentaId } });
     if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    const productos = await AppDataSource.getRepository(Producto).find({
-      where: { usuario_id: req.userId },
-      order: { created_at: 'DESC' },
-    });
+    const productos = ids !== null && !ids.length
+      ? []
+      : await AppDataSource.getRepository(Producto).find({
+        where: ids === null ? { usuario_id: cuentaId } : { usuario_id: cuentaId, id: In(ids) },
+        order: { created_at: 'DESC' },
+      });
 
     // Último análisis no-error por producto y módulo (una query por módulo)
     const repos = {
@@ -90,8 +112,13 @@ router.get('/resumen', authenticate, async (req: AuthRequest, res: Response) => 
     };
     const snaps: Record<string, Map<string, { id: string; estado: string }>> = {};
     for (const [modulo, repo] of Object.entries(repos)) {
+      // Un trabajador no ve el estado de los módulos que no tiene permitidos.
+      if (permisos && permisos[modulo as keyof typeof permisos] !== true) {
+        snaps[modulo] = new Map();
+        continue;
+      }
       const filas = await repo.find({
-        where: { usuario_id: req.userId!, estado_analisis: Not('error') as any },
+        where: { usuario_id: cuentaId, estado_analisis: Not('error') as any },
         select: ['id', 'producto_id', 'estado_analisis'],
         order: { fecha_creacion: 'DESC' },
         take: 500,
@@ -185,29 +212,37 @@ router.get('/alertas', authenticate, async (req: AuthRequest, res: Response) => 
     const maxParseado = Number.parseInt(String(req.query.max ?? ''), 10);
     const maxPorProducto = Number.isFinite(maxParseado) && maxParseado > 0 ? maxParseado : 0;
 
-    const base = { usuario_id: req.userId!, estado_analisis: 'completado' as const };
-    const where = productoId ? { ...base, producto_id: productoId } : base;
+    const { cuentaId, ids, permisos } = await alcancePanel(req.userId!);
+    // Trabajador: solo sus productos, y solo los módulos que tiene permitidos.
+    if (ids !== null && (!ids.length || (productoId && !ids.includes(productoId)))) {
+      return res.json({ alertas: [], resumen: resumirNiveles([]) });
+    }
+    const base = { usuario_id: cuentaId, estado_analisis: 'completado' as const };
+    const where = productoId
+      ? { ...base, producto_id: productoId }
+      : ids !== null ? { ...base, producto_id: In(ids) } : base;
     const order = { fecha_creacion: 'DESC' as const };
+    const permitido = (m: 'mercado' | 'finanzas' | 'legal') => !permisos || permisos[m] === true;
 
     const [mercado, finanzas, legal] = await Promise.all([
-      AppDataSource.getRepository(AnalisisMercado).find({
+      permitido('mercado') ? AppDataSource.getRepository(AnalisisMercado).find({
         where,
         select: ['id', 'producto_id', 'alertas'],
         order,
         take: 500,
-      }),
-      AppDataSource.getRepository(AnalisisFinanzas).find({
+      }) : [],
+      permitido('finanzas') ? AppDataSource.getRepository(AnalisisFinanzas).find({
         where,
         select: ['id', 'producto_id', 'resumen_data'],
         order,
         take: 500,
-      }),
-      AppDataSource.getRepository(AnalisisLegal).find({
+      }) : [],
+      permitido('legal') ? AppDataSource.getRepository(AnalisisLegal).find({
         where,
         select: ['id', 'producto_id', 'cumplimiento_global', 'resultado_data'],
         order,
         take: 500,
-      }),
+      }) : [],
     ]);
 
     const alertas = extraerAlertas({

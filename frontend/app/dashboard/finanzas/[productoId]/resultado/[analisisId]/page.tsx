@@ -44,6 +44,7 @@ import { MODULE_THEME } from '@/lib/moduleTheme';
 import { MOTION_DURATIONS, MOTION_EASINGS } from '@/lib/motion/tokens';
 import CsvImportModal from './CsvImportModal';
 import AvisoEstimacion from '@/components/ui/AvisoEstimacion';
+import { hoyLocal } from '@/lib/fechaLocal';
 
 /** Acento del módulo, desde la fuente canónica (lib/moduleTheme). */
 const ACENTO = MODULE_THEME.finanzas;
@@ -588,7 +589,7 @@ export default function FinanzasResultadoPage() {
   const [overrides, setOverrides] = useState<OverrideValues | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
-  const [movForm, setMovForm] = useState<MovForm>({ tipo: 'ingreso', fecha: new Date().toISOString().slice(0, 10), ...MOV_FORM_RESET });
+  const [movForm, setMovForm] = useState<MovForm>({ tipo: 'ingreso', fecha: hoyLocal(), ...MOV_FORM_RESET });
   const [userPlan] = useState<string>(() => { try { const u = localStorage.getItem('usuario'); return u ? JSON.parse(u).plan || 'freemium' : 'freemium'; } catch { return 'freemium'; } });
   // Gate por sección: plan ACTUAL + espejo estático de lib/gating.ts, unido a lo
   // que el backend declare en secciones_bloqueadas. No se mira el plan a pelo
@@ -1928,7 +1929,7 @@ export default function FinanzasResultadoPage() {
                 {/* E. Declaración Mensual / Estimado Fiscal */}
                 {taxCfg.modo === 'detallado_mx' ? (() => {
                   const mesActual = new Date().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
-                  const hoy = new Date().toISOString().slice(0, 10);
+                  const hoy = hoyLocal();
 
                   // ── Datos base desde movimientos ──────────────────────────
                   const ivaTrasladadoAuto  = movimientos.filter((m) => m.categoria === 'IVA por pagar' && m.es_auto_generado).reduce((s, m) => s + Number(m.monto), 0);

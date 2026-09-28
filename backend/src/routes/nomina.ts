@@ -8,11 +8,18 @@ import { validateBody, exigirUuid, esUuid, fechaISO, fechaISOOpcional } from '..
 import { Empleado } from '../models/Empleado';
 import { PagoNomina } from '../models/PagoNomina';
 import { MovimientoContable } from '../models/MovimientoContable';
+import { Negocio } from '../models/Negocio';
+import { Producto } from '../models/Producto';
 import { ah } from '../utils/asyncHandler';
 import { monedaDeCuenta } from '../utils/monedaCuenta';
 import { idempotente } from '../middleware/idempotency';
 import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
 import { dinero } from '../utils/limitesNumericos';
+
+// Texto opcional que también admite null: el formulario manda `campo || null`
+// en los vacíos, y con `z.string().optional()` a secas dar de alta un empleado
+// sin cargo, teléfono o email respondía 400. Mismo helper que calendario y clientes.
+const textoOpcional = (max: number) => z.string().trim().max(max).nullable().optional();
 
 // Topes = columnas de `empleados`. El salario se acota con `dinero()`
 // (numeric(12,2)) y no con los 14 dígitos de `empleados.salario`: cada pago
@@ -20,14 +27,14 @@ import { dinero } from '../utils/limitesNumericos';
 // salario mayor reventaba ese INSERT con el pago ya a medias.
 const CrearEmpleadoSchema = z.object({
   nombre: z.string().trim().min(1, 'nombre es requerido').max(200),
-  cargo: z.string().max(100).optional(),
+  cargo: textoOpcional(100),
   salario: dinero('salario').refine((s) => s > 0, 'salario debe ser mayor a 0'),
   tipo_pago: z.enum(['semanal', 'quincenal', 'mensual', 'por_hora', 'honorarios']).optional().default('mensual'),
-  moneda: z.string().max(10).optional(), // sin valor: la del país del producto (monedaDeCuenta)
-  telefono: z.string().max(30).optional(),
-  email: z.string().max(200).optional(),
+  moneda: textoOpcional(10), // sin valor: la del país del producto (monedaDeCuenta)
+  telefono: textoOpcional(30),
+  email: textoOpcional(200),
   fecha_inicio: fechaISOOpcional('fecha_inicio inválida (YYYY-MM-DD)'),
-  notas: z.string().optional(),
+  notas: textoOpcional(5000),
   negocio_id: z.string().uuid().nullable().optional(),
   producto_id: z.string().uuid().nullable().optional(),
 });
@@ -38,7 +45,7 @@ const CrearPagoNominaSchema = z.object({
   periodo_inicio: fechaISO('periodo_inicio inválido (YYYY-MM-DD)'),
   periodo_fin: fechaISO('periodo_fin inválido (YYYY-MM-DD)'),
   fecha_pago: fechaISO('fecha_pago inválida (YYYY-MM-DD)'),
-  notas: z.string().optional(),
+  notas: textoOpcional(5000),
 }).refine((p) => p.periodo_fin >= p.periodo_inicio, {
   message: 'periodo_fin no puede ser anterior a periodo_inicio',
   path: ['periodo_fin'],
@@ -102,6 +109,15 @@ router.post('/empleados', validateBody(CrearEmpleadoSchema), ah(async (req: Auth
 
   if (!nombre?.trim()) { res.status(400).json({ error: 'nombre es requerido' }); return; }
   if (!salario || salario <= 0) { res.status(400).json({ error: 'salario debe ser mayor a 0' }); return; }
+  // Negocio y producto tienen que ser de ESTA cuenta (antes se guardaban sin mirar).
+  if (negocio_id && !(await AppDataSource.getRepository(Negocio).exists({ where: { id: negocio_id, usuario_id: req.userId! } }))) {
+    res.status(404).json({ error: 'Negocio no encontrado' });
+    return;
+  }
+  if (producto_id && !(await AppDataSource.getRepository(Producto).exists({ where: { id: producto_id, usuario_id: req.userId! } }))) {
+    res.status(404).json({ error: 'Producto no encontrado' });
+    return;
+  }
 
   // Sin moneda explícita, la del país del producto: un negocio mexicano daba de
   // alta a su gente con sueldos en dólares.

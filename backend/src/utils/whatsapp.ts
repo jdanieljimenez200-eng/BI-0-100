@@ -1,0 +1,72 @@
+/**
+ * Número para `wa.me`: solo dígitos y en formato internacional.
+ *
+ * Los enlaces se armaban con los dígitos tal como los escribió el usuario, y en
+ * LATAM casi todos anotan el número nacional: «33 1234 5678» daba
+ * `wa.me/3312345678`, que WhatsApp no reconoce como un teléfono de Guadalajara
+ * (le falta el 52), así que «Avisar por WhatsApp» abría un chat inexistente.
+ *
+ * Mantener alineado con `frontend/lib/whatsapp.ts`.
+ */
+
+interface Marcacion {
+  /** Código internacional del país, sin «+». */
+  lada: string;
+  /** Longitudes válidas del número nacional, sin el 0 troncal. */
+  digitos: number[];
+  /** Dígito que WhatsApp exige entre la lada y el número (Argentina: 549…). */
+  movil?: string;
+}
+
+const MARCACION: Record<string, Marcacion> = {
+  MX: { lada: '52', digitos: [10] },
+  BR: { lada: '55', digitos: [10, 11] },
+  CO: { lada: '57', digitos: [10] },
+  AR: { lada: '54', digitos: [10], movil: '9' },
+  CL: { lada: '56', digitos: [9] },
+  PE: { lada: '51', digitos: [9] },
+  EC: { lada: '593', digitos: [9] },
+  GT: { lada: '502', digitos: [8] },
+  PA: { lada: '507', digitos: [8] },
+  CR: { lada: '506', digitos: [8] },
+  HN: { lada: '504', digitos: [8] },
+  SV: { lada: '503', digitos: [8] },
+  NI: { lada: '505', digitos: [8] },
+  BZ: { lada: '501', digitos: [7] },
+  VE: { lada: '58', digitos: [10] },
+  BO: { lada: '591', digitos: [8] },
+  UY: { lada: '598', digitos: [8] },
+  PY: { lada: '595', digitos: [9] },
+};
+
+/**
+ * Dígitos listos para `https://wa.me/<n>`, o '' si no hay teléfono.
+ *
+ * - Con «+» o «00» delante ya es internacional y se respeta.
+ * - Si ya empieza por la lada del país y tiene la longitud completa, se deja.
+ * - Si es un número nacional válido del país (quitando el 0 troncal), se le
+ *   antepone la lada.
+ * - Lo que no se reconoce se devuelve tal cual: mejor el número del usuario que
+ *   uno inventado.
+ */
+export function telefonoWhatsApp(telefono: string | null | undefined, pais?: string | null): string {
+  const crudo = (telefono ?? '').trim();
+  const d = crudo.replace(/\D/g, '');
+  if (!d) return '';
+  if (crudo.startsWith('+')) return d;
+  if (d.startsWith('00')) return d.slice(2);
+
+  const m = MARCACION[(pais ?? '').toUpperCase()] ?? MARCACION.MX;
+  const conLada = m.digitos.flatMap((n) => [m.lada.length + n, m.lada.length + (m.movil?.length ?? 0) + n]);
+  if (d.startsWith(m.lada) && conLada.includes(d.length)) return d;
+
+  const nacional = d.replace(/^0+/, '');
+  if (m.digitos.includes(nacional.length)) return m.lada + (m.movil ?? '') + nacional;
+  return d;
+}
+
+/** Enlace `wa.me` con mensaje; sin teléfono abre WhatsApp para elegir el chat. */
+export function enlaceWhatsApp(telefono: string | null | undefined, pais: string | null | undefined, mensaje: string): string {
+  const n = telefonoWhatsApp(telefono, pais);
+  return `https://wa.me/${n}?text=${encodeURIComponent(mensaje)}`;
+}

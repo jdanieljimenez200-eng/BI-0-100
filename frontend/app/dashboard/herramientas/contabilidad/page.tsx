@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -35,8 +35,9 @@ import {
   Clock,
   PieChart,
 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { hayRespuestaDelServidor, nuevaClaveIdempotencia } from '@/lib/api';
 import { getTaxConfig, comprobanteNombre } from '@/lib/taxConfig';
+import { hoyLocal } from '@/lib/fechaLocal';
 import ProductoGate from '@/components/herramientas/ProductoGate';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
 import type { ProductoActivo } from '@/lib/productoActivo';
@@ -74,6 +75,8 @@ interface Movimiento {
   monto_neto?: number | null;
   estado_liquidacion?: 'inmediato' | 'pendiente' | 'liquidado';
   fecha_liquidacion?: string | null;
+  /** 'venta', 'pago_nomina', 'cotizacion'… o 'ajuste_manual' / null si se capturó aquí. */
+  referencia_tipo?: string | null;
 }
 
 type TabKey = 'reportes' | 'pnl' | 'movimientos' | 'canales' | 'simulador' | 'liquidaciones' | 'calibracion' | 'fiscal';
@@ -82,13 +85,25 @@ type TabKey = 'reportes' | 'pnl' | 'movimientos' | 'canales' | 'simulador' | 'li
 
 const n = (v: unknown) => Number(v ?? 0);
 
+/** El `error` que manda el backend, o el texto de respaldo. */
+function mensajeDeError(err: unknown, respaldo: string): string {
+  return (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? respaldo;
+}
+
+/**
+ * Asiento que genera otra herramienta (venta, nómina, compra…): se corrige allí,
+ * el backend responde 409 si se edita o borra desde Contabilidad.
+ */
+function esDerivado(m: Movimiento): boolean {
+  return Boolean(m.referencia_tipo) && m.referencia_tipo !== 'ajuste_manual';
+}
+
 function fmtMoney(value: number, simbolo: string, locale: string): string {
   return `${simbolo}${new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
 }
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+// Día local: en UTC, un gasto capturado por la tarde quedaba con fecha de mañana.
+const todayISO = hoyLocal;
 
 const pct = (tasa: number, decimales = 0) => `${(tasa * 100).toFixed(decimales)}%`;
 const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -213,6 +228,10 @@ function ContabilidadInner({
 
   // Edición inline
   const [editId, setEditId] = useState<string | null>(null);
+  // Avisos de la lista (borrar, editar, exportar). `aviso` solo se ve dentro del
+  // formulario de alta, y un 409 al borrar pasaba sin que el usuario supiera por qué.
+  const [avisoLista, setAvisoLista] = useState<string | null>(null);
+  const claveMov = useRef(nuevaClaveIdempotencia());
   const [editForm, setEditForm] = useState<{ descripcion: string; monto: string }>({ descripcion: '', monto: '' });
 
   // Inputs de la pestaña Fiscal (cargas laborales)
@@ -344,7 +363,7 @@ function ContabilidadInner({
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch {
-      setAviso('No se pudo exportar. Inténtalo de nuevo.');
+      setAvisoLista('No se pudo exportar. Inténtalo de nuevo.');
     } finally {
       setExportando(false);
     }
@@ -423,7 +442,8 @@ function ContabilidadInner({
         tiene_cfdi: form.tiene_cfdi,
         canal_cobro_id: form.tipo === 'ingreso' && form.canal_cobro_id ? form.canal_cobro_id : undefined,
         desglosar_comision: form.tipo === 'ingreso' ? form.desglosar_comision : undefined,
-      });
+      }, { headers: { 'Idempotency-Key': claveMov.current } });
+      claveMov.current = nuevaClaveIdempotencia();
       await refrescar();
       setShowForm(false);
       setForm({
@@ -437,6 +457,8 @@ function ContabilidadInner({
         desglosar_comision: true,
       });
     } catch (err: unknown) {
+      // Sin respuesta (corte de red) se reintenta con la misma clave: no duplica el movimiento.
+      if (hayRespuestaDelServidor(err)) claveMov.current = nuevaClaveIdempotencia();
       const ax = err as { response?: { status?: number; data?: { error?: string; upgrade_required?: boolean } } };
       const data = ax.response?.data;
       if (data?.upgrade_required) {
@@ -465,13 +487,21 @@ function ContabilidadInner({
       });
       setMovs((prev) => prev.map((m) => (m.id === id ? (data as Movimiento) : m)));
       cargarResumen();
-    } catch { /* noop */ }
+      setAvisoLista(null);
+    } catch (err) {
+      setAvisoLista(mensajeDeError(err, 'No se pudo guardar el cambio.'));
+    }
     setEditId(null);
   }, [editForm, cargarResumen]);
 
   const eliminarMovimiento = useCallback(async (id: string) => {
     if (!confirm('¿Eliminar este movimiento? También se borran sus movimientos auto-generados (p. ej. impuestos derivados).')) return;
-    await api.delete(`/contabilidad/movimiento/${id}`).catch(() => {});
+    try {
+      await api.delete(`/contabilidad/movimiento/${id}`);
+      setAvisoLista(null);
+    } catch (err) {
+      setAvisoLista(mensajeDeError(err, 'No se pudo eliminar el movimiento.'));
+    }
     await refrescar();
   }, [refrescar]);
 
@@ -803,6 +833,14 @@ function ContabilidadInner({
             </div>
           ) : (
             <div className="space-y-4">
+              {avisoLista && (
+                <div role="alert" className="flex items-start justify-between gap-3 text-xs text-amber-200 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2">
+                  <span>{avisoLista}</span>
+                  <button type="button" onClick={() => setAvisoLista(null)} aria-label="Cerrar aviso" className="text-amber-200/60 hover:text-amber-100">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
               {/* Barra de Búsqueda y Filtros */}
               <div className="space-y-3">
                 <div className="flex flex-col sm:flex-row gap-2">
@@ -936,6 +974,7 @@ function ContabilidadInner({
                             <input
                               type="text"
                               value={editForm.descripcion}
+                              aria-label="Concepto"
                               onChange={(e) => setEditForm({ ...editForm, descripcion: e.target.value })}
                               className="w-full bg-white/5 border border-emerald-500/40 rounded-lg px-2.5 py-1 text-sm text-white outline-none"
                               autoFocus
@@ -1001,6 +1040,7 @@ function ContabilidadInner({
                               min="0.01"
                               step="0.01"
                               value={editForm.monto}
+                              aria-label="Monto"
                               onChange={(e) => setEditForm({ ...editForm, monto: e.target.value })}
                               className="w-28 bg-white/5 border border-emerald-500/40 rounded-lg px-2 py-1 text-sm text-white text-right outline-none"
                             />
@@ -1039,8 +1079,12 @@ function ContabilidadInner({
                               <button
                                 type="button"
                                 onClick={() => iniciarEdicion(m)}
-                                disabled={m.es_auto_generado}
-                                title={m.es_auto_generado ? 'Los movimientos auto-generados no se editan directamente' : 'Editar concepto o monto'}
+                                disabled={m.es_auto_generado || esDerivado(m)}
+                                title={
+                                  esDerivado(m)
+                                    ? 'Lo genera otra herramienta (venta, nómina, compra…): corrígelo ahí'
+                                    : m.es_auto_generado ? 'Los movimientos auto-generados no se editan directamente' : 'Editar concepto o monto'
+                                }
                                 aria-label="Editar movimiento"
                                 className="text-xs text-white/40 hover:text-white p-1.5 rounded-lg hover:bg-white/5 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
                               >
@@ -1049,9 +1093,10 @@ function ContabilidadInner({
                               <button
                                 type="button"
                                 onClick={() => eliminarMovimiento(m.id)}
-                                title="Borrar movimiento"
+                                disabled={esDerivado(m)}
+                                title={esDerivado(m) ? 'Lo genera otra herramienta (venta, nómina, compra…): corrígelo ahí' : 'Borrar movimiento'}
                                 aria-label="Borrar movimiento"
-                                className="text-xs text-white/40 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
+                                className="text-xs text-white/40 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:text-white/40 disabled:hover:bg-transparent transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>

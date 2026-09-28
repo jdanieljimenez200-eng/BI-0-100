@@ -774,16 +774,20 @@ router.post('/:productoId/canales/simular', validateBody(SimularPreciosSchema), 
 
   if (canal_cobro_id) {
     const canal = await repoCanales().findOne({ where: { id: canal_cobro_id, usuario_id: req.userId! } });
-    if (canal) {
-      cfg = {
-        institucion: canal.institucion,
-        comision_porcentaje: Number(canal.comision_porcentaje),
-        comision_fija: Number(canal.comision_fija),
-        aplica_iva_comision: canal.aplica_iva_comision,
-        retencion_isr_porcentaje: Number(canal.retencion_isr_porcentaje),
-        retencion_iva_porcentaje: Number(canal.retencion_iva_porcentaje),
-      };
+    // Antes un canal inexistente simulaba con 0 % de comisión sin avisar, y el
+    // precio sugerido salía corto justo por lo que cobra la terminal.
+    if (!canal) {
+      res.status(404).json({ error: 'Canal de cobro no encontrado' });
+      return;
     }
+    cfg = {
+      institucion: canal.institucion,
+      comision_porcentaje: Number(canal.comision_porcentaje),
+      comision_fija: Number(canal.comision_fija),
+      aplica_iva_comision: canal.aplica_iva_comision,
+      retencion_isr_porcentaje: Number(canal.retencion_isr_porcentaje),
+      retencion_iva_porcentaje: Number(canal.retencion_iva_porcentaje),
+    };
   } else if (canal_custom) {
     cfg = {
       institucion: canal_custom.institucion || 'Personalizado',

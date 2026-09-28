@@ -87,6 +87,51 @@ describeWithDb('Trabajador — productos y módulos de análisis', () => {
     });
   });
 
+  describe('Panel (dashboard)', () => {
+    it('el resumen del trabajador muestra su producto de la cuenta del dueño', async () => {
+      const res = await get(trabajador, '/dashboard/resumen');
+      expect(res.status).toBe(200);
+      expect(res.body.productos.map((p: { id: string }) => p.id)).toEqual([productoAsignado]);
+    });
+
+    it('las alertas de un producto no asignado salen vacías, no las del dueño', async () => {
+      const res = await get(trabajador, `/dashboard/alertas?producto_id=${productoAjeno}`);
+      expect(res.status).toBe(200);
+      expect(res.body.alertas).toEqual([]);
+    });
+
+    it('el resumen del dueño no cambia', async () => {
+      const res = await get(dueno, '/dashboard/resumen');
+      expect(res.body.productos).toHaveLength(2);
+    });
+  });
+
+  describe('Caja (POS) de un cajero sin Contabilidad', () => {
+    it('lee los medios de cobro por /pos/canales, no por /contabilidad', async () => {
+      const [cajero] = await q(
+        `INSERT INTO usuarios (email, password_hash, nombre, plan, account_role, owner_id)
+         VALUES ($1, 'x', 'Cajero POS', 'business', 'trabajador', $2) RETURNING id`,
+        [`pos-${randomUUID()}@example.com`, cuentas[0]],
+      );
+      cuentas.push(cajero.id);
+      await q(
+        `INSERT INTO asignaciones_trabajador (trabajador_id, cuenta_id, producto_id, permisos) VALUES ($1, $2, $3, $4::jsonb)`,
+        [cajero.id, cuentas[0], productoAsignado, JSON.stringify({ pos: true, contabilidad: false })],
+      );
+      await q(
+        `INSERT INTO canales_cobro (usuario_id, nombre, tipo_canal, institucion, comision_porcentaje, comision_fija)
+         VALUES ($1, 'Terminal BBVA', 'terminal', 'BBVA', 0.035, 0)`,
+        [cuentas[0]],
+      );
+      const tok = token(cajero.id);
+
+      expect((await get(tok, `/contabilidad/${productoAsignado}/canales`)).status).toBe(403);
+      const res = await get(tok, `/pos/canales?producto_id=${productoAsignado}`);
+      expect(res.status).toBe(200);
+      expect(res.body.map((c: { nombre: string }) => c.nombre)).toContain('Terminal BBVA');
+    });
+  });
+
   describe('Módulos de análisis', () => {
     it('con permiso del módulo opera sobre la cuenta del dueño', async () => {
       const res = await get(trabajador, `/mercado/traccion/${productoAsignado}`);

@@ -491,10 +491,12 @@ router.patch(
     if (id === req.userId) {
       return res.status(400).json({ error: 'No puedes cambiar tu propio rol de administración' });
     }
-    // Después de validar: no se gasta el código en una petición que iba a fallar.
-    if (!(await exigirTotpFresco(req, res))) return;
-
     try {
+      // Después de validar: no se gasta el código en una petición que iba a fallar.
+      // Dentro del try: si la verificación lanza (base caída, secreto ilegible),
+      // fuera de él la promesa quedaba sin capturar y la petición, colgada.
+      if (!(await exigirTotpFresco(req, res))) return;
+
       const resultado = await AppDataSource.transaction(async (manager) => {
         const repo = manager.getRepository(Usuario);
 
@@ -577,9 +579,9 @@ router.post(
     if (id === req.userId) {
       return res.status(400).json({ error: 'No puedes reiniciar tu propia verificación en dos pasos' });
     }
-    if (!(await exigirTotpFresco(req, res))) return;
 
     try {
+      if (!(await exigirTotpFresco(req, res))) return;
       const existe = await AppDataSource.transaction(async (manager) => {
         const repo = manager.getRepository(Usuario);
         const usuario = await repo.findOne({ where: { id }, select: ['id', 'admin_totp_activado_en'] });
@@ -636,10 +638,10 @@ router.post('/usuarios/:id/papelera', requirePermiso('gestionarPapelera'), async
 
   const { id } = req.params;
   if (id === req.userId) return res.status(400).json({ error: 'No puedes enviar tu propia cuenta a la papelera' });
-  if (!(await exigirTotpFresco(req, res))) return;
 
   try {
-    const r = await AppDataSource.transaction((manager) => papelera.enviarAPapelera(manager, req, id, motivo.data));
+    if (!(await exigirTotpFresco(req, res))) return;
+    const r =await AppDataSource.transaction((manager) => papelera.enviarAPapelera(manager, req, id, motivo.data));
 
     for (const afectado of r.idsAfectados) await bloquearSesiones(afectado);
 
@@ -667,9 +669,9 @@ router.post('/usuarios/:id/papelera', requirePermiso('gestionarPapelera'), async
 router.post('/usuarios/:id/restaurar', requirePermiso('gestionarPapelera'), async (req: AuthRequest, res: Response) => {
   const motivo = MotivoSchema.safeParse(req.body?.motivo);
   if (!motivo.success) return res.status(400).json({ error: motivo.error.errors[0].message });
-  if (!(await exigirTotpFresco(req, res))) return;
 
   try {
+    if (!(await exigirTotpFresco(req, res))) return;
     const r = await AppDataSource.transaction((manager) =>
       papelera.restaurarDePapelera(manager, req, req.params.id, motivo.data)
     );

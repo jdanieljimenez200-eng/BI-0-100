@@ -15,8 +15,10 @@ import { emitAnalysisUpdate } from '../../events/sse';
 import { huboFallbackIA } from '../../utils/seguimientoIA';
 import { logger } from '../../utils/logger';
 
-function fechaHoyISO(): string {
-  return new Date().toISOString().slice(0, 10);
+/** El día local de quien pidió el análisis (la ruta lo manda); si falta, el UTC. */
+function fechaDelAnalisis(payload: Record<string, unknown>): string {
+  const f = payload.fecha_local;
+  return typeof f === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : new Date().toISOString().slice(0, 10);
 }
 
 /**
@@ -63,7 +65,7 @@ export async function ejecutarAnalisisVentas(
       tiene_video: Boolean(producto.video_url),
     };
 
-    const fechaISO = fechaHoyISO();
+    const fechaISO = fechaDelAnalisis(payload);
 
     // Tips e historia son el gancho freemium: siempre se generan.
     // Perfil_cliente solo si el gate lo permite.

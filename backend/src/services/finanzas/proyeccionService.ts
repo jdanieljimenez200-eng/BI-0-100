@@ -17,6 +17,7 @@ export function generarProyeccion(input: FinanzasInput): ProyeccionAnual {
 
   const meses: MesProyeccion[] = [];
   let acumulado_neto = 0;
+  const inicio = Number.isInteger(input.mes_inicio) && input.mes_inicio! >= 1 && input.mes_inicio! <= 12 ? input.mes_inicio! : 1;
 
   for (let mes = 1; mes <= 12; mes++) {
     const factor = Math.pow(1 + tasa_crecimiento_mensual / 100, mes - 1);
@@ -30,7 +31,7 @@ export function generarProyeccion(input: FinanzasInput): ProyeccionAnual {
 
     meses.push({
       mes,
-      nombre_mes: NOMBRES_MESES[mes - 1],
+      nombre_mes: NOMBRES_MESES[(inicio - 1 + mes - 1) % 12],
       unidades,
       ingresos: round2(ingresos),
       costo_variable_total: round2(costo_variable_total),

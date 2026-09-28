@@ -4,7 +4,6 @@ import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess } from '../middleware/requirePlan';
 import { ah } from '../utils/asyncHandler';
-import { logger } from '../utils/logger';
 import { InsumoInventario } from '../models/InsumoInventario';
 import { ItemPOSInsumo } from '../models/ItemPOSInsumo';
 import { MovimientoInventario } from '../models/MovimientoInventario';
@@ -21,6 +20,8 @@ import { idempotente } from '../middleware/idempotency';
 import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
 import { z } from 'zod';
 import { cantidad, costoUnitario } from '../utils/limitesNumericos';
+import { r2, r3, r4 } from '../utils/dinero';
+import { LessThan } from 'typeorm';
 import { Negocio } from '../models/Negocio';
 
 const router = Router();
@@ -31,14 +32,21 @@ router.use(requireToolCapability('inventario'));
 // movimientos no debe bloquear lecturas).
 router.use(requireHerramientaAccess('inventario'));
 
+/** Motivo del movimiento que deja el stock con el que se da de alta un insumo. */
+const MOTIVO_INVENTARIO_INICIAL = 'Inventario inicial';
+
 // Tope freemium de movimientos. Se cuenta por la cuenta efectiva (owner), que
-// requireToolCapability ya fijó en req.userId.
+// requireToolCapability ya fijó en req.userId. El inventario inicial no cuenta:
+// dar de alta el almacén no es usar la herramienta.
 const contarMovimientosInventario = (cuentaId: string) =>
-  AppDataSource.getRepository(MovimientoInventario).count({ where: { usuario_id: cuentaId } });
+  AppDataSource.getRepository(MovimientoInventario)
+    .createQueryBuilder('m')
+    .where('m.usuario_id = :cuentaId', { cuentaId })
+    .andWhere('m.motivo IS DISTINCT FROM :inicial', { inicial: MOTIVO_INVENTARIO_INICIAL })
+    .getCount();
 
 const repoInsumos = () => AppDataSource.getRepository(InsumoInventario);
 const repoMovs    = () => AppDataSource.getRepository(MovimientoInventario);
-const repoCont    = () => AppDataSource.getRepository(MovimientoContable);
 const repoProd    = () => AppDataSource.getRepository(Producto);
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -91,22 +99,49 @@ router.post('/insumos', validateBody(CrearInsumoSchema), ah(async (req: AuthRequ
     return;
   }
 
-  const insumo = repoInsumos().create({
-    usuario_id:        req.userId!,
-    negocio_id:        negocio_id ?? null,
-    nombre:            nombre.trim(),
-    categoria:         categoria?.trim() || null,
-    unidad:            (unidad ?? 'pieza').trim(),
-    stock_actual:      Math.max(0, Number(stock_actual ?? 0)),
-    stock_minimo:      Math.max(0, Number(stock_minimo ?? 0)),
-    costo_promedio:    Math.max(0, Number(costo_promedio ?? 0)),
-    proveedor_default: proveedor_default?.trim() || null,
-    ubicacion:         ubicacion?.trim() || null,
-    emoji:             emoji ?? null,
-    activo:            true,
+  const stockInicial = Math.max(0, Number(stock_actual ?? 0));
+  const costoInicial = Math.max(0, Number(costo_promedio ?? 0));
+  const fecha = await hoyDePeticion(req);
+
+  const insumo = await AppDataSource.transaction(async (manager) => {
+    const nuevo = manager.create(InsumoInventario, {
+      usuario_id:        req.userId!,
+      negocio_id:        negocio_id ?? null,
+      nombre:            nombre.trim(),
+      categoria:         categoria?.trim() || null,
+      unidad:            (unidad ?? 'pieza').trim(),
+      stock_actual:      stockInicial,
+      stock_minimo:      Math.max(0, Number(stock_minimo ?? 0)),
+      costo_promedio:    costoInicial,
+      proveedor_default: proveedor_default?.trim() || null,
+      ubicacion:         ubicacion?.trim() || null,
+      emoji:             emoji ?? null,
+      activo:            true,
+    });
+    await manager.save(InsumoInventario, nuevo);
+
+    // El stock solo cambia con movimientos, también el primero: sin este apunte
+    // el insumo nacía con existencias que el historial no explicaba. Es un
+    // ajuste y no una entrada porque no es una compra de hoy: no genera gasto.
+    if (stockInicial > 0) {
+      await manager.save(MovimientoInventario, manager.create(MovimientoInventario, {
+        usuario_id:       req.userId!,
+        creado_por_id:    req.trabajadorRealId ?? null,
+        insumo_id:        nuevo.id,
+        producto_id:      null,
+        tipo:             'ajuste',
+        cantidad:         stockInicial,
+        costo_unitario:   costoInicial,
+        costo_total:      r2(stockInicial * costoInicial),
+        stock_resultante: stockInicial,
+        fecha,
+        motivo:           MOTIVO_INVENTARIO_INICIAL,
+        proveedor:        null,
+      }));
+    }
+    return nuevo;
   });
 
-  await repoInsumos().save(insumo);
   res.status(201).json(insumo);
 }));
 
@@ -213,10 +248,17 @@ router.post('/movimientos', idempotente('inventario_mov'), requireHerramientaAcc
   } = parsed.data;
   const fechaMov = fecha || (await hoyDePeticion(req));
 
-  // Pre-verificar producto si se registrará en finanzas
-  const prod = (tipo === 'entrada' && registrar_en_finanzas !== false && producto_id)
+  // El producto tiene que ser de la cuenta. Antes uno ajeno se guardaba en el
+  // movimiento y, en una compra, el egreso se omitía sin avisar aunque el
+  // usuario hubiera pedido registrarla en Finanzas.
+  const productoPropio = producto_id
     ? await repoProd().findOne({ where: { id: producto_id, usuario_id: req.userId! } })
     : null;
+  if (producto_id && !productoPropio) {
+    res.status(404).json({ error: 'Producto no encontrado' });
+    return;
+  }
+  const prod = tipo === 'entrada' && registrar_en_finanzas !== false ? productoPropio : null;
 
   try {
     const { mov, insumoActualizado, movContable } = await AppDataSource.transaction(async manager => {
@@ -306,34 +348,73 @@ router.post('/movimientos', idempotente('inventario_mov'), requireHerramientaAcc
   }
 }));
 
+// Solo se deshace el ÚLTIMO movimiento de un insumo, y se deshace entero: stock,
+// costo promedio y su egreso. Antes se borraba cualquiera sin tocar el stock
+// (borrar una compra de 3 dejaba las 3 unidades en el almacén sin movimiento que
+// las explicara) y el egreso se quitaba fuera de la transacción, tragándose el
+// error. Deshacer uno intermedio obligaría a recalcular toda la cadena.
 router.delete('/movimientos/:id', ah(async (req: AuthRequest, res: Response) => {
-  // Eliminar un movimiento NO revierte el stock automáticamente — eso requeriría
-  // recalcular toda la cadena. Por simplicidad y seguridad, solo eliminamos el registro
-  // contable asociado si lo hay, y dejamos el stock como está.
-  // Si el usuario quiere "revertir" un movimiento, debe crear el contrario.
-  const mov = await repoMovs().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
-  if (!mov) { res.status(404).json({ error: 'Movimiento no encontrado' }); return; }
+  const resultado = await AppDataSource.transaction(async (manager) => {
+    const mov = await manager.findOne(MovimientoInventario, { where: { id: req.params.id, usuario_id: req.userId! } });
+    if (!mov) return { status: 404, body: { error: 'Movimiento no encontrado' } };
 
-  // Un movimiento de una venta no se borra desde aquí: es el consumo (o la
-  // devolución) que respalda esa venta, y borrarlo deja al almacén sin poder
-  // explicar el stock y rompe la devolución al cancelar. Se corrige cancelando
-  // la venta en el POS.
-  if (mov.venta_id) {
-    res.status(409).json({
-      error: 'Este movimiento lo generó una venta del POS. Cancela la venta y el almacén se ajusta solo.',
-      venta_id: mov.venta_id,
+    // Un movimiento de una venta no se borra desde aquí: es el consumo (o la
+    // devolución) que respalda esa venta. Se corrige cancelando la venta.
+    if (mov.venta_id) {
+      return {
+        status: 409,
+        body: { error: 'Este movimiento lo generó una venta del POS. Cancela la venta y el almacén se ajusta solo.', venta_id: mov.venta_id },
+      };
+    }
+
+    const insumo = await manager.findOne(InsumoInventario, {
+      where: { id: mov.insumo_id, usuario_id: req.userId! },
+      lock: { mode: 'pessimistic_write' },
     });
-    return;
-  }
+    if (!insumo) return { status: 404, body: { error: 'Insumo no encontrado' } };
 
-  if (mov.movimiento_contable_id) {
-    await repoCont().delete({ id: mov.movimiento_contable_id, usuario_id: req.userId! }).catch((err) => {
-      logger.warn('[inventario] Error al eliminar movimiento contable asociado:', err);
+    const deshacerConInverso = {
+      status: 409,
+      body: { error: 'Solo se puede deshacer el último movimiento del insumo. Para corregir uno anterior, registra el movimiento contrario.' },
+    };
+    const posterior = await manager
+      .createQueryBuilder(MovimientoInventario, 'm')
+      .where('m.insumo_id = :insumo AND m.id <> :id', { insumo: mov.insumo_id, id: mov.id })
+      .andWhere('m.fecha_creacion >= :creado', { creado: mov.fecha_creacion })
+      .getExists();
+    // Si el stock ya no es el que dejó este movimiento, algo lo cambió después.
+    if (posterior || Math.abs(Number(insumo.stock_actual) - Number(mov.stock_resultante)) > 1e-6) return deshacerConInverso;
+
+    const anterior = await manager.findOne(MovimientoInventario, {
+      where: { insumo_id: mov.insumo_id, usuario_id: req.userId!, fecha_creacion: LessThan(mov.fecha_creacion) },
+      order: { fecha_creacion: 'DESC' },
     });
-  }
+    const cantidadMov = Number(mov.cantidad);
+    const stockDespues = Number(mov.stock_resultante);
+    const stockAntes = anterior
+      ? Number(anterior.stock_resultante)
+      : mov.tipo === 'entrada' ? stockDespues - cantidadMov
+      : mov.tipo === 'salida' || mov.tipo === 'merma' ? stockDespues + cantidadMov
+      : null; // un ajuste sin movimiento previo no dice desde qué stock partió
+    if (stockAntes === null || stockAntes < -1e-6) return deshacerConInverso;
 
-  await repoMovs().remove(mov);
-  res.json({ ok: true, nota: 'Movimiento eliminado. El stock NO se revirtió — crea un movimiento inverso si lo necesitas.' });
+    // Salidas, mermas y ajustes no cambian el costo promedio; una entrada sí.
+    let costoAntes = Number(insumo.costo_promedio);
+    if (mov.tipo === 'entrada' && stockAntes > 1e-6) {
+      costoAntes = Math.max(0, r4((stockDespues * costoAntes - cantidadMov * Number(mov.costo_unitario)) / stockAntes));
+    }
+
+    if (mov.movimiento_contable_id) {
+      await manager.delete(MovimientoContable, { id: mov.movimiento_contable_id, usuario_id: req.userId! });
+    }
+    await manager.remove(MovimientoInventario, mov);
+    insumo.stock_actual = r3(stockAntes);
+    insumo.costo_promedio = costoAntes;
+    await manager.save(InsumoInventario, insumo);
+    return { status: 200, body: { ok: true, stock_actual: insumo.stock_actual, costo_promedio: insumo.costo_promedio } };
+  });
+
+  res.status(resultado.status).json(resultado.body);
 }));
 
 export default router;

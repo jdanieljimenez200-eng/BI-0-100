@@ -119,3 +119,16 @@ describe('breakevenService.calcularBreakeven', () => {
     expect(s2).toBeGreaterThanOrEqual(s1);
   });
 });
+
+describe('proyeccionService: nombre de los meses', () => {
+  it('el mes 1 es el mes en que se pide el análisis', () => {
+    const proy = generarProyeccion({ ...inputBase, mes_inicio: 9 });
+    expect(proy.meses.map((m) => m.nombre_mes).slice(0, 5)).toEqual(['Septiembre', 'Octubre', 'Noviembre', 'Diciembre', 'Enero']);
+    expect(proy.meses[11].nombre_mes).toBe('Agosto');
+  });
+
+  it('sin mes de inicio (o inválido) empieza en Enero, como antes', () => {
+    expect(generarProyeccion(inputBase).meses[0].nombre_mes).toBe('Enero');
+    expect(generarProyeccion({ ...inputBase, mes_inicio: 13 }).meses[0].nombre_mes).toBe('Enero');
+  });
+});

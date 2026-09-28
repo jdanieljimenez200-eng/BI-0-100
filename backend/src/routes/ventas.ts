@@ -16,6 +16,7 @@ import { redisClient } from '../config/redis';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, conCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
 import { logger } from '../utils/logger';
+import { hoyDePeticion } from '../utils/fechaLocal';
 import { uploadAudio, reservarCupoSubidaPesada } from '../middleware/upload';
 import {
   isTranscripcionAvailable,
@@ -108,7 +109,9 @@ router.get('/tips', ...acceso,async (_req: AuthRequest, res: Response) => {
 router.get('/historias/diaria', ...acceso,async (req: AuthRequest, res: Response) => {
   try {
     const productoId = String(req.query.productoId ?? '');
-    const fechaISO = new Date().toISOString().slice(0, 10);
+    // Día local de quien pide: en UTC, en México «la historia del día» cambiaba
+    // a la de mañana desde las 18:00.
+    const fechaISO = await hoyDePeticion(req);
 
     if (!productoId) {
       return res.json(
@@ -316,6 +319,8 @@ router.post(
               ticket_promedio: input.ticket_promedio,
               tamano_equipo: input.tamano_equipo,
               objetivo_ventas: input.objetivo_ventas,
+              // El worker no tiene la petición: el día local viaja con el trabajo.
+              fecha_local: await hoyDePeticion(req),
             },
           },
           {

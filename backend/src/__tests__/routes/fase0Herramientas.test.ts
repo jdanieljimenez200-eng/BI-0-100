@@ -311,7 +311,7 @@ describeWithDb('Fase 0 — correcciones críticas de las herramientas', () => {
     const r = await c.api.delete(`/inventario/insumos/${insumo.body.id}`);
     expect(r.body).toMatchObject({ ok: true, archivado: true });
     const [{ n }] = await q(`SELECT COUNT(*)::int AS n FROM movimientos_inventario WHERE insumo_id = $1`, [insumo.body.id]);
-    expect(n).toBe(1);
+    expect(n).toBe(2); // el inventario inicial y la merma
     expect((await c.api.get(`/pos/catalogo/${item.body.id}/receta`)).body.receta).toEqual([]);
     const lista = await c.api.get('/inventario/insumos');
     expect(lista.body.insumos.some((i: { id: string }) => i.id === insumo.body.id)).toBe(false);

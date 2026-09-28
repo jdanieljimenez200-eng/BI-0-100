@@ -3,6 +3,7 @@
 
 import { calcularImpuesto, getTaxConfig } from '../../utils/taxConfig';
 import { r2 } from '../../utils/dinero';
+import { telefonoWhatsApp } from '../../utils/whatsapp';
 
 export interface CarritoLinea {
   item_pos_id?: string | null;
@@ -66,10 +67,11 @@ export function calcularTotalesVenta(lineas: CarritoLinea[], paisProducto: strin
  * abre WhatsApp y solo presiona "Enviar". Se incluye un URL público del ticket
  * para que el cliente pueda verlo en línea (no se envía PDF nativo en este modo).
  *
- * Nota: si el teléfono no tiene código de país, el link puede no resolver.
+ * Un teléfono nacional («55 1234 5678») recibe la lada del país del producto.
  */
 export function buildWhatsAppLink(opts: {
-  telefono?: string | null;          // ej. "+525512345678" o "525512345678"
+  telefono?: string | null;          // ej. "55 1234 5678", "+525512345678" o "525512345678"
+  pais?: string | null;              // ISO del producto; sin él, México
   nombreNegocio: string;
   numeroTicket: string;
   total: number;
@@ -77,7 +79,7 @@ export function buildWhatsAppLink(opts: {
   simbolo: string;
   ticketUrl: string;                 // URL pública del ticket HTML
 }): string {
-  const telefonoLimpio = (opts.telefono || '').replace(/[^\d]/g, '');
+  const telefonoLimpio = telefonoWhatsApp(opts.telefono, opts.pais);
   const mensaje =
     `*${opts.nombreNegocio}*\n` +
     `Ticket *${opts.numeroTicket}*\n` +

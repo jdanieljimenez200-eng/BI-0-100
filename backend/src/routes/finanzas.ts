@@ -15,6 +15,7 @@ import { respuestaAnalisis } from '../services/billing/redactAnalisis';
 import { requireAnalisisLock } from '../middleware/idempotency';
 import { validateBody, exigirUuid } from '../middleware/validate';
 import { logger } from '../utils/logger';
+import { hoyDePeticion } from '../utils/fechaLocal';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
 
@@ -76,7 +77,8 @@ router.post(
     const productoId = bodySrc.productoId ?? bodySrc.producto_id;
     delete bodySrc.productoId;
     delete bodySrc.producto_id;
-    const payload = bodySrc;
+    // El mes 1 de la proyección es el mes en curso de quien la pide.
+    const payload = { ...bodySrc, mes_inicio: Number((await hoyDePeticion(req)).slice(5, 7)) };
     const usuarioId = req.userId;
 
     // Validate producto belongs to user

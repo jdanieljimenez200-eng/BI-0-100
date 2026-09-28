@@ -60,21 +60,14 @@ export const metadata: Metadata = {
     title: 'BI 0 A 100 — Valida tu negocio en minutos',
     description:
       'Valida la viabilidad de tu negocio en 2-3 minutos. Análisis de marketing y mercado en un solo lugar.',
-    images: [
-      {
-        url: '/og-image.png',
-        width: 1200,
-        height: 630,
-        alt: 'BI 0 A 100 — Valida tu negocio en minutos',
-      },
-    ],
+    // La imagen la genera app/opengraph-image.tsx (antes apuntaba a un
+    // /og-image.png que no existía). X usa la misma si no hay twitter:image.
   },
   twitter: {
     card: 'summary_large_image',
     title: 'BI 0 A 100 — Valida tu negocio en minutos',
     description:
       'Valida la viabilidad de tu negocio en 2-3 minutos. Análisis de marketing y mercado.',
-    images: ['/og-image.png'],
   },
   robots: {
     index: true,

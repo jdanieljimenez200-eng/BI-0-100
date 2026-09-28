@@ -20,12 +20,15 @@ import {
   X,
   Send,
   Download,
+  ShoppingCart,
 } from 'lucide-react';
-import api from '../../../../lib/api';
+import api, { hayRespuestaDelServidor, nuevaClaveIdempotencia } from '../../../../lib/api';
 import CustomSelect from '../../../../components/ui/CustomSelect';
 import ProductoGate from '@/components/herramientas/ProductoGate';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
 import { ProductoActivo } from '@/lib/productoActivo';
+import { getTaxConfig } from '@/lib/taxConfig';
+import { enlaceWhatsApp } from '@/lib/whatsapp';
 import { MotionModal } from '@/components/motion/MotionModal';
 import { Breadcrumbs, SearchInput, Toast } from '@/components/ui';
 
@@ -59,10 +62,14 @@ interface Cotizacion {
   notas: string | null;
   negocio_id: string | null;
   producto_id: string | null;
+  cliente_id?: string | null;
   marca_nombre: string | null;
   marca_color: string | null;
   fecha_creacion: string;
   fecha_actualizacion: string;
+  /** Venta vigente creada desde esta cotización (null si aún no se vende o se canceló). */
+  venta_id?: string | null;
+  venta_ticket?: string | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -348,24 +355,45 @@ function ItemRow({ item, onChange, onRemove }: {
 
 // ─── Modal: Crear / Editar ────────────────────────────────────────────────────
 
-function CotizacionModal({ cotizacion, negocioId, productoId, onClose, onSaved }: {
+/** Cliente del CRM con el que se abre una cotización nueva (`?cliente=<id>`). */
+interface ClientePrefill {
+  id: string;
+  nombre: string;
+  empresa: string | null;
+  email: string | null;
+  telefono: string | null;
+}
+
+function CotizacionModal({ cotizacion, clientePrefill, negocioId, productoId, monedaCuenta, impuestoCuenta, onClose, onSaved }: {
+  /** Con `id` vacío es un duplicado: se crea una cotización nueva a partir de ella. */
   cotizacion: Cotizacion | null;
+  clientePrefill?: ClientePrefill | null;
   negocioId: string | null;
   productoId: string;
+  /** Moneda del país del producto (MXN en México). */
+  monedaCuenta: string;
+  /** Impuesto al consumo del país (IVA 16 % en México), en porcentaje. */
+  impuestoCuenta: { nombre: string; tasaPct: number };
   onClose: () => void;
   onSaved: (c: Cotizacion) => void;
 }) {
   const emptyItem = (): Item => ({ descripcion: '', cantidad: 1, precio_unitario: 0, subtotal: 0 });
+  const esEdicion = Boolean(cotizacion?.id);
 
-  const [clienteNombre,  setClienteNombre]  = useState(cotizacion?.cliente_nombre ?? '');
-  const [clienteEmpresa, setClienteEmpresa] = useState(cotizacion?.cliente_empresa ?? '');
-  const [clienteEmail,   setClienteEmail]   = useState(cotizacion?.cliente_email ?? '');
-  const [clienteTel,     setClienteTel]     = useState(cotizacion?.cliente_telefono ?? '');
+  const [clienteNombre,  setClienteNombre]  = useState(cotizacion?.cliente_nombre ?? clientePrefill?.nombre ?? '');
+  const [clienteEmpresa, setClienteEmpresa] = useState(cotizacion?.cliente_empresa ?? clientePrefill?.empresa ?? '');
+  const [clienteEmail,   setClienteEmail]   = useState(cotizacion?.cliente_email ?? clientePrefill?.email ?? '');
+  const [clienteTel,     setClienteTel]     = useState(cotizacion?.cliente_telefono ?? clientePrefill?.telefono ?? '');
   const [items,          setItems]          = useState<Item[]>(cotizacion?.items?.length ? cotizacion.items : [emptyItem()]);
   const [descuentoPct,   setDescuentoPct]   = useState(Number(cotizacion?.descuento_pct ?? 0));
-  const [impuestoTasa,   setImpuestoTasa]   = useState(Number(cotizacion?.impuesto_tasa ?? 0));
-  const [impuestoNombre, setImpuestoNombre] = useState(cotizacion?.impuesto_nombre ?? 'IVA');
-  const [moneda,         setMoneda]         = useState(cotizacion?.moneda ?? 'USD');
+  // Una cotización nueva arranca con el impuesto del país, como el POS: con 0 %
+  // el total salía sin IVA y el negocio cotizaba de menos si no lo notaba.
+  const [impuestoTasa,   setImpuestoTasa]   = useState(Number(cotizacion?.impuesto_tasa ?? impuestoCuenta.tasaPct));
+  const [impuestoNombre, setImpuestoNombre] = useState(cotizacion?.impuesto_nombre ?? impuestoCuenta.nombre);
+  // La del país del producto, no 'USD' fijo: el formulario siempre manda la
+  // moneda, así que el backend nunca llegaba a aplicar monedaDeCuenta() y una
+  // cotización de un negocio mexicano salía en dólares.
+  const [moneda,         setMoneda]         = useState(cotizacion?.moneda ?? monedaCuenta);
   const [estado,         setEstado]         = useState<Cotizacion['estado']>(cotizacion?.estado ?? 'borrador');
   const [fechaVenc,      setFechaVenc]      = useState(cotizacion?.fecha_vencimiento ?? '');
   const [notas,          setNotas]          = useState(cotizacion?.notas ?? '');
@@ -402,12 +430,18 @@ function CotizacionModal({ cotizacion, negocioId, productoId, onClose, onSaved }
         notas: notas.trim() || null,
         negocio_id:  negocioId,
         producto_id: productoId,
+        // Vínculo con el expediente del CRM (solo al crear; editar no lo cambia).
+        ...(esEdicion ? {} : { cliente_id: clientePrefill?.id ?? cotizacion?.cliente_id ?? null }),
       };
-      const r = cotizacion
-        ? await api.patch(`/cotizaciones/${cotizacion.id}`, payload)
+      // Un duplicado trae los datos de otra cotización pero sin id: se crea.
+      const r = esEdicion
+        ? await api.patch(`/cotizaciones/${cotizacion!.id}`, payload)
         : await api.post('/cotizaciones', payload);
       onSaved(r.data);
-    } catch { setError('Error al guardar'); }
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
+      setError(msg || 'No se pudo guardar la cotización. Revisa tu conexión e inténtalo de nuevo.');
+    }
     finally   { setSaving(false); }
   }
 
@@ -416,7 +450,7 @@ function CotizacionModal({ cotizacion, negocioId, productoId, onClose, onSaved }
       <div className="relative w-full bg-[#0b1421] border border-white/10 rounded-3xl shadow-2xl flex flex-col max-h-[94vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/8">
           <h2 className="text-base font-semibold text-white">
-            {cotizacion ? `Editar ${cotizacion.numero}` : 'Nueva cotización'}
+            {esEdicion ? `Editar ${cotizacion!.numero}` : 'Nueva cotización'}
           </h2>
           <button onClick={onClose} aria-label="Cerrar" className="text-white/40 hover:text-white/70 transition-colors flex items-center justify-center">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -514,7 +548,7 @@ function CotizacionModal({ cotizacion, negocioId, productoId, onClose, onSaved }
               <CustomSelect
                 value={moneda}
                 onChange={setMoneda}
-                options={MONEDAS.map(m => ({ value: m, label: m }))}
+                options={(MONEDAS.includes(monedaCuenta) ? MONEDAS : [monedaCuenta, ...MONEDAS]).map(m => ({ value: m, label: m }))}
               />
             </div>
             <div>
@@ -549,7 +583,108 @@ function CotizacionModal({ cotizacion, negocioId, productoId, onClose, onSaved }
           </button>
           <button onClick={handleSubmit as unknown as React.MouseEventHandler} disabled={saving}
             className="flex-1 h-10 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
-            {saving ? 'Guardando…' : cotizacion ? 'Guardar cambios' : 'Crear cotización'}
+            {saving ? 'Guardando…' : esEdicion ? 'Guardar cambios' : 'Crear cotización'}
+          </button>
+        </div>
+      </div>
+    </MotionModal>
+  );
+}
+
+// ─── Convertir en venta ───────────────────────────────────────────────────────
+
+const METODOS_PAGO = [
+  { value: 'transferencia', label: 'Transferencia' },
+  { value: 'efectivo',      label: 'Efectivo' },
+  { value: 'tarjeta',       label: 'Tarjeta' },
+  { value: 'otro',          label: 'Otro' },
+] as const;
+
+type MetodoPago = typeof METODOS_PAGO[number]['value'];
+
+function ConvertirVentaModal({ cot, onClose, onConvertida }: {
+  cot: Cotizacion;
+  onClose: () => void;
+  onConvertida: (venta: { id: string; numero_ticket: string }) => void;
+}) {
+  const [metodo, setMetodo] = useState<MetodoPago>('transferencia');
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+  // Una clave por intento: si la red se corta, el reintento no crea otra venta.
+  const clave = useRef(nuevaClaveIdempotencia());
+
+  async function convertir() {
+    setGuardando(true);
+    setError('');
+    try {
+      const { data } = await api.post(
+        `/cotizaciones/${cot.id}/convertir-venta`,
+        { metodo_pago: metodo },
+        { headers: { 'Idempotency-Key': clave.current } },
+      );
+      onConvertida(data.venta);
+    } catch (err) {
+      if (hayRespuestaDelServidor(err)) clave.current = nuevaClaveIdempotencia();
+      const e = err as { response?: { data?: { error?: string } } };
+      setError(e.response?.data?.error || 'No se pudo registrar la venta. Revisa tu conexión e inténtalo de nuevo.');
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <MotionModal isOpen={true} onClose={onClose} maxWidth="max-w-md">
+      <div className="relative w-full bg-[#0b1421] border border-white/10 rounded-3xl shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/8">
+          <h2 className="text-base font-semibold text-white">Convertir {cot.numero} en venta</h2>
+          <button onClick={onClose} aria-label="Cerrar" className="text-white/40 hover:text-white/70 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          <p className="text-sm text-white/70">
+            Se registra la venta a <span className="text-white font-semibold">{cot.cliente_nombre}</span> por{' '}
+            <span className="text-white font-semibold font-mono">{cot.moneda} ${Number(cot.total).toFixed(2)}</span> con fecha de hoy:
+            el ticket aparece en el Punto de Venta y el ingreso en Contabilidad.
+          </p>
+          <p className="text-xs text-white/40">
+            Los conceptos de la cotización no son artículos del catálogo, así que no descuentan almacén.
+          </p>
+
+          <div>
+            <p className="text-xs text-white/40 mb-2" id="metodo-pago-cot">Método de pago</p>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-labelledby="metodo-pago-cot">
+              {METODOS_PAGO.map((m) => (
+                <button
+                  key={m.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={metodo === m.value}
+                  onClick={() => setMetodo(m.value)}
+                  className={`h-10 rounded-xl border text-sm transition-colors ${
+                    metodo === m.value
+                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 font-semibold'
+                      : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {error && <p className="text-red-400 text-xs" role="alert">{error}</p>}
+        </div>
+
+        <div className="flex gap-3 px-6 py-4 border-t border-white/8">
+          <button type="button" onClick={onClose}
+            className="flex-1 h-10 rounded-xl border border-white/15 text-sm text-white/60 hover:bg-white/5 transition-colors">
+            Cancelar
+          </button>
+          <button type="button" onClick={convertir} disabled={guardando}
+            className="flex-1 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">
+            {guardando ? 'Registrando…' : 'Registrar venta'}
           </button>
         </div>
       </div>
@@ -568,23 +703,36 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
   const [modalNuevo, setModalNuevo] = useState(false);
   const [editando, setEditando] = useState<Cotizacion | null>(null);
   const [printTarget, setPrintTarget] = useState<Cotizacion | null>(null);
+  const [convirtiendo, setConvirtiendo] = useState<Cotizacion | null>(null);
+  const [clientePrefill, setClientePrefill] = useState<ClientePrefill | null>(null);
   const [toast, setToast] = useState('');
 
+  // Solo las del producto activo: sin filtro, la página de 200 se llenaba con
+  // las de otros productos y las de este dejaban de verse.
+  // `vigente` descarta la respuesta de un producto anterior si se cambia rápido.
   useEffect(() => {
-    loadData();
-  }, []);
+    let vigente = true;
+    api.get('/cotizaciones', { params: { producto_id: producto.id } })
+      .then((r) => { if (vigente) setAllCots(r.data); })
+      .catch(() => { if (vigente) setToast('Error al cargar cotizaciones'); })
+      .finally(() => { if (vigente) setLoading(false); });
+    return () => { vigente = false; };
+  }, [producto.id]);
 
-  async function loadData() {
-    setLoading(true);
-    try {
-      const r = await api.get('/cotizaciones');
-      setAllCots(r.data);
-    } catch {
-      setToast('Error al cargar cotizaciones');
-    } finally {
-      setLoading(false);
-    }
-  }
+  // «Crear cotización» desde la ficha de un cliente llega con ?cliente=<id>: se
+  // abre el formulario con sus datos y la cotización queda ligada al expediente.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('cliente');
+    if (!id) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    api.get(`/clientes/${id}`)
+      .then(({ data }) => {
+        setClientePrefill({ id: data.id, nombre: data.nombre, empresa: data.empresa ?? null, email: data.email ?? null, telefono: data.telefono ?? null });
+        setEditando(null);
+        setModalNuevo(true);
+      })
+      .catch(() => setToast('No se encontró el cliente'));
+  }, []);
 
   function handleSaved(saved: Cotizacion) {
     setAllCots((prev) => {
@@ -598,7 +746,8 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
     });
     setModalNuevo(false);
     setEditando(null);
-    setToast(editando ? 'Cotización actualizada' : `${saved.numero} creada`);
+    setClientePrefill(null);
+    setToast(editando?.id ? 'Cotización actualizada' : `${saved.numero} creada`);
   }
 
   async function handleDelete(id: string) {
@@ -620,10 +769,7 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
       window.open(whatsapp_url, '_blank', 'noopener');
     } catch {
       const msg = `Hola ${cot.cliente_nombre || ''}. Te comparto los detalles de tu cotización *${cot.numero}* por un monto de *${cot.moneda} $${Number(cot.total).toFixed(2)}*.\n\nQuedo a tu disposición para confirmar el inicio de tu proyecto.`;
-      const url = cot.cliente_telefono
-        ? `https://wa.me/${cot.cliente_telefono.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`
-        : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-      window.open(url, '_blank', 'noopener');
+      window.open(enlaceWhatsApp(cot.cliente_telefono, producto.pais, msg), '_blank', 'noopener');
     }
   }
 
@@ -633,6 +779,8 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
       id: '',
       numero: 'Borrador',
       estado: 'borrador',
+      venta_id: null,
+      venta_ticket: null,
       fecha_creacion: new Date().toISOString(),
       fecha_actualizacion: new Date().toISOString(),
     });
@@ -926,6 +1074,11 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
               <div className="flex-shrink-0 sm:w-32">
                 <p className="text-sm font-mono font-bold text-white">{cot.numero}</p>
                 <div className="mt-1">{estadoChip(cot.estado)}</div>
+                {cot.venta_ticket && (
+                  <p className="mt-1 text-[11px] text-emerald-300/80 font-mono" title="Venta registrada en el Punto de Venta">
+                    Vendida · {cot.venta_ticket}
+                  </p>
+                )}
               </div>
 
               <div className="flex-1 min-w-0">
@@ -954,6 +1107,18 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span className="hidden sm:inline">Aceptar</span>
+                  </button>
+                )}
+
+                {!cot.venta_id && cot.estado !== 'rechazada' && (
+                  <button
+                    onClick={() => setConvirtiendo(cot)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-600/80 border border-emerald-500/40 text-xs text-white hover:bg-emerald-500 transition-colors font-semibold"
+                    title="Registrar la venta en el Punto de Venta y el ingreso en Contabilidad"
+                    aria-label={`Convertir ${cot.numero} en venta`}
+                  >
+                    <ShoppingCart className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Vender</span>
                   </button>
                 )}
 
@@ -1016,11 +1181,26 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
       )}
 
       {(modalNuevo || editando) && (
-        <CotizacionModal cotizacion={editando} negocioId={producto.negocio_id} productoId={producto.id} onClose={() => { setModalNuevo(false); setEditando(null); }} onSaved={handleSaved} />
+        <CotizacionModal cotizacion={editando} clientePrefill={editando ? null : clientePrefill} negocioId={producto.negocio_id} productoId={producto.id} monedaCuenta={getTaxConfig(producto.pais).moneda} impuestoCuenta={{ nombre: getTaxConfig(producto.pais).consumo.nombre, tasaPct: Math.round(getTaxConfig(producto.pais).consumo.tasa * 10000) / 100 }} onClose={() => { setModalNuevo(false); setEditando(null); setClientePrefill(null); }} onSaved={handleSaved} />
       )}
 
       {printTarget && (
         <PrintModal cot={printTarget} onClose={() => setPrintTarget(null)} />
+      )}
+
+      {convirtiendo && (
+        <ConvertirVentaModal
+          cot={convirtiendo}
+          onClose={() => setConvirtiendo(null)}
+          onConvertida={(venta) => {
+            const id = convirtiendo.id;
+            setAllCots((prev) => prev.map((c) => (c.id === id
+              ? { ...c, estado: 'aceptada', venta_id: venta.id, venta_ticket: venta.numero_ticket }
+              : c)));
+            setConvirtiendo(null);
+            setToast(`Venta ${venta.numero_ticket} registrada`);
+          }}
+        />
       )}
 
       {toast && <Toast message={toast} onClose={() => setToast('')} />}

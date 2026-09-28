@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
-import { In } from 'typeorm';
+import { Brackets, In } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireToolCapability, requireHerramientaAccess, permiteAccion } from '../middleware/requirePlan';
@@ -303,6 +303,26 @@ router.put('/catalogo/:id/receta', validateBody(RecetaSchema), ah(async (req: Au
   res.json({ ok: true, insumos: insumos.length });
 }));
 
+// GET /api/pos/canales?producto_id=… — medios de cobro activos para el selector
+// de la caja. Es la misma lista que GET /contabilidad/:productoId/canales, pero
+// con el permiso del POS: un cajero sin Contabilidad recibía 403, no podía
+// elegir la terminal con la que cobraba y la comisión de su venta no se
+// registraba. Solo lectura y solo los campos que usa el selector.
+router.get('/canales', ah(async (req: AuthRequest, res: Response) => {
+  const productoId = typeof req.query.producto_id === 'string' ? req.query.producto_id : '';
+  if (!esUuid(productoId)) return res.status(400).json({ error: 'producto_id requerido' });
+  const canales = await AppDataSource.getRepository(CanalCobro)
+    .createQueryBuilder('c')
+    .select(['c.id', 'c.nombre', 'c.tipo_canal', 'c.institucion', 'c.comision_porcentaje', 'c.comision_fija', 'c.activo'])
+    .where('c.usuario_id = :uid', { uid: req.userId! })
+    .andWhere('(c.producto_id = :productoId OR c.producto_id IS NULL)', { productoId })
+    .andWhere('c.activo = true')
+    .orderBy('c.tipo_canal', 'ASC')
+    .addOrderBy('c.nombre', 'ASC')
+    .getMany();
+  res.json(canales);
+}));
+
 // ═══════════════════════════════════════════════════════════════════════════
 // VENTAS — crear, listar, ver detalle. Integración Finanzas automática.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -399,6 +419,10 @@ router.post('/ventas', idempotente('pos_venta'), requireHerramientaAccess('pos',
     return;
   }
   const pais = (producto.pais || 'MX').toUpperCase();
+  if (negocio_id && !(await repoNegocios().exists({ where: { id: negocio_id, usuario_id: req.userId! } }))) {
+    res.status(404).json({ error: 'Negocio no encontrado' });
+    return;
+  }
 
   // 1.b El precio lo manda el catálogo, no el cliente.
   //
@@ -750,10 +774,20 @@ async function cancelarVenta(req: AuthRequest, res: Response): Promise<void> {
       if (venta.estado === 'cancelada') throw new VentaError(409, 'La venta ya está cancelada');
 
       // Asientos inversos: mismo importe, tipo contrario. Se excluyen los que ya
-      // son una cancelación para no invertir una inversión.
-      const asientos = await manager.find(MovimientoContable, {
-        where: { usuario_id: req.userId!, referencia_tipo: 'venta', referencia_id: venta.id },
-      });
+      // son una cancelación para no invertir una inversión. Además de los que
+      // referencian la venta, entra su asiento principal con sus hijos: los de
+      // una venta que nació de una cotización referencian la cotización, y antes
+      // cancelarla dejaba su ingreso vivo en Contabilidad.
+      const asientos = await manager
+        .createQueryBuilder(MovimientoContable, 'm')
+        .where('m.usuario_id = :uid', { uid: req.userId! })
+        .andWhere(new Brackets((qb) => {
+          qb.where("m.referencia_tipo = 'venta' AND m.referencia_id = :ventaId", { ventaId: venta.id });
+          if (venta.movimiento_contable_id) {
+            qb.orWhere('(m.id = :principal OR m.parent_movimiento_id = :principal)', { principal: venta.movimiento_contable_id });
+          }
+        }))
+        .getMany();
       const inversos = asientos
         .filter((mov) => mov.categoria !== CATEGORIA_CANCELACION)
         .map((mov) =>
@@ -862,6 +896,7 @@ router.get('/ventas/:id/whatsapp', ah(async (req: AuthRequest, res: Response) =>
 
   const link = buildWhatsAppLink({
     telefono:       venta.cliente_telefono,
+    pais:           venta.producto?.pais,
     nombreNegocio:  venta.negocio?.nombre || 'Mi Negocio',
     numeroTicket:   venta.numero_ticket,
     total:          Number(venta.total),

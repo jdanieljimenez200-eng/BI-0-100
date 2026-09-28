@@ -352,7 +352,7 @@ export default function FilaHoy({
         <div className="bg-[#0b1522] border border-white/10 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-1">
             <h3 className="text-base font-semibold text-white">¿Dónde lo atiendes?</h3>
-            <button type="button" onClick={() => setSentando(null)} className="text-white/40 hover:text-white">
+            <button type="button" aria-label="Cerrar" onClick={() => setSentando(null)} className="text-white/40 hover:text-white">
               <X className="w-4 h-4" />
             </button>
           </div>
