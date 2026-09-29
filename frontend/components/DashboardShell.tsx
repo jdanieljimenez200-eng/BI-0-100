@@ -439,12 +439,9 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
           {!col && (
             <div className="min-w-0 text-left">
-              <div className="flex items-center gap-1.5">
-                <span className="block truncate text-[13px] font-bold tracking-tight text-white group-hover:text-emerald-300 transition-colors">
-                  {tema?.nombre_sistema || 'BI 0 A 100'}
-                </span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
-              </div>
+              <span className="block truncate text-[13px] font-bold tracking-tight text-white group-hover:text-zinc-200 transition-colors">
+                {tema?.nombre_sistema || 'BI 0 A 100'}
+              </span>
               <span className="block truncate text-[10px] font-normal tracking-wide text-zinc-500">
                 Sistema Operativo
               </span>

@@ -134,16 +134,16 @@ export function ElevatedCircularButton({
       className={cn(
         'group relative flex items-center justify-center rounded-full cursor-pointer select-none transition-all duration-300',
         sizeClasses,
-        'bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-300 text-[#070E17]',
-        'shadow-[0_8px_24px_rgba(16,185,129,0.45),0_2px_6px_rgba(0,0,0,0.4)]',
-        'hover:shadow-[0_12px_32px_rgba(16,185,129,0.65),0_0_20px_rgba(45,212,191,0.5)]',
+        'bg-gradient-to-tr from-orange-500 via-amber-500 to-amber-300 text-[#070E17]',
+        'shadow-[0_8px_24px_rgba(249,115,22,0.45),0_2px_6px_rgba(0,0,0,0.4)]',
+        'hover:shadow-[0_12px_32px_rgba(249,115,22,0.65),0_0_20px_rgba(251,146,60,0.5)]',
         'border-2 border-white/30',
         className
       )}
       title={label}
     >
       {/* Halo de luz de fondo */}
-      <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 opacity-40 blur-md group-hover:opacity-75 transition-opacity" />
+      <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 opacity-40 blur-md group-hover:opacity-75 transition-opacity" />
 
       {/* Icono central con micro-rotación */}
       <Icon
@@ -199,7 +199,7 @@ export function SidebarScoopHero({
           onClick={onNavigate}
           className="group block"
         >
-          <span className="block text-xs font-sans font-bold text-white group-hover:text-emerald-300 transition-colors tracking-tight">
+          <span className="block text-xs font-sans font-bold text-white group-hover:text-orange-300 transition-colors tracking-tight">
             Nuevo Análisis IA
           </span>
           <span className="block text-[11px] font-sans text-zinc-400 font-normal">
