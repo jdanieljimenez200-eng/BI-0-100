@@ -12,6 +12,14 @@ import {
   Sparkles,
   Image as ImageIcon,
   Check,
+  ShoppingCart,
+  Boxes,
+  FileText,
+  Users,
+  Calendar,
+  UserCheck,
+  BarChart3,
+  Wrench,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { MODULE_THEME } from '@/lib/moduleTheme';
@@ -72,6 +80,91 @@ const MODULE_CONFIG: Record<ModuloKey, { label: string; hex: string; Icon: IconC
   finanzas: { label: 'Finanzas', hex: MODULE_THEME.finanzas.hex, Icon: IconFinanzas },
   legal: { label: 'Legal', hex: MODULE_THEME.legal.hex, Icon: IconLegal },
 };
+
+interface HerramientaDashboardItem {
+  id: string;
+  titulo: string;
+  subtitulo: string;
+  href: string;
+  hex: string;
+  badge: string;
+  Icon: React.ComponentType<{ className?: string }>;
+}
+
+const HERRAMIENTAS_DASHBOARD: HerramientaDashboardItem[] = [
+  {
+    id: 'pos',
+    titulo: 'Punto de Venta (POS)',
+    subtitulo: 'Cobra y registra ventas con tickets por WhatsApp y flujo de caja en vivo.',
+    href: '/dashboard/herramientas/pos',
+    hex: '#34D399',
+    badge: 'Cobros',
+    Icon: ShoppingCart,
+  },
+  {
+    id: 'inventario',
+    titulo: 'Control de Inventario',
+    subtitulo: 'Control de existencias, insumos, compras y alertas de stock bajo.',
+    href: '/dashboard/herramientas/inventario',
+    hex: '#FBBF24',
+    badge: 'Stock',
+    Icon: Boxes,
+  },
+  {
+    id: 'cotizaciones',
+    titulo: 'Cotizaciones PDF',
+    subtitulo: 'Genera cotizaciones oficiales con tu marca y compártelas al instante.',
+    href: '/dashboard/herramientas/cotizaciones',
+    hex: '#60A5FA',
+    badge: 'Comercial',
+    Icon: FileText,
+  },
+  {
+    id: 'clientes',
+    titulo: 'Clientes (CRM)',
+    subtitulo: 'Directorio inteligente, notas, historial y enlace directo por WhatsApp.',
+    href: '/dashboard/herramientas/clientes',
+    hex: '#A78BFA',
+    badge: 'CRM',
+    Icon: Users,
+  },
+  {
+    id: 'citas',
+    titulo: 'Agenda & Citas',
+    subtitulo: 'Calendario mensual, fila de espera del día y avisos de turno.',
+    href: '/dashboard/herramientas/calendario',
+    hex: '#22D3EE',
+    badge: 'Agenda',
+    Icon: Calendar,
+  },
+  {
+    id: 'nomina',
+    titulo: 'Personal & Nómina',
+    subtitulo: 'Colaboradores, control de salarios y comprobantes automáticos.',
+    href: '/dashboard/herramientas/personal',
+    hex: '#FB7185',
+    badge: 'Equipo',
+    Icon: UserCheck,
+  },
+  {
+    id: 'contabilidad',
+    titulo: 'Reportes & Cifras',
+    subtitulo: 'Libro contable, estimación fiscal y reportes descargables en PDF.',
+    href: '/dashboard/herramientas/contabilidad',
+    hex: '#2DD4BF',
+    badge: 'Finanzas',
+    Icon: BarChart3,
+  },
+  {
+    id: 'mantenimientos',
+    titulo: 'Mantenimientos',
+    subtitulo: 'Seguimiento preventivo de equipos y maquinaria para evitar paros.',
+    href: '/dashboard/herramientas/mantenimientos',
+    hex: '#FB923C',
+    badge: 'Equipos',
+    Icon: Wrench,
+  },
+];
 
 const ACCENT = '#E74C3C';
 
@@ -999,7 +1092,90 @@ export default function DashboardPage(): ReactElement {
         )}
       </section>
 
+      {/* ── Suite de Herramientas de Negocio ─────────────────────────────── */}
+      <section aria-label="Herramientas de negocio" className="space-y-5">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.24em] text-brand-accent/80">
+              Operación & Negocio
+            </p>
+            <h2 className="text-lg font-black tracking-tight text-white sm:text-xl">
+              Herramientas de gestión empresarial
+            </h2>
+          </div>
+          <Link
+            href="/dashboard/herramientas"
+            className="group inline-flex items-center gap-1.5 rounded text-xs font-bold text-white/50 transition-colors hover:text-brand-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent/40"
+          >
+            Ver suite completa
+            <IconArrow className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-1" />
+          </Link>
+        </div>
 
+        <motion.div
+          variants={contenedor}
+          initial="hidden"
+          animate="show"
+          className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
+        >
+          {HERRAMIENTAS_DASHBOARD.map((herr) => (
+            <motion.div key={herr.id} variants={item}>
+              <motion.div
+                whileHover={animar ? { y: -5 } : undefined}
+                transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+                className="h-full"
+              >
+                <Link
+                  href={herr.href}
+                  className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 backdrop-blur-xl transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 hover:border-white/20"
+                  style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
+                >
+                  {/* Halo de color al hover */}
+                  <div
+                    className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100"
+                    style={{ background: herr.hex }}
+                    aria-hidden="true"
+                  />
+                  <div
+                    className="pointer-events-none absolute inset-x-0 top-0 h-px opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                    style={{ background: `linear-gradient(90deg, transparent, ${herr.hex}, transparent)` }}
+                    aria-hidden="true"
+                  />
+
+                  <div className="relative mb-3 flex items-center justify-between">
+                    <div
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border transition-transform duration-300 group-hover:scale-110"
+                      style={{
+                        color: herr.hex,
+                        borderColor: `${herr.hex}33`,
+                        background: `${herr.hex}14`,
+                      }}
+                    >
+                      <herr.Icon className="h-4 w-4" />
+                    </div>
+                    <span className="rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-zinc-400">
+                      {herr.badge}
+                    </span>
+                  </div>
+
+                  <p className="relative text-sm font-bold text-white transition-transform duration-300 group-hover:translate-x-0.5">
+                    {herr.titulo}
+                  </p>
+
+                  <p className="relative mt-1.5 flex-1 text-[11px] leading-relaxed text-white/45">
+                    {herr.subtitulo}
+                  </p>
+
+                  <div className="relative mt-4 flex items-center gap-1.5 border-t border-white/[0.06] pt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-white/35 transition-colors duration-300 group-hover:text-white/80">
+                    Abrir herramienta
+                    <IconArrow className="h-3 w-3 transition-transform duration-300 group-hover:translate-x-1" />
+                  </div>
+                </Link>
+              </motion.div>
+            </motion.div>
+          ))}
+        </motion.div>
+      </section>
     </div>
   );
 }
