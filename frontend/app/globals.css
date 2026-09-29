@@ -229,17 +229,27 @@ html[data-animaciones="off"] *::after {
 ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
 * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent; }
 
+/* Ocultar barra de desplazamiento manteniendo el scroll funcional */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* .custom-scrollbar — usada en el <nav> del sidebar (DashboardShell). Barra
    aún más discreta: invisible en reposo y visible solo al pasar el ratón por
    el contenedor, para que el rail no muestre una línea permanente. */
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
+  overflow-x: hidden;
 }
 .custom-scrollbar:hover {
   scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
 }
-.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar { width: 4px; height: 0px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: transparent;

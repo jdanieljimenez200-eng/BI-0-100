@@ -159,7 +159,12 @@ function SidebarLink({
         <motion.span
           layoutId="sidebar-active-pill"
           transition={MOTION_SPRINGS.pill}
-          className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-r from-emerald-500/10 via-white/[0.04] to-transparent border border-emerald-500/20 shadow-sm"
+          className={cn(
+            'pointer-events-none absolute inset-0 rounded-xl',
+            collapsed
+              ? 'bg-white/[0.08] border border-white/15 shadow-[0_0_12px_rgba(255,255,255,0.06)]'
+              : 'bg-gradient-to-r from-emerald-500/10 via-white/[0.04] to-transparent border border-emerald-500/20 shadow-sm'
+          )}
         />
       )}
 
@@ -193,8 +198,10 @@ function SidebarLink({
   );
 
   const className = cn(
-    'group relative flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13px] font-medium transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17]',
-    collapsed && 'justify-center px-2 py-2.5',
+    'group relative flex items-center transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17]',
+    collapsed
+      ? 'h-10 w-10 mx-auto justify-center p-0 shrink-0 rounded-xl'
+      : 'w-full gap-2.5 rounded-xl px-2.5 py-2 text-[13px] font-medium',
     estaActivo ? 'text-white font-semibold' : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200'
   );
 
@@ -204,6 +211,7 @@ function SidebarLink({
         href={href}
         target="net0"
         onClick={onNavigate}
+        title={collapsed ? label : undefined}
         className={className}
       >
         {contenido}
@@ -215,6 +223,7 @@ function SidebarLink({
     <Link
       href={href}
       onClick={onNavigate}
+      title={collapsed ? label : undefined}
       aria-current={estaActivo ? 'page' : undefined}
       className={className}
     >
@@ -236,14 +245,16 @@ function SidebarSection({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-0.5">
-      {!collapsed && (
+    <div className={cn('space-y-0.5', collapsed && 'w-full flex flex-col items-center')}>
+      {!collapsed ? (
         <div className="flex items-center justify-between px-2.5 pt-3 pb-1">
           <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500">{titulo}</p>
           {meta}
         </div>
+      ) : (
+        <div className="w-5 h-px bg-white/[0.08] mx-auto my-1.5 shrink-0" />
       )}
-      <div className="space-y-0.5">{children}</div>
+      <div className={cn('space-y-0.5 w-full', collapsed && 'flex flex-col items-center space-y-1.5')}>{children}</div>
     </div>
   );
 }
@@ -416,7 +427,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
     <aside
       className={cn(
         'group/sidebar relative flex h-full flex-col rounded-[26px] border border-white/[0.08] bg-[#0A0E17]/95 backdrop-blur-2xl shadow-[0_16px_48px_rgba(0,0,0,0.55),0_0_0_1px_rgba(255,255,255,0.03)] transition-all duration-300 overflow-hidden',
-        col ? 'px-2 py-3' : 'px-3 py-3'
+        col ? 'w-full px-1.5 py-3' : 'w-full px-3 py-3'
       )}
     >
       {/* ── Brand Header ─────────────────────────────────────────────────── */}
@@ -465,7 +476,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       {/* ── Action Scoop: Elevated circular button with scoop notch ── */}
       {puedeNuevoAnalisis && (
         col ? (
-          <div className="py-2.5 flex justify-center relative group">
+          <div className="py-2.5 flex justify-center relative group w-full shrink-0">
             <ElevatedCircularButton
               href="/dashboard/nuevo"
               onClick={cerrarDrawer}
@@ -483,7 +494,14 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       )}
 
       {/* ── Scrollable Navigation Container ───────────────────────────────── */}
-      <nav className="custom-scrollbar relative z-10 flex-1 space-y-3 overflow-y-auto px-1.5 py-2">
+      <nav
+        className={cn(
+          'relative z-10 flex-1 overflow-x-hidden',
+          col
+            ? 'no-scrollbar overflow-y-auto w-full py-2 space-y-1.5 flex flex-col items-center'
+            : 'custom-scrollbar overflow-y-auto space-y-3 px-1.5 py-2'
+        )}
+      >
 
         {/* ── 1. Visión General ── */}
         <SidebarSection titulo="Principal" collapsed={col}>
@@ -519,12 +537,17 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
             const NavIcon = MODULE_NAV[mod].Icon;
 
             return (
-              <div key={mod} className="relative">
+              <div key={mod} className={cn('relative', col ? 'w-full flex justify-center shrink-0' : '')}>
                 <div
                   className={cn(
-                    'group relative flex items-center justify-between rounded-xl transition-all duration-150',
+                    'group relative flex items-center transition-all duration-150',
+                    col
+                      ? 'w-10 h-10 justify-center rounded-xl p-0'
+                      : 'w-full justify-between rounded-xl',
                     active
-                      ? 'bg-gradient-to-r from-white/[0.08] to-white/[0.03] text-white font-semibold shadow-sm border border-white/[0.08]'
+                      ? col
+                        ? 'bg-white/[0.08] text-white border border-white/15 shadow-[0_0_12px_rgba(255,255,255,0.06)]'
+                        : 'bg-gradient-to-r from-white/[0.08] to-white/[0.03] text-white font-semibold shadow-sm border border-white/[0.08]'
                       : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200'
                   )}
                 >
@@ -538,10 +561,13 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
                   <Link
                     href={`/dashboard/${mod}`}
                     onClick={cerrarDrawer}
+                    title={col ? theme.short : undefined}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-[13px]',
-                      col && 'justify-center px-2 py-2.5'
+                      'flex items-center text-[13px]',
+                      col
+                        ? 'w-10 h-10 justify-center p-0'
+                        : 'min-w-0 flex-1 gap-2.5 px-2.5 py-2'
                     )}
                   >
                     <span
@@ -625,12 +651,17 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
         {/* ── 3. Operación & Herramientas ── */}
         <SidebarSection titulo="Operación & Negocio" collapsed={col}>
-          <div className="relative">
+          <div className={cn('relative', col ? 'w-full flex justify-center shrink-0' : '')}>
             <div
               className={cn(
-                'group relative flex items-center justify-between rounded-xl transition-all duration-150',
+                'group relative flex items-center transition-all duration-150',
+                col
+                  ? 'w-10 h-10 justify-center rounded-xl p-0'
+                  : 'w-full justify-between rounded-xl',
                 isActive('/dashboard/herramientas', false)
-                  ? 'bg-gradient-to-r from-white/[0.08] to-white/[0.03] text-white font-semibold shadow-sm border border-white/[0.08]'
+                  ? col
+                    ? 'bg-white/[0.08] text-white border border-white/15 shadow-[0_0_12px_rgba(255,255,255,0.06)]'
+                    : 'bg-gradient-to-r from-white/[0.08] to-white/[0.03] text-white font-semibold shadow-sm border border-white/[0.08]'
                   : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200'
               )}
             >
@@ -641,9 +672,12 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
               <Link
                 href="/dashboard/herramientas"
                 onClick={cerrarDrawer}
+                title={col ? 'Herramientas' : undefined}
                 className={cn(
-                  'flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-[13px] font-medium',
-                  col && 'justify-center px-2 py-2.5',
+                  'flex items-center text-[13px] font-medium',
+                  col
+                    ? 'w-10 h-10 justify-center p-0'
+                    : 'min-w-0 flex-1 gap-2.5 px-2.5 py-2',
                   isActive('/dashboard/herramientas', false) ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-200'
                 )}
               >
@@ -760,7 +794,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       <div
         className={cn(
           'relative z-10 border-t border-white/[0.06] bg-[#070B12]/80 backdrop-blur-md',
-          col ? 'pt-3 pb-1 px-1 flex flex-col items-center gap-2' : 'pt-3 pb-1 px-1.5'
+          col ? 'pt-3 pb-2 px-1 flex flex-col items-center gap-2.5 w-full shrink-0' : 'pt-3 pb-1 px-1.5'
         )}
       >
         {col ? (
@@ -768,7 +802,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
             {usuario && (
               <Link
                 href="/dashboard/perfil"
-                className="group relative flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-xs font-semibold text-white/90 hover:border-emerald-400/40 hover:bg-white/[0.08] active:scale-95 transition-all shadow-xs"
+                className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-xs font-semibold text-white/90 hover:border-emerald-400/40 hover:bg-white/[0.08] active:scale-95 transition-all shadow-xs"
                 title={usuario.nombre || usuario.name || 'Perfil'}
               >
                 {(usuario.nombre || usuario.name || 'U').charAt(0).toUpperCase()}
@@ -779,7 +813,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={() => setCollapsed(false)}
               aria-label="Expandir menú"
-              className="p-1.5 text-zinc-500 hover:text-white hover:bg-white/10 rounded-lg active:scale-90 transition-all outline-none cursor-pointer"
+              className="flex h-8 w-8 shrink-0 items-center justify-center text-zinc-500 hover:text-white hover:bg-white/10 rounded-lg active:scale-90 transition-all outline-none cursor-pointer"
               title="Expandir menú lateral"
             >
               <ChevronsLeft className="h-4 w-4 rotate-180" />
@@ -788,7 +822,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={handleLogout}
               aria-label="Cerrar sesión"
-              className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg active:scale-90 transition-all outline-none cursor-pointer"
+              className="flex h-8 w-8 shrink-0 items-center justify-center text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg active:scale-90 transition-all outline-none cursor-pointer"
               title="Cerrar sesión"
             >
               <LogOut className="h-4 w-4" />
@@ -860,7 +894,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       <div
         className={cn(
           'z-30 hidden transition-all duration-300 ease-in-out lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:flex-shrink-0 lg:flex-col lg:p-3 pointer-events-none',
-          collapsed ? 'lg:w-[96px]' : 'lg:w-[280px]'
+          collapsed ? 'lg:w-[88px]' : 'lg:w-[280px]'
         )}
       >
         <div className="w-full h-full pointer-events-auto">
@@ -879,7 +913,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       <div
         className={cn(
           'relative z-10 flex w-full flex-1 flex-col min-h-screen transition-all duration-300 ease-in-out pb-24 lg:pb-0',
-          collapsed ? 'lg:pl-[96px]' : 'lg:pl-[280px]'
+          collapsed ? 'lg:pl-[88px]' : 'lg:pl-[280px]'
         )}
       >
         {/* Mobile topbar */}
