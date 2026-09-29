@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import {
   LayoutGrid,
   Briefcase,
@@ -91,72 +92,55 @@ export default function Net0ProfileTabs({
 
   return (
     <div className="w-full space-y-6">
-      {/* ── 1. Barra de Pestañas Estilo Instagram ── */}
-      <div className="border-b border-white/[0.08] flex items-center justify-center sm:justify-start gap-1 sm:gap-2">
-        <button
-          type="button"
-          onClick={() => setTabActiva('portafolio')}
-          className={`flex items-center gap-2 py-3 px-3 sm:px-5 border-b-2 font-sans text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-            tabActiva === 'portafolio'
-              ? 'border-white text-white'
-              : 'border-transparent text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          <LayoutGrid className="w-4 h-4" strokeWidth={1.8} />
-          <span>Trabajos</span>
-          <span className="text-[11px] font-mono px-1.5 py-0.2 rounded-full bg-white/[0.06] text-zinc-400">
-            {ficha.imagenes.length}
-          </span>
-        </button>
+      {/* ── 1. Barra de Pestañas Estilo Instagram con glide fluido ── */}
+      <div className="relative border-b border-white/[0.08] flex items-center justify-center sm:justify-start gap-1 sm:gap-2">
+        {[
+          { id: 'portafolio' as const, etiqueta: 'Trabajos', icono: LayoutGrid, conteo: ficha.imagenes.length },
+          { id: 'servicios' as const, etiqueta: 'Servicios', icono: Briefcase, conteo: ficha.servicios.length },
+          { id: 'resenas' as const, etiqueta: 'Opiniones', icono: Star, conteo: ficha.total_resenas },
+          { id: 'info' as const, etiqueta: 'Detalles', icono: Info, conteo: 0 },
+        ].map((tab) => {
+          const activa = tabActiva === tab.id;
+          const Icon = tab.icono;
 
-        <button
-          type="button"
-          onClick={() => setTabActiva('servicios')}
-          className={`flex items-center gap-2 py-3 px-3 sm:px-5 border-b-2 font-sans text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-            tabActiva === 'servicios'
-              ? 'border-white text-white'
-              : 'border-transparent text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          <Briefcase className="w-4 h-4" strokeWidth={1.8} />
-          <span>Servicios</span>
-          {ficha.servicios.length > 0 && (
-            <span className="text-[11px] font-mono px-1.5 py-0.2 rounded-full bg-white/[0.06] text-zinc-400">
-              {ficha.servicios.length}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setTabActiva('resenas')}
-          className={`flex items-center gap-2 py-3 px-3 sm:px-5 border-b-2 font-sans text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-            tabActiva === 'resenas'
-              ? 'border-white text-white'
-              : 'border-transparent text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          <Star className="w-4 h-4" strokeWidth={1.8} />
-          <span>Opiniones</span>
-          {ficha.total_resenas > 0 && (
-            <span className="text-[11px] font-mono px-1.5 py-0.2 rounded-full bg-white/[0.06] text-zinc-400">
-              {ficha.total_resenas}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setTabActiva('info')}
-          className={`flex items-center gap-2 py-3 px-3 sm:px-5 border-b-2 font-sans text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-            tabActiva === 'info'
-              ? 'border-white text-white'
-              : 'border-transparent text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          <Info className="w-4 h-4" strokeWidth={1.8} />
-          <span>Detalles</span>
-        </button>
+          return (
+            <motion.button
+              key={tab.id}
+              type="button"
+              whileTap={{ scale: 0.94 }}
+              onClick={() => setTabActiva(tab.id)}
+              className={`relative flex items-center gap-2 py-3.5 px-3 sm:px-5 font-sans text-xs sm:text-sm font-semibold transition-colors cursor-pointer focus:outline-none ${
+                activa ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              <Icon
+                className={`w-4 h-4 transition-transform duration-200 ${
+                  activa ? 'text-emerald-400 scale-110' : 'text-zinc-500'
+                }`}
+                strokeWidth={activa ? 2.2 : 1.8}
+              />
+              <span>{tab.etiqueta}</span>
+              {tab.conteo > 0 && (
+                <span
+                  className={`text-[11px] font-mono px-1.5 py-0.2 rounded-full transition-colors ${
+                    activa
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      : 'bg-white/[0.06] text-zinc-400'
+                  }`}
+                >
+                  {tab.conteo}
+                </span>
+              )}
+              {activa && (
+                <motion.div
+                  layoutId="activeNet0ProfileTab"
+                  className="absolute bottom-0 inset-x-0 h-[2px] bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 shadow-[0_0_14px_rgba(16,185,129,0.55)]"
+                  transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                />
+              )}
+            </motion.button>
+          );
+        })}
       </div>
 
       {/* ── 2. Contenido de la Pestaña Activa ── */}
@@ -242,7 +226,7 @@ export default function Net0ProfileTabs({
               {ficha.servicios.map((s: ServicioPerfil) => (
                 <div
                   key={s.id}
-                  className="p-5 rounded-2xl border border-white/[0.08] bg-[#141416] flex flex-col justify-between gap-4 transition-all hover:border-white/15"
+                  className="p-5 rounded-2xl border border-white/[0.08] bg-[#141416] flex flex-col justify-between gap-4 transition-all duration-300 hover:border-white/20 hover:-translate-y-1 hover:shadow-lg"
                 >
                   <div className="space-y-1.5">
                     <div className="flex items-start justify-between gap-2">
@@ -276,9 +260,9 @@ export default function Net0ProfileTabs({
                       )}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl text-xs font-sans font-semibold bg-white/[0.06] hover:bg-emerald-500/20 hover:text-emerald-400 border border-white/10 hover:border-emerald-500/30 text-white transition-all active:scale-98"
+                      className="group/btn inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl text-xs font-sans font-semibold bg-white/[0.06] hover:bg-emerald-500/20 hover:text-emerald-400 border border-white/10 hover:border-emerald-500/30 text-white transition-all active:scale-98 cursor-pointer"
                     >
-                      <MessageCircle className="w-3.5 h-3.5" />
+                      <MessageCircle className="w-3.5 h-3.5 transition-transform duration-300 group-hover/btn:rotate-12 group-hover/btn:scale-115" />
                       <span>Cotizar este servicio vía WhatsApp</span>
                     </a>
                   )}

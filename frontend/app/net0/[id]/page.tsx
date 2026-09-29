@@ -13,6 +13,7 @@ import {
   MapPin,
   Star,
   Globe,
+  Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Net0ProfileTabs from '@/components/net0/Net0ProfileTabs';
@@ -38,6 +39,7 @@ export default function FichaNet0DetailPage() {
   const [resenas, setResenas] = useState<ResenaPublica[]>([]);
   const [distribucion, setDistribucion] = useState<Distribucion>({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
   const [estado, setEstado] = useState<'cargando' | 'ok' | 'no-existe' | 'error'>('cargando');
+  const [copiado, setCopiado] = useState(false);
 
   const cargar = useCallback(async () => {
     if (!id) return;
@@ -75,6 +77,8 @@ export default function FichaNet0DetailPage() {
     }
     if (url && typeof navigator !== 'undefined' && navigator.clipboard) {
       await navigator.clipboard.writeText(url);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
       toast.success('Enlace del perfil copiado al portapapeles');
     }
   };
@@ -131,9 +135,9 @@ export default function FichaNet0DetailPage() {
       <div>
         <Link
           href={`/net0?categoria=${ficha.categoria}`}
-          className="inline-flex items-center gap-2 text-xs font-sans font-medium text-zinc-400 hover:text-white transition-colors"
+          className="group inline-flex items-center gap-2 text-xs font-sans font-medium text-zinc-400 hover:text-white transition-colors"
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
+          <ArrowLeft className="w-3.5 h-3.5 transition-transform duration-200 group-hover:-translate-x-1" />
           <span>Volver a {NOMBRE_CATEGORIA[ficha.categoria]} en Net0</span>
         </Link>
       </div>
@@ -164,15 +168,15 @@ export default function FichaNet0DetailPage() {
           {/* Avatar Circular y Botones de Acción */}
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
             {/* Avatar con aro de verificación */}
-            <div className="relative">
-              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full p-[3px] bg-[#141416] shadow-2xl">
-                <div className="w-full h-full rounded-full overflow-hidden bg-[#18181B] flex items-center justify-center border-2 border-white/10">
+            <div className="relative group">
+              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full p-[3px] bg-[#141416] shadow-2xl transition-transform duration-300 group-hover:scale-105">
+                <div className="w-full h-full rounded-full overflow-hidden bg-[#18181B] flex items-center justify-center border-2 border-white/10 group-hover:border-emerald-400/40 transition-colors duration-300">
                   {ficha.avatar_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={ficha.avatar_url}
                       alt={ficha.nombre_comercial}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                   ) : (
                     <span className="text-white text-3xl font-sans font-black">
@@ -185,7 +189,7 @@ export default function FichaNet0DetailPage() {
               {ficha.verificado && (
                 <span
                   title="Acreditación profesional verificada"
-                  className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-[#141416] flex items-center justify-center border border-white/20 text-emerald-400"
+                  className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-[#141416] flex items-center justify-center border border-white/20 text-emerald-400 shadow-md group-hover:scale-110 transition-transform duration-200"
                 >
                   <CheckCircle2 className="w-4 h-4 fill-emerald-400 text-[#141416]" />
                 </span>
@@ -299,9 +303,9 @@ export default function FichaNet0DetailPage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => registrarContacto(ficha.id, 'whatsapp')}
-                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 h-11 px-6 rounded-xl bg-[#25D366] hover:brightness-110 active:scale-98 text-white font-sans font-bold text-xs sm:text-sm transition-all shadow-md"
+                className="group/wa flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 h-11 px-6 rounded-xl bg-[#25D366] hover:bg-[#20ba59] active:scale-95 text-white font-sans font-bold text-xs sm:text-sm transition-all duration-200 shadow-md hover:shadow-[0_6px_25px_rgba(37,211,102,0.4)]"
               >
-                <MessageCircle className="w-4 h-4 fill-white" />
+                <MessageCircle className="w-4 h-4 fill-white group-hover/wa:rotate-12 group-hover/wa:scale-110 transition-transform duration-300" />
                 <span>Contactar por WhatsApp</span>
               </a>
             )}
@@ -311,10 +315,10 @@ export default function FichaNet0DetailPage() {
                 href={enlaceMaps}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/10 active:scale-98 font-sans font-semibold text-xs sm:text-sm transition-all"
+                className="group/map inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl bg-white/[0.06] hover:bg-emerald-500/10 text-white hover:text-emerald-300 border border-white/10 hover:border-emerald-500/30 active:scale-95 font-sans font-semibold text-xs sm:text-sm transition-all duration-200"
                 title="Ver ubicación en Google Maps"
               >
-                <MapPin className="w-4 h-4 text-emerald-400" />
+                <MapPin className="w-4 h-4 text-emerald-400 group-hover/map:-translate-y-0.5 group-hover/map:scale-115 transition-transform duration-300" />
                 <span>Cómo llegar</span>
               </a>
             )}
@@ -325,9 +329,9 @@ export default function FichaNet0DetailPage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => registrarContacto(ficha.id, 'web')}
-                className="inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/10 active:scale-98 font-sans font-semibold text-xs sm:text-sm transition-all"
+                className="group/web inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl bg-white/[0.06] hover:bg-cyan-500/10 text-white hover:text-cyan-300 border border-white/10 hover:border-cyan-500/30 active:scale-95 font-sans font-semibold text-xs sm:text-sm transition-all duration-200"
               >
-                <Globe className="w-4 h-4 text-cyan-400" />
+                <Globe className="w-4 h-4 text-cyan-400 group-hover/web:rotate-45 group-hover/web:scale-115 transition-transform duration-300" />
                 <span>Sitio web</span>
               </a>
             )}
@@ -336,9 +340,17 @@ export default function FichaNet0DetailPage() {
               type="button"
               onClick={compartir}
               title="Compartir perfil"
-              className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/10 active:scale-98 transition-all cursor-pointer"
+              className={`group/share inline-flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-200 active:scale-95 cursor-pointer border ${
+                copiado
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+                  : 'bg-white/[0.06] hover:bg-white/[0.12] text-white border-white/10 hover:border-white/25'
+              }`}
             >
-              <Share2 className="w-4 h-4" />
+              {copiado ? (
+                <Check className="w-4 h-4 text-emerald-400 animate-in zoom-in-75 duration-200" />
+              ) : (
+                <Share2 className="w-4 h-4 transition-transform duration-300 group-hover/share:scale-110 group-hover/share:-rotate-12" />
+              )}
             </button>
           </div>
         </div>

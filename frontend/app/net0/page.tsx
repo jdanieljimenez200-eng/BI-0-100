@@ -141,17 +141,17 @@ function DirectorioNet0Content() {
           <div className="flex flex-wrap items-center gap-2.5 flex-shrink-0">
             <Link
               href="/net0/registro"
-              className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-xs sm:text-sm font-sans font-semibold text-[#0A0A0C] bg-white hover:bg-zinc-200 active:scale-95 transition-all shadow-sm whitespace-nowrap cursor-pointer"
+              className="group inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-xs sm:text-sm font-sans font-semibold text-[#0A0A0C] bg-white hover:bg-zinc-100 hover:shadow-[0_0_20px_rgba(255,255,255,0.25)] active:scale-95 transition-all duration-200 whitespace-nowrap cursor-pointer"
             >
-              <Plus className="w-4 h-4 text-[#0A0A0C]" />
+              <Plus className="w-4 h-4 text-[#0A0A0C] transition-transform duration-300 group-hover:rotate-90" />
               <span>Ofrecer mis servicios</span>
             </Link>
 
             <Link
               href="/net0/mis-fichas"
-              className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-xs sm:text-sm font-sans font-medium text-white/80 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 active:scale-95 transition-all whitespace-nowrap cursor-pointer"
+              className="group inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-xs sm:text-sm font-sans font-medium text-white/80 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 active:scale-95 transition-all duration-200 whitespace-nowrap cursor-pointer"
             >
-              <User className="w-4 h-4 text-zinc-400" />
+              <User className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors duration-200 group-hover:scale-110" />
               <span>Mis perfiles</span>
             </Link>
           </div>
@@ -220,7 +220,7 @@ function DirectorioNet0Content() {
 
             <button
               type="submit"
-              className="h-10 px-4 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.12] text-white font-sans font-semibold text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center"
+              className="h-10 px-5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.12] hover:border-white/25 text-white font-sans font-semibold text-xs sm:text-sm active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center shadow-xs hover:shadow-[0_0_12px_rgba(255,255,255,0.1)]"
             >
               Buscar
             </button>
@@ -240,10 +240,10 @@ function DirectorioNet0Content() {
                 setCategoria('');
                 setPagina(1);
               }}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-sans font-semibold bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/20 transition-colors cursor-pointer"
+              className="group inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-sans font-semibold bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/20 active:scale-95 transition-all duration-200 cursor-pointer"
             >
               <span>{NOMBRE_CATEGORIA[categoria]}</span>
-              <span className="text-[10px] text-emerald-400/60 font-bold">✕</span>
+              <span className="text-[10px] text-emerald-400/60 font-bold transition-transform duration-200 group-hover:scale-125 group-hover:text-emerald-300">✕</span>
             </button>
           </div>
         )}
@@ -342,7 +342,7 @@ function DirectorioNet0Content() {
                   type="button"
                   onClick={() => setPagina((p) => Math.max(1, p - 1))}
                   disabled={pagina === 1}
-                  className="px-4 py-2 rounded-xl border border-white/10 text-xs font-sans font-medium text-white/70 disabled:opacity-30 hover:bg-white/5 transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl border border-white/10 enabled:hover:border-white/25 text-xs font-sans font-medium text-white/70 enabled:hover:text-white disabled:opacity-30 enabled:hover:bg-white/[0.06] enabled:active:scale-95 transition-all duration-200 cursor-pointer disabled:cursor-not-allowed"
                 >
                   Anterior
                 </button>
@@ -353,7 +353,7 @@ function DirectorioNet0Content() {
                   type="button"
                   onClick={() => setPagina((p) => Math.min(paginas, p + 1))}
                   disabled={pagina >= paginas}
-                  className="px-4 py-2 rounded-xl border border-white/10 text-xs font-sans font-medium text-white/70 disabled:opacity-30 hover:bg-white/5 transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl border border-white/10 enabled:hover:border-white/25 text-xs font-sans font-medium text-white/70 enabled:hover:text-white disabled:opacity-30 enabled:hover:bg-white/[0.06] enabled:active:scale-95 transition-all duration-200 cursor-pointer disabled:cursor-not-allowed"
                 >
                   Siguiente
                 </button>

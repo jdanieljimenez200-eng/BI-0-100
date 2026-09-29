@@ -263,17 +263,17 @@ function MisFichasContent() {
               {cupo.puede_crear ? (
                 <Link
                   href="/net0/registro"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-sans font-semibold text-[#070E17] bg-white hover:bg-slate-100 transition-all shadow-sm"
+                  className="group inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-sans font-semibold text-[#070E17] bg-white hover:bg-zinc-100 hover:shadow-[0_0_15px_rgba(255,255,255,0.25)] active:scale-95 transition-all duration-200 shadow-sm"
                 >
-                  <Plus className="w-3.5 h-3.5 text-[#070E17]" />
+                  <Plus className="w-3.5 h-3.5 text-[#070E17] transition-transform duration-300 group-hover:rotate-90" />
                   <span>Crear perfil</span>
                 </Link>
               ) : (
                 <Link
                   href="/dashboard/nuevo"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-sans font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 transition-all shadow-sm"
+                  className="group inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-sans font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] active:scale-95 transition-all duration-200 shadow-sm"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400 transition-transform duration-300 group-hover:scale-125 group-hover:rotate-12" />
                   <span>Validar nuevo negocio</span>
                 </Link>
               )}
@@ -390,9 +390,9 @@ function MisFichasContent() {
                     {ficha.estado === 'aprobado' && (
                       <Link
                         href={`/net0/${ficha.id}`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/15 bg-white/[0.04] text-white/80 hover:text-white text-xs font-sans font-medium transition-colors"
+                        className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/15 bg-white/[0.04] text-white/80 hover:text-white text-xs font-sans font-medium hover:bg-white/[0.08] active:scale-95 transition-all duration-200"
                       >
-                        <ExternalLink className="w-3.5 h-3.5" />
+                        <ExternalLink className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                         <span>Ver ficha</span>
                       </Link>
                     )}
@@ -400,9 +400,9 @@ function MisFichasContent() {
                     <button
                       type="button"
                       onClick={() => setAbierta(estaAbierta ? null : ficha.id)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/15 bg-white/[0.06] text-white text-xs font-sans font-semibold hover:bg-white/[0.12] transition-colors cursor-pointer"
+                      className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/15 bg-white/[0.06] text-white text-xs font-sans font-semibold hover:bg-white/[0.12] active:scale-95 transition-all duration-200 cursor-pointer"
                     >
-                      <Settings2 className="w-3.5 h-3.5" />
+                      <Settings2 className="w-3.5 h-3.5 transition-transform duration-300 group-hover:rotate-45" />
                       <span>{estaAbierta ? 'Cerrar' : 'Administrar'}</span>
                     </button>
 
@@ -413,9 +413,9 @@ function MisFichasContent() {
                           setAbierta(ficha.id);
                           setPestana('impulsar');
                         }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-sans font-bold hover:brightness-125 transition-all cursor-pointer"
+                        className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-sans font-bold hover:brightness-125 hover:shadow-[0_0_12px_rgba(245,158,11,0.25)] active:scale-95 transition-all duration-200 cursor-pointer"
                       >
-                        <Sparkles className="w-3.5 h-3.5" />
+                        <Sparkles className="w-3.5 h-3.5 transition-transform duration-300 group-hover:scale-125 group-hover:rotate-12" />
                         <span>Impulsar</span>
                       </button>
                     )}
@@ -423,9 +423,9 @@ function MisFichasContent() {
                     <button
                       type="button"
                       onClick={() => darDeBaja(ficha)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-rose-300/70 hover:text-rose-300 hover:bg-rose-500/10 text-xs font-sans font-medium transition-colors cursor-pointer"
+                      className="group inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-rose-300/70 hover:text-rose-300 hover:bg-rose-500/10 active:scale-95 text-xs font-sans font-medium transition-all duration-200 cursor-pointer"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5 transition-transform duration-200 group-hover:scale-110" />
                       <span>Dar de baja</span>
                     </button>
                   </div>
@@ -441,7 +441,7 @@ function MisFichasContent() {
                           role="tab"
                           aria-selected={pestana === p.clave}
                           onClick={() => setPestana(p.clave)}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-sans font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-sans font-semibold active:scale-95 transition-all duration-200 cursor-pointer whitespace-nowrap ${
                             pestana === p.clave
                               ? 'bg-white text-[#070E17] shadow-sm'
                               : 'text-zinc-400 hover:text-white hover:bg-white/[0.06] border border-white/[0.06]'

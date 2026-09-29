@@ -1,5 +1,6 @@
 'use client';
 
+import { motion } from 'framer-motion';
 import { LayoutGrid, Rows3 } from 'lucide-react';
 
 interface Net0ViewToggleProps {
@@ -15,37 +16,64 @@ export default function Net0ViewToggle({
     <div
       role="group"
       aria-label="Selector de visualización del directorio"
-      className="inline-flex items-center gap-1 p-1 rounded-xl bg-[#141416] border border-white/[0.08] shadow-sm flex-shrink-0"
+      className="relative inline-flex items-center gap-1 p-1 rounded-xl bg-[#141416] border border-white/[0.08] shadow-sm flex-shrink-0"
     >
-      <button
+      <motion.button
         type="button"
+        whileTap={{ scale: 0.94 }}
         onClick={() => onCambiarVista('grid')}
         aria-pressed={vista === 'grid'}
         title="Vista en Mosaico (Estilo Instagram Explore)"
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-sans font-medium transition-all cursor-pointer ${
+        className={`relative z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-sans transition-colors cursor-pointer ${
           vista === 'grid'
-            ? 'bg-white/[0.08] text-white border border-white/10 shadow-sm font-semibold'
-            : 'text-zinc-400 hover:text-white hover:bg-white/[0.02]'
+            ? 'text-white font-semibold'
+            : 'text-zinc-400 hover:text-white'
         }`}
       >
-        <LayoutGrid className="w-3.5 h-3.5" strokeWidth={1.8} />
-        <span className="hidden sm:inline">Mosaico</span>
-      </button>
+        {vista === 'grid' && (
+          <motion.div
+            layoutId="viewToggleHighlight"
+            className="absolute inset-0 rounded-lg bg-white/[0.08] border border-white/10 shadow-xs"
+            transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+          />
+        )}
+        <LayoutGrid
+          className={`w-3.5 h-3.5 relative z-10 transition-transform duration-200 ${
+            vista === 'grid' ? 'scale-110 text-emerald-400' : 'text-zinc-400'
+          }`}
+          strokeWidth={vista === 'grid' ? 2.2 : 1.8}
+        />
+        <span className="relative z-10 hidden sm:inline">Mosaico</span>
+      </motion.button>
 
-      <button
+      <motion.button
         type="button"
+        whileTap={{ scale: 0.94 }}
         onClick={() => onCambiarVista('feed')}
         aria-pressed={vista === 'feed'}
         title="Vista en Feed Inmersivo (Estilo TikTok / Reels)"
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-sans font-medium transition-all cursor-pointer ${
+        className={`relative z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-sans transition-colors cursor-pointer ${
           vista === 'feed'
-            ? 'bg-white/[0.08] text-white border border-white/10 shadow-sm font-semibold'
-            : 'text-zinc-400 hover:text-white hover:bg-white/[0.02]'
+            ? 'text-white font-semibold'
+            : 'text-zinc-400 hover:text-white'
         }`}
       >
-        <Rows3 className="w-3.5 h-3.5" strokeWidth={1.8} />
-        <span className="hidden sm:inline">Feed Inmersivo</span>
-      </button>
+        {vista === 'feed' && (
+          <motion.div
+            layoutId="viewToggleHighlight"
+            className="absolute inset-0 rounded-lg bg-white/[0.08] border border-white/10 shadow-xs"
+            transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+          />
+        )}
+        <Rows3
+          className={`w-3.5 h-3.5 relative z-10 transition-transform duration-200 ${
+            vista === 'feed' ? 'scale-110 text-emerald-400' : 'text-zinc-400'
+          }`}
+          strokeWidth={vista === 'feed' ? 2.2 : 1.8}
+        />
+        <span className="relative z-10 hidden sm:inline">Feed Inmersivo</span>
+      </motion.button>
     </div>
   );
 }
+

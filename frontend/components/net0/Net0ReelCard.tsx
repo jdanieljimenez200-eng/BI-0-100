@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { motion } from 'framer-motion';
 import {
   Heart,
   MessageCircle,
@@ -33,6 +34,8 @@ export default function Net0ReelCard({
   const imagenFondo = experto.portada_url || experto.avatar_url;
 
   const [esFavorito, setEsFavorito] = useState(false);
+  const [likeAnimado, setLikeAnimado] = useState(false);
+  const [copiado, setCopiado] = useState(false);
   const [likesContador, setLikesContador] = useState(
     Math.floor((experto.rating || 4.5) * 14) + (experto.total_resenas || 1) * 3
   );
@@ -62,6 +65,8 @@ export default function Net0ReelCard({
         favs.push(experto.id);
         localStorage.setItem(FAVORITOS_KEY, JSON.stringify(favs));
         setEsFavorito(true);
+        setLikeAnimado(true);
+        setTimeout(() => setLikeAnimado(false), 500);
         setLikesContador((c) => c + 1);
         toast.success(`Guardaste a ${experto.nombre_comercial} en tus favoritos`);
       }
@@ -87,6 +92,8 @@ export default function Net0ReelCard({
     }
     if (url && typeof navigator !== 'undefined' && navigator.clipboard) {
       await navigator.clipboard.writeText(url);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
       toast.success('Enlace del perfil copiado al portapapeles');
     }
   };
@@ -155,52 +162,70 @@ export default function Net0ReelCard({
           </Link>
 
           {/* Botón de Like / Favorito */}
-          <button
+          <motion.button
             type="button"
+            whileHover={{ scale: 1.14 }}
+            whileTap={{ scale: 0.86 }}
             onClick={alternarFavorito}
             aria-label={esFavorito ? 'Quitar de favoritos' : 'Guardar en favoritos'}
             className="flex flex-col items-center gap-1 group/like cursor-pointer focus:outline-none"
           >
             <div
-              className={`w-11 h-11 rounded-full flex items-center justify-center transition-all ${
+              className={`w-11 h-11 rounded-full flex items-center justify-center transition-all duration-300 ${
                 esFavorito
-                  ? 'bg-rose-500/20 border border-rose-500/40 text-rose-500 scale-110'
+                  ? 'bg-rose-500/25 border border-rose-500/50 text-rose-500 shadow-[0_0_16px_rgba(244,63,94,0.45)]'
                   : 'bg-black/60 border border-white/15 text-white/80 hover:text-white hover:bg-black/80'
               }`}
             >
               <Heart
-                className={`w-5 h-5 transition-transform ${
-                  esFavorito ? 'fill-rose-500 scale-110' : 'group-hover/like:scale-110'
-                }`}
+                className={`w-5 h-5 transition-transform duration-300 ${
+                  esFavorito ? 'fill-rose-500 text-rose-500' : 'group-hover/like:scale-115'
+                } ${likeAnimado ? 'animate-net0-heart' : ''}`}
               />
             </div>
             <span className="text-[10px] font-sans font-bold text-white/80">{likesContador}</span>
-          </button>
+          </motion.button>
 
           {/* Botón de Chat / Consultar */}
-          <Link
-            href={`${basePath}/${experto.id}`}
-            title="Consultar y contactar"
-            className="flex flex-col items-center gap-1 group/wa cursor-pointer focus:outline-none"
-          >
-            <div className="w-11 h-11 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 flex items-center justify-center transition-all group-hover/wa:scale-110">
-              <MessageCircle className="w-5 h-5" />
-            </div>
-            <span className="text-[10px] font-sans font-bold text-emerald-400">Chat</span>
-          </Link>
+          <motion.div whileHover={{ scale: 1.14 }} whileTap={{ scale: 0.86 }}>
+            <Link
+              href={`${basePath}/${experto.id}`}
+              title="Consultar y contactar"
+              className="flex flex-col items-center gap-1 group/wa cursor-pointer focus:outline-none"
+            >
+              <div className="w-11 h-11 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 flex items-center justify-center transition-all duration-300 shadow-[0_0_12px_rgba(16,185,129,0.25)]">
+                <MessageCircle className="w-5 h-5 transition-transform group-hover/wa:rotate-12 group-hover/wa:scale-110" />
+              </div>
+              <span className="text-[10px] font-sans font-bold text-emerald-400">Chat</span>
+            </Link>
+          </motion.div>
 
           {/* Botón de Compartir */}
-          <button
+          <motion.button
             type="button"
+            whileHover={{ scale: 1.14 }}
+            whileTap={{ scale: 0.86 }}
             onClick={compartir}
             aria-label="Compartir perfil"
             className="flex flex-col items-center gap-1 group/share cursor-pointer focus:outline-none"
           >
-            <div className="w-11 h-11 rounded-full bg-black/60 border border-white/15 text-white/80 hover:text-white hover:bg-black/80 flex items-center justify-center transition-all group-hover/share:scale-110">
-              <Share2 className="w-4.5 h-4.5" />
+            <div
+              className={`w-11 h-11 rounded-full border flex items-center justify-center transition-all duration-300 ${
+                copiado
+                  ? 'bg-emerald-500/25 border-emerald-500 text-emerald-400 shadow-[0_0_14px_rgba(16,185,129,0.4)]'
+                  : 'bg-black/60 border border-white/15 text-white/80 hover:text-white hover:bg-black/80'
+              }`}
+            >
+              {copiado ? (
+                <CheckCircle2 className="w-4.5 h-4.5 text-emerald-400 animate-in zoom-in-75 duration-200" />
+              ) : (
+                <Share2 className="w-4.5 h-4.5 transition-transform duration-300 group-hover/share:scale-115 group-hover/share:-rotate-12" />
+              )}
             </div>
-            <span className="text-[10px] font-sans font-bold text-white/80">Compartir</span>
-          </button>
+            <span className="text-[10px] font-sans font-bold text-white/80">
+              {copiado ? 'Copiado' : 'Compartir'}
+            </span>
+          </motion.button>
         </div>
       </div>
 
@@ -291,10 +316,10 @@ export default function Net0ReelCard({
 
           <Link
             href={`${basePath}/${experto.id}`}
-            className="inline-flex items-center justify-center gap-2 h-10 px-5 rounded-xl bg-white text-[#0A0A0C] font-sans font-bold text-xs sm:text-sm hover:bg-zinc-200 active:scale-98 transition-all shadow-md"
+            className="group/btn inline-flex items-center justify-center gap-2 h-10 px-5 rounded-xl bg-white text-[#0A0A0C] font-sans font-bold text-xs sm:text-sm hover:bg-zinc-100 hover:shadow-[0_0_20px_rgba(255,255,255,0.25)] active:scale-95 transition-all shadow-md cursor-pointer"
           >
             <span>Ver perfil y catálogo</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            <ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover/btn:translate-x-1" />
           </Link>
         </div>
       </div>

@@ -39,7 +39,7 @@ export default function Net0Navbar() {
         {/* Brand Net0 */}
         <div className="flex items-center gap-6">
           <Link href="/net0" className="flex items-center gap-2.5 group">
-            <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center shadow-xs">
+            <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center shadow-xs transition-transform duration-300 group-hover:scale-105 group-hover:-rotate-3">
               <span className="font-mono text-xs font-black text-[#0A0A0C]">N0</span>
             </div>
             <span className="font-sans font-bold text-base tracking-tight text-white group-hover:text-zinc-200 transition-colors">
@@ -67,16 +67,16 @@ export default function Net0Navbar() {
             <>
               <Link
                 href="/net0/registro"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-[#0A0A0C] text-xs font-semibold hover:bg-zinc-200 transition-colors"
+                className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-[#0A0A0C] text-xs font-semibold hover:bg-zinc-100 hover:shadow-[0_0_15px_rgba(255,255,255,0.25)] active:scale-95 transition-all duration-200"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className="w-3.5 h-3.5 transition-transform duration-300 group-hover:rotate-90" />
                 <span>Publicar perfil</span>
               </Link>
               <Link
                 href="/dashboard"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.08] bg-[#1C1C1E] text-zinc-300 hover:text-white text-xs font-medium hover:bg-white/[0.04] transition-colors"
+                className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.08] bg-[#1C1C1E] text-zinc-300 hover:text-white text-xs font-medium hover:bg-white/[0.06] hover:border-white/20 active:scale-95 transition-all duration-200"
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
+                <ArrowLeft className="w-3.5 h-3.5 transition-transform duration-200 group-hover:-translate-x-1" />
                 <span>Volver a BI 0 A 100</span>
               </Link>
             </>
@@ -90,7 +90,7 @@ export default function Net0Navbar() {
               </Link>
               <Link
                 href="/auth/signup?tipo=experto"
-                className="px-3.5 py-1.5 rounded-lg bg-white text-[#0A0A0C] text-xs font-semibold hover:bg-zinc-200 transition-colors"
+                className="px-3.5 py-1.5 rounded-lg bg-white text-[#0A0A0C] text-xs font-semibold hover:bg-zinc-100 hover:shadow-[0_0_15px_rgba(255,255,255,0.25)] active:scale-95 transition-all duration-200"
               >
                 Crear cuenta
               </Link>
@@ -103,10 +103,10 @@ export default function Net0Navbar() {
           <button
             type="button"
             onClick={() => setMenuAbierto(!menuAbierto)}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] active:scale-90 transition-all cursor-pointer"
             aria-label={menuAbierto ? 'Cerrar menú' : 'Abrir menú'}
           >
-            {menuAbierto ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            {menuAbierto ? <X className="w-5 h-5 transition-transform duration-200 rotate-90" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
       </div>

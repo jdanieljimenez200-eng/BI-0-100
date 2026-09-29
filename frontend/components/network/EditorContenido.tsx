@@ -240,17 +240,17 @@ export default function EditorContenido({
       {/* ── Portada ─────────────────────────────────────────────────────── */}
       <fieldset className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
         <legend className="px-2 text-xs font-bold uppercase tracking-widest text-white/40">Portada</legend>
-        <label className="group relative block h-36 sm:h-44 rounded-xl overflow-hidden border border-dashed border-white/15 hover:border-white/30 cursor-pointer transition-colors">
+        <label className="group relative block h-36 sm:h-44 rounded-xl overflow-hidden border border-dashed border-white/15 hover:border-emerald-500/40 hover:bg-white/[0.03] cursor-pointer transition-all duration-200">
           {portada ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={portada} alt="" className="absolute inset-0 w-full h-full object-cover" />
+            <img src={portada} alt="" className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
           ) : (
             <span className="absolute inset-0 flex flex-col items-center justify-center text-white/50 text-xs gap-1.5">
-              <ImageIcon className="w-7 h-7 text-white/40" />
+              <ImageIcon className="w-7 h-7 text-emerald-400/80 transition-transform duration-300 group-hover:scale-115 group-hover:-rotate-6" />
               Elige una imagen horizontal que represente tu trabajo
             </span>
           )}
-          <span className="absolute bottom-2 right-2 px-3 py-1.5 rounded-lg bg-black/60 text-white/80 text-xs font-bold opacity-90 group-hover:opacity-100">
+          <span className="absolute bottom-2 right-2 px-3 py-1.5 rounded-lg bg-black/70 text-white/80 text-xs font-bold opacity-90 group-hover:opacity-100 group-hover:bg-black/90 transition-all duration-200">
             {portada ? 'Cambiar portada' : 'Subir portada'}
           </span>
           <input
@@ -382,7 +382,7 @@ export default function EditorContenido({
                       onClick={() => mover(i, -1)}
                       disabled={i === 0}
                       aria-label="Mover antes"
-                      className="w-7 h-7 rounded-md bg-white/15 text-white text-xs disabled:opacity-30 flex items-center justify-center cursor-pointer"
+                      className="w-7 h-7 rounded-md bg-white/20 hover:bg-white/30 active:scale-90 text-white text-xs disabled:opacity-30 flex items-center justify-center cursor-pointer transition-all duration-150"
                     >
                       <ArrowLeft className="w-3.5 h-3.5" />
                     </button>
@@ -391,7 +391,7 @@ export default function EditorContenido({
                       onClick={() => mover(i, 1)}
                       disabled={i === imagenes.length - 1}
                       aria-label="Mover después"
-                      className="w-7 h-7 rounded-md bg-white/15 text-white text-xs disabled:opacity-30 flex items-center justify-center cursor-pointer"
+                      className="w-7 h-7 rounded-md bg-white/20 hover:bg-white/30 active:scale-90 text-white text-xs disabled:opacity-30 flex items-center justify-center cursor-pointer transition-all duration-150"
                     >
                       <ArrowRight className="w-3.5 h-3.5" />
                     </button>
@@ -400,7 +400,7 @@ export default function EditorContenido({
                     type="button"
                     onClick={() => quitarImagen(img)}
                     aria-label="Quitar elemento"
-                    className="px-2 h-7 rounded-md bg-rose-500/80 hover:bg-rose-500 text-white text-[11px] font-bold cursor-pointer"
+                    className="px-2.5 h-7 rounded-md bg-rose-500/80 hover:bg-rose-500 active:scale-90 text-white text-[11px] font-bold cursor-pointer transition-all duration-150 shadow-xs"
                   >
                     Quitar
                   </button>
@@ -410,8 +410,8 @@ export default function EditorContenido({
           })}
 
           {imagenes.length < maxImagenes && (
-            <label className="aspect-square rounded-xl border border-dashed border-white/15 hover:border-white/35 flex flex-col items-center justify-center gap-2 text-white/50 hover:text-white text-xs font-semibold cursor-pointer transition-colors p-2 text-center">
-              <Plus className="w-6 h-6 text-emerald-400" />
+            <label className="group aspect-square rounded-xl border border-dashed border-white/15 hover:border-emerald-500/40 hover:bg-emerald-500/[0.03] flex flex-col items-center justify-center gap-2 text-white/50 hover:text-white text-xs font-semibold cursor-pointer transition-all duration-200 active:scale-95 p-2 text-center">
+              <Plus className="w-6 h-6 text-emerald-400 transition-transform duration-300 group-hover:scale-125 group-hover:rotate-90" />
               <span>Subir fotos o vídeos</span>
               <span className="text-[10px] text-white/30 font-normal">JPG, PNG, WEBP, MP4, MOV</span>
               <input
