@@ -659,23 +659,11 @@ export default function DashboardPage(): ReactElement {
         className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between"
       >
         <motion.div variants={item} className="min-w-0 space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-brand-accent opacity-75 animate-ping" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-brand-accent" />
-            </span>
-            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-brand-accent/80">
-              Panel de control
+          {fechaLarga && (
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">
+              {fechaLarga}
             </p>
-            {fechaLarga && (
-              <>
-                <span className="h-3 w-px bg-white/10" />
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">
-                  {fechaLarga}
-                </p>
-              </>
-            )}
-          </div>
+          )}
 
           <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-[2.75rem] lg:leading-[1.05]">
             {saludo},{' '}
