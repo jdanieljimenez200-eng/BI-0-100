@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Sparkles, Check, ArrowLeft, ShieldCheck } from 'lucide-react';
 import FormularioFicha, { type FicherosFicha } from '@/components/network/FormularioFicha';
+import { BackButton } from '@/components/ui';
 import EditorContenido from '@/components/network/EditorContenido';
 import {
   crearFicha,
@@ -89,13 +90,7 @@ export default function RegistroNet0Page() {
     >
       {/* ── Encabezado y Navegación de Regreso ── */}
       <div className="space-y-4">
-        <Link
-          href="/net0"
-          className="inline-flex items-center gap-2 text-xs font-sans font-medium text-zinc-400 hover:text-white transition-colors"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Volver al Directorio Net0</span>
-        </Link>
+        <BackButton href="/net0" label="Volver al Directorio Net0" />
 
         <div>
           <h1 className="text-2xl sm:text-3xl font-sans font-extrabold tracking-tight text-white">

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/ModuleIcons';
 import AnalysisError from '@/components/ui/AnalysisError';
 import LockedSection, { SkeletonBloque } from '@/components/ui/LockedSection';
+import { Breadcrumbs } from '@/components/ui';
 import { esPlanDePago } from '@/lib/plans';
 import { useAnalysisEvents } from '@/app/hooks/useAnalysisEvents';
 import { useAnalysisLoaderGate } from '@/app/hooks/useAnalysisLoaderGate';
@@ -1785,15 +1786,19 @@ export default function MarketingResultadoPage() {
   return (
     <div ref={mainRef} className={`px-4 sm:px-6 py-10 max-w-6xl mx-auto pb-24 relative ${printMode ? 'print-mode' : ''}`}>
 
-      {/* ── Breadcrumb ────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-6" data-print="hide">
-        <div className="flex items-center gap-2 text-xs text-white/40">
-          <Link href="/dashboard" className="hover:text-white transition-colors">Dashboard</Link>
-          <span>/</span>
-          <Link href={`/dashboard/marketing/${productoId}`} className="hover:text-white transition-colors">Marketing</Link>
-          <span>/</span>
-          <span className="text-white/80 font-medium">Resultados</span>
-        </div>
+      {/* ── Breadcrumb & Retorno ── */}
+      <div className="reveal flex flex-wrap items-center justify-between gap-4 mb-6" data-print="hide">
+        <Breadcrumbs
+          showBack
+          backHref={`/dashboard/producto/${productoId}`}
+          backLabel="Ficha del producto"
+          items={[
+            { label: 'Dashboard', href: '/dashboard' },
+            { label: 'Marketing', href: `/dashboard/marketing/${productoId}` },
+            { label: 'Resultados' },
+          ]}
+          className="mb-0"
+        />
         <div className="flex items-center gap-3">
           {analisis.voz_marca && (
             <span className="text-[11px] font-mono text-white/50 bg-white/[0.03] border border-white/[0.08] px-3 py-1 rounded-full">

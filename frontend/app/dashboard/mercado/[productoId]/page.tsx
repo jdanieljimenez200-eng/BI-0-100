@@ -8,6 +8,7 @@ import { getImageUrl } from '@/lib/utils';
 import { interpretarErrorApi } from '@/lib/apiError';
 import AvisoErrorApi from '@/components/ui/AvisoErrorApi';
 import { PAISES_LATAM, REGIONES_POR_PAIS, getPaisInfo } from '@/lib/latam';
+import { BackButton } from '@/components/ui';
 
 /** Espejo de backend/src/services/mercado/traccionReal.ts. */
 interface TraccionReal {
@@ -346,12 +347,11 @@ export default function MercadoFormPage() {
   return (
     <div className="px-4 py-8 max-w-2xl mx-auto animate-fade-in">
       <div className="mb-8">
-        <Link
+        <BackButton
           href={`/dashboard/producto/${productoId}`}
-          className="inline-flex items-center gap-1.5 text-white/35 hover:text-white/60 text-xs mb-4 transition"
-        >
-          ← Volver al Producto
-        </Link>
+          label="Ficha del producto"
+          className="mb-4"
+        />
         <h1 className="text-2xl font-bold text-white mb-2">
           Inteligencia de Mercado
         </h1>

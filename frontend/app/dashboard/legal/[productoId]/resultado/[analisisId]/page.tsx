@@ -11,6 +11,7 @@ import ExpertosRecomendados from '@/components/network/ExpertosRecomendados';
 import LockedSection, { SkeletonBloque, SkeletonTarjetas } from '@/components/ui/LockedSection';
 import { estaBloqueada } from '@/lib/gating';
 import AvisoEstimacion from '@/components/ui/AvisoEstimacion';
+import { Breadcrumbs } from '@/components/ui';
 
 // ─── Types (espejo del backend) ────────────────────────────────────────────────
 
@@ -688,13 +689,17 @@ export default function LegalResultadoPage() {
     return (
       <div className="max-w-3xl mx-auto px-4 py-8 space-y-6 sm:space-y-8">
         {/* Sin botón de PDF: no hay informe que exportar en este plan. */}
-        <div className="flex items-center gap-2 text-sm text-white/30 flex-wrap">
-          <Link href="/dashboard" className="hover:text-white/70 transition">Dashboard</Link>
-          <span>/</span>
-          <Link href={`/dashboard/legal/${productoId}`} className="hover:text-white/70 transition">Legal</Link>
-          <span>/</span>
-          <span className="text-white/60">Resultado</span>
-        </div>
+        <Breadcrumbs
+          showBack
+          backHref={`/dashboard/producto/${productoId}`}
+          backLabel="Ficha del producto"
+          items={[
+            { label: 'Dashboard', href: '/dashboard' },
+            { label: 'Legal', href: `/dashboard/legal/${productoId}` },
+            { label: 'Resultado' },
+          ]}
+          className="mb-0"
+        />
 
         {/* Gancho visible: el semáforo sí es dato real del análisis. */}
         <div className={`rounded-2xl border ${semPreview.border} ${semPreview.bg} ${semPreview.glow} p-5 sm:p-6`}>
@@ -787,14 +792,18 @@ export default function LegalResultadoPage() {
         <AvisoEstimacion visible={analisis.resultado_estimado} className="no-print" />
 
         {/* ── Breadcrumb + acciones ─────────────────────────────────────── */}
-        <div className="flex items-center justify-between no-print">
-          <div className="flex items-center gap-2 text-sm text-white/30">
-            <Link href="/dashboard" className="hover:text-white/70 transition">Dashboard</Link>
-            <span>/</span>
-            <Link href={`/dashboard/legal/${productoId}`} className="hover:text-white/70 transition">Legal</Link>
-            <span>/</span>
-            <span className="text-white/60">Resultado</span>
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-4 no-print">
+          <Breadcrumbs
+            showBack
+            backHref={`/dashboard/producto/${productoId}`}
+            backLabel="Ficha del producto"
+            items={[
+              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'Legal', href: `/dashboard/legal/${productoId}` },
+              { label: 'Resultado' },
+            ]}
+            className="mb-0"
+          />
           <button
             onClick={handlePrint}
             id="btn-descargar-pdf"

@@ -7,6 +7,7 @@ import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { interpretarErrorApi } from '@/lib/apiError';
 import AvisoErrorApi from '@/components/ui/AvisoErrorApi';
+import { BackButton } from '@/components/ui';
 
 interface Producto {
   id: string;
@@ -286,12 +287,11 @@ export default function FinanzasScopePage() {
   return (
     <div className="px-4 py-8 max-w-2xl mx-auto animate-fade-in">
       <div className="mb-8">
-        <Link
+        <BackButton
           href={`/dashboard/producto/${productoId}`}
-          className="inline-flex items-center gap-1.5 text-white/35 hover:text-white/60 text-xs mb-4 transition"
-        >
-          ← Volver al Producto
-        </Link>
+          label="Ficha del producto"
+          className="mb-4"
+        />
         <h1 className="text-2xl font-bold text-white mb-2">Proyección Financiera</h1>
         <p className="text-sm text-white/40 mt-1">
           Proyección a 12 meses, punto de equilibrio y análisis de sensibilidad en 3 escenarios.

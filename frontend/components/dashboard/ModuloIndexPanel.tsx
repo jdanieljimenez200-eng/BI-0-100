@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
+import { Breadcrumbs } from '@/components/ui';
 
 /**
  * Índice de productos de un módulo de análisis.
@@ -184,13 +185,16 @@ export default function ModuloIndexPanel({
       {/* ── Cabecera de Lujo Silencioso ─────────────────────────────────── */}
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-6 border-b border-white/[0.06]">
         <div>
-          <div className="flex items-center gap-2 text-xs text-slate-400 mb-2">
-            <Link href="/dashboard" className="hover:text-white transition-colors">
-              Dashboard
-            </Link>
-            <span className="text-white/20">/</span>
-            <span className={`${claseAcento} font-medium`}>{breadcrumb}</span>
-          </div>
+          <Breadcrumbs
+            showBack
+            backHref="/dashboard"
+            backLabel="Volver al panel"
+            items={[
+              { label: 'Dashboard', href: '/dashboard' },
+              { label: breadcrumb },
+            ]}
+            className="mb-2"
+          />
           <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
             {titulo}
           </h1>

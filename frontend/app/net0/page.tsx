@@ -17,6 +17,7 @@ import Net0StoriesBar from '@/components/net0/Net0StoriesBar';
 import Net0ViewToggle from '@/components/net0/Net0ViewToggle';
 import Net0GridCard from '@/components/net0/Net0GridCard';
 import Net0ReelCard from '@/components/net0/Net0ReelCard';
+import { BackButton } from '@/components/ui';
 import {
   listarExpertos,
   CATEGORIAS,
@@ -128,6 +129,7 @@ function DirectorioNet0Content() {
       >
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="max-w-2xl space-y-2.5">
+            <BackButton href="/dashboard" label="Volver al panel" className="mb-2" />
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-sans font-black tracking-tight text-white leading-tight">
               Net0 <span className="text-zinc-600 font-light">·</span> Directorio
             </h1>

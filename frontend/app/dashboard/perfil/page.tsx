@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { motion } from 'framer-motion';
+import { BackButton } from '@/components/ui';
 
 interface Usuario {
   id: string;
@@ -91,6 +92,7 @@ export default function PerfilPage() {
         transition={{ duration: 0.3 }}
         className="mb-8"
       >
+        <BackButton href="/dashboard" label="Volver al panel" className="mb-4" />
         <div className="flex items-center gap-3 mb-2">
           <span className="w-5 h-[2px] rounded-full bg-brand-accent/60" />
           <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/25">

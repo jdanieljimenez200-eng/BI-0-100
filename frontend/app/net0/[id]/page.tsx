@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Net0ProfileTabs from '@/components/net0/Net0ProfileTabs';
+import { BackButton } from '@/components/ui';
 import {
   obtenerFicha,
   obtenerEnlaceGoogleMaps,
@@ -133,13 +134,10 @@ export default function FichaNet0DetailPage() {
     >
       {/* ── Regreso a Directorio ── */}
       <div>
-        <Link
+        <BackButton
           href={`/net0?categoria=${ficha.categoria}`}
-          className="group inline-flex items-center gap-2 text-xs font-sans font-medium text-zinc-400 hover:text-white transition-colors"
-        >
-          <ArrowLeft className="w-3.5 h-3.5 transition-transform duration-200 group-hover:-translate-x-1" />
-          <span>Volver a {NOMBRE_CATEGORIA[ficha.categoria]} en Net0</span>
-        </Link>
+          label={`Volver a ${NOMBRE_CATEGORIA[ficha.categoria]} en Net0`}
+        />
       </div>
 
       {/* ── Cabecera de Creador Estilo Instagram ── */}

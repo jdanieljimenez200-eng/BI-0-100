@@ -9,6 +9,7 @@ import { interpretarErrorApi } from '@/lib/apiError';
 import AvisoErrorApi from '@/components/ui/AvisoErrorApi';
 import { HelpTip } from '@/components/ui/HelpTip';
 import VentasVideoUploader from '@/components/ventas/VentasVideoUploader';
+import { BackButton } from '@/components/ui';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -337,12 +338,11 @@ export default function VentasScopePage() {
 
       {/* Header */}
       <div className="mb-8">
-        <Link
+        <BackButton
           href={`/dashboard/producto/${productoId}`}
-          className="inline-flex items-center gap-1.5 text-white/35 hover:text-white/60 text-xs mb-4 transition"
-        >
-          ← Volver al Producto
-        </Link>
+          label="Ficha del producto"
+          className="mb-4"
+        />
         <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-ventas/10 border border-ventas/20 text-ventas text-[11px] font-mono font-semibold uppercase tracking-wider mb-2">
           RevOps & Protocolos de Conversión
         </div>

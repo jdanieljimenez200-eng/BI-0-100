@@ -15,6 +15,7 @@ import ScriptScorerPanel from '@/components/ventas/ScriptScorerPanel';
 import FollowUpsCard from '@/components/ventas/FollowUpsCard';
 import CompetitorIntelPanel from '@/components/ventas/CompetitorIntelPanel';
 import AvisoEstimacion from '@/components/ui/AvisoEstimacion';
+import { BackButton } from '@/components/ui';
 
 interface TipNegociacion {
   titulo: string;
@@ -419,13 +420,11 @@ export default function ResultadoVentasPage() {
       {/* Header */}
       <header data-print="hide" className="sticky top-0 z-30 border-b border-white/[0.07] bg-gradient-to-r from-[#0F1B2E]/85 via-[#0A0F17]/85 to-[#070B12]/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-5 py-3">
-          <Link
-            href="/dashboard"
-            className="rounded-lg border border-white/[0.09] p-1.5 text-white/60 transition-colors hover:bg-white/[0.05] hover:text-white"
-            aria-label="Volver"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-          </Link>
+          <BackButton
+            href={`/dashboard/producto/${productoId}`}
+            variant="icon"
+            aria-label="Volver al producto"
+          />
           <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-[9px] font-mono font-bold tracking-[0.16em] text-emerald-300 uppercase">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             ARQUITECTURA COMERCIAL · REVOPS

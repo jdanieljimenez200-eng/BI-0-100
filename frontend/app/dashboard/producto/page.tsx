@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AnimatePresence, motion, useReducedMotion, type Variants } from 'framer-motion';
 import api from '@/lib/api';
+import { BackButton } from '@/components/ui';
 import {
   IconCheck,
   IconFinanzas,
@@ -579,13 +580,7 @@ export default function ProductosPage(): ReactElement {
       {/* ── Cabecera ───────────────────────────────────────────────────────── */}
       <header className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0 space-y-3">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-1.5 rounded text-[11px] font-bold text-white/40 transition-colors duration-300 hover:text-brand-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent/40"
-          >
-            <IconArrowLeft className="h-3.5 w-3.5" />
-            Volver al panel
-          </Link>
+          <BackButton href="/dashboard" label="Volver al panel" />
 
           <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl lg:text-[2.25rem] lg:leading-[1.1]">
             Mis{' '}

@@ -513,6 +513,9 @@ function ContabilidadInner({
 
       {/* Breadcrumb */}
       <Breadcrumbs
+        showBack
+        backHref="/dashboard/herramientas"
+        backLabel="Herramientas"
         items={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Herramientas', href: '/dashboard/herramientas' },

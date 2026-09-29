@@ -521,6 +521,9 @@ function MantenimientosContenido() {
       <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#0A0F17]/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-5 py-3.5">
           <Breadcrumbs
+            showBack
+            backHref="/dashboard/herramientas"
+            backLabel="Herramientas"
             items={[
               { label: 'Dashboard', href: '/dashboard' },
               { label: 'Herramientas', href: '/dashboard/herramientas' },

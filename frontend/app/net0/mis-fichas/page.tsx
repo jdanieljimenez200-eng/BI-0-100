@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { motion, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, Plus, ExternalLink, ShieldCheck, Sparkles, Trash2, Settings2 } from 'lucide-react';
 import { useHaySesion } from '@/lib/useSesion';
+import { BackButton } from '@/components/ui';
 import FormularioFicha, { type FicherosFicha } from '@/components/network/FormularioFicha';
 import EditorContenido from '@/components/network/EditorContenido';
 import MetricasFicha from '@/components/network/MetricasFicha';
@@ -192,13 +193,7 @@ function MisFichasContent() {
     >
       {/* ── Encabezado y Regreso ── */}
       <div className="space-y-3">
-        <Link
-          href="/net0"
-          className="inline-flex items-center gap-2 text-xs font-sans font-medium text-zinc-400 hover:text-white transition-colors"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Volver al Directorio Net0</span>
-        </Link>
+        <BackButton href="/net0" label="Volver al Directorio Net0" />
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>

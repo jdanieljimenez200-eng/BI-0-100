@@ -8,6 +8,7 @@ import { getImageUrl } from '@/lib/utils';
 import { interpretarErrorApi } from '@/lib/apiError';
 import AvisoErrorApi from '@/components/ui/AvisoErrorApi';
 import ReporteAdsUploader from './ReporteAdsUploader';
+import { BackButton } from '@/components/ui';
 import type { ReporteAdsProcesado } from './resultado/[analisisId]/RendimientoPasadoSection';
 
 type VozMarca = 'Profesional' | 'Divertido' | 'Urgente' | 'Empático';
@@ -328,12 +329,11 @@ export default function MarketingScopePage() {
     <div className="px-4 py-8 max-w-2xl mx-auto animate-fade-in">
 
       <div className="mb-8">
-        <Link
+        <BackButton
           href={`/dashboard/producto/${productoId}`}
-          className="inline-flex items-center gap-1.5 text-white/35 hover:text-white/60 text-xs mb-4 transition"
-        >
-          ← Volver al Producto
-        </Link>
+          label="Ficha del producto"
+          className="mb-4"
+        />
         <h1 className="text-2xl font-bold text-white mb-2">
           Estrategia de Marketing
         </h1>

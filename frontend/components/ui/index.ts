@@ -14,6 +14,7 @@ export { Input, type InputProps } from './Input';
 export { Skeleton, SkeletonText } from './Skeleton';
 export { EmptyState } from './EmptyState';
 export { Breadcrumbs, type BreadcrumbItem, type BreadcrumbsProps } from './Breadcrumbs';
+export { BackButton, type BackButtonProps } from './BackButton';
 export { SearchInput, type SearchInputProps } from './SearchInput';
 export { Toast, type ToastProps, type ToastType } from './Toast';
 export { Stat } from './Stat';

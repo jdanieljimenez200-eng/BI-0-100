@@ -7,6 +7,7 @@ import api from '@/lib/api';
 import { interpretarErrorApi } from '@/lib/apiError';
 import AvisoErrorApi from '@/components/ui/AvisoErrorApi';
 import { motion, AnimatePresence } from 'framer-motion';
+import { BackButton } from '@/components/ui';
 
 interface Producto {
   id: string;
@@ -306,19 +307,11 @@ export default function LegalFormPage() {
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
       {/* Header */}
       <div className="space-y-1">
-        <div className="flex items-center gap-2 mb-4">
-          <Link
-            href="/dashboard"
-            className="text-white/30 hover:text-white/70 text-sm transition-colors flex items-center gap-1"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Dashboard
-          </Link>
-          <span className="text-white/20 text-sm">/</span>
-          <span className="text-white/50 text-sm truncate">{producto.nombre}</span>
-        </div>
+        <BackButton
+          href={`/dashboard/producto/${productoId}`}
+          label="Ficha del producto"
+          className="mb-4"
+        />
 
         {/* Módulo badge */}
         <div className="flex items-center gap-3 mb-3">

@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
+import { BackButton } from '@/components/ui';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -389,6 +390,7 @@ function BillingContent() {
 
   return (
     <div className="px-4 sm:px-6 py-8 max-w-2xl mx-auto space-y-7 animate-fade-in pb-20">
+      <BackButton href="/dashboard" label="Volver al panel" />
 
       <div className="flex items-end justify-between gap-3">
         <div>

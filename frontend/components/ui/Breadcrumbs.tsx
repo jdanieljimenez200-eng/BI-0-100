@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { BackButton } from './BackButton';
 
 export interface BreadcrumbItem {
   label: string;
@@ -14,6 +15,18 @@ export interface BreadcrumbItem {
 export interface BreadcrumbsProps {
   items: BreadcrumbItem[];
   className?: string;
+  /**
+   * Si es true, muestra un botón BackButton integrado a la izquierda de la ruta.
+   */
+  showBack?: boolean;
+  /**
+   * Ruta de retroceso específica. Si se omite, calcula el penúltimo ítem o '/dashboard'.
+   */
+  backHref?: string;
+  /**
+   * Etiqueta de texto opcional para el botón atrás (por defecto solo icono squircle).
+   */
+  backLabel?: string;
 }
 
 /**
@@ -22,13 +35,34 @@ export interface BreadcrumbsProps {
  * - Separadores microscópicos y tenues
  * - Transición de color suave al hover
  * - Elemento terminal resaltado con mayor luminosidad
+ * - Botón de retroceso opcional integrado
  * - Accesibilidad semántica con <nav> y lista ordenada
  */
-export function Breadcrumbs({ items, className }: BreadcrumbsProps) {
+export function Breadcrumbs({
+  items,
+  className,
+  showBack = false,
+  backHref,
+  backLabel,
+}: BreadcrumbsProps) {
   if (!items || items.length === 0) return null;
 
+  const resolvedBackHref =
+    backHref ||
+    (items.length > 1 && items[items.length - 2]?.href) ||
+    '/dashboard';
+
   return (
-    <nav aria-label="Migas de pan" className={cn('flex items-center text-xs text-white/40 mb-5 select-none', className)}>
+    <nav aria-label="Migas de pan" className={cn('flex items-center gap-2.5 text-xs text-white/40 mb-5 select-none', className)}>
+      {showBack && (
+        <BackButton
+          href={resolvedBackHref}
+          label={backLabel}
+          variant={backLabel ? 'pill' : 'icon'}
+          size="sm"
+          className="shrink-0"
+        />
+      )}
       <ol className="flex items-center gap-1.5 flex-wrap">
         {items.map((item, index) => {
           const isLast = index === items.length - 1;

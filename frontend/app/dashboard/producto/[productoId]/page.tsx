@@ -5,6 +5,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
+import { Breadcrumbs } from '@/components/ui';
 import { getImageUrl } from '@/lib/utils';
 import { MODULE_THEME, type ModuloSlug } from '@/lib/moduleTheme';
 
@@ -302,25 +303,18 @@ export default function ProductoDetailPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-7 pb-16">
-      {/* ── Volver ─────────────────────────────────────────────────────────── */}
-      <Link
-        href="/dashboard"
-        className="pd-fade-in group inline-flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.02] py-1.5 pl-2.5 pr-3.5 text-[11px] font-medium text-white/45 backdrop-blur-md transition hover:border-white/15 hover:text-white/85 active:scale-[0.97]"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-x-0.5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M15 18l-6-6 6-6" />
-        </svg>
-        Dashboard
-      </Link>
+      {/* ── Volver & Ruta ─────────────────────────────────────────────────── */}
+      <Breadcrumbs
+        showBack
+        backHref="/dashboard/producto"
+        backLabel="Mis productos"
+        items={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Mis productos', href: '/dashboard/producto' },
+          { label: producto.nombre },
+        ]}
+        className="mb-0"
+      />
 
       {/* ── Hero del producto ──────────────────────────────────────────────── */}
       <section className="pd-fade-in pd-hero relative overflow-hidden rounded-[28px] p-6 sm:p-8" style={{ animationDelay: '60ms' }}>

@@ -512,6 +512,9 @@ function PersonalInner({ producto, cambiarProducto }: { producto: ProductoActivo
       <div className="border-b border-white/8 bg-[#060e18]/95 backdrop-blur-xl sticky top-0 z-30">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-4">
           <Breadcrumbs
+            showBack
+            backHref="/dashboard/herramientas"
+            backLabel="Herramientas"
             items={[
               { label: 'Dashboard', href: '/dashboard' },
               { label: 'Herramientas', href: '/dashboard/herramientas' },

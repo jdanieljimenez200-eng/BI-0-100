@@ -23,6 +23,7 @@ import {
 import { AnalysisLoader } from '@/components/ui/AnalysisLoader';
 import { AnalysisError } from '@/components/ui/AnalysisError';
 import LockedSection, { SkeletonTarjetas } from '@/components/ui/LockedSection';
+import { Breadcrumbs } from '@/components/ui';
 import { useAnalysisLoaderGate } from '@/app/hooks/useAnalysisLoaderGate';
 import { motion, useReducedMotion } from 'framer-motion';
 import {
@@ -897,16 +898,20 @@ export default function FinanzasResultadoPage() {
       <div className="fixed bottom-[-10%] left-[-8%] w-[40vh] h-[40vh] bg-blue-500/8 rounded-pill blur-[110px] pointer-events-none" />
       <div className="fixed top-[40%] right-[20%] w-[30vh] h-[30vh] bg-violet-500/6 rounded-pill blur-[90px] pointer-events-none" />
 
-      {/* Breadcrumb */}
-      <div className="flex items-center justify-between mb-8" data-print="hide">
-        <div className="flex items-center gap-2 text-sm">
-          <Link href="/dashboard" className="text-white/40 hover:text-white transition-colors">Dashboard</Link>
-          <span className="text-white/20">›</span>
-          <Link href={`/dashboard/finanzas/${productoId}`} className="text-white/40 hover:text-white transition-colors">Finanzas</Link>
-          <span className="text-white/20">›</span>
-          <span className="text-white/80 font-medium">Resultado</span>
-        </div>
-        <button onClick={handlePrint} className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest border border-white/10 text-white/60 px-4 py-2 rounded-control hover:border-white/30 hover:text-white transition-all">
+      {/* Breadcrumb & Retorno */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8" data-print="hide">
+        <Breadcrumbs
+          showBack
+          backHref={`/dashboard/producto/${productoId}`}
+          backLabel="Ficha del producto"
+          items={[
+            { label: 'Dashboard', href: '/dashboard' },
+            { label: 'Finanzas', href: `/dashboard/finanzas/${productoId}` },
+            { label: 'Resultado' },
+          ]}
+          className="mb-0"
+        />
+        <button onClick={handlePrint} className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest border border-white/10 text-white/60 px-4 py-2 rounded-control hover:border-white/30 hover:text-white transition-all cursor-pointer">
           <FileText className="w-4 h-4" strokeWidth={1.8} />
           <span>Descargar PDF</span>
         </button>

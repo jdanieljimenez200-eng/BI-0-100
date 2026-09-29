@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import api from '@/lib/api';
+import { BackButton } from '@/components/ui';
 import { PAISES_LATAM, getPaisInfo } from '@/lib/latam';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -639,15 +640,9 @@ export default function NuevoProductoPage() {
 
       {/* ── Page header ── */}
       <div className="max-w-5xl mx-auto mb-8 relative">
-        <Link
-          href="/dashboard"
-          className="inline-flex items-center gap-1.5 text-white/45 hover:text-white/80 text-xs mb-5 transition-colors"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          Panel principal
-        </Link>
+        <div className="mb-5">
+          <BackButton href="/dashboard" label="Volver al panel" />
+        </div>
         <div className="flex items-end justify-between gap-4">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-accent/75 mb-1">Nuevo análisis</p>

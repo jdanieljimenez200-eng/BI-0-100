@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import api from '@/lib/api';
 import { useProductoActivo } from '@/lib/productoActivo';
+import { BackButton } from '@/components/ui';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Tipos — contrato de GET /dashboard/alertas-operativas
@@ -1126,6 +1127,7 @@ export default function ProgresoPage() {
 
       {/* ── Encabezado Institucional ────────────────────────────────────────── */}
       <header className="space-y-3">
+        <BackButton href="/dashboard" label="Volver al panel" className="mb-2" />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/60 backdrop-blur-md">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />

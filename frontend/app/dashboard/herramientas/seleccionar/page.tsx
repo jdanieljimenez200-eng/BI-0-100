@@ -83,6 +83,9 @@ function SeleccionarInner() {
       <div className="fixed top-[-15%] right-[-8%] w-[45vh] h-[45vh] bg-emerald-500/10 rounded-full blur-[130px] pointer-events-none" />
 
       <Breadcrumbs
+        showBack
+        backHref="/dashboard/herramientas"
+        backLabel="Herramientas"
         items={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Herramientas', href: '/dashboard/herramientas' },

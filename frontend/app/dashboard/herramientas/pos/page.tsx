@@ -38,6 +38,7 @@ import { abrirMenuPdf } from './MenuPdf';
 import ProductoGate from '@/components/herramientas/ProductoGate';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
 import type { ProductoActivo } from '@/lib/productoActivo';
+import { Breadcrumbs } from '@/components/ui';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -987,17 +988,17 @@ function PosInner({
       <div className="fixed bottom-[-12%] left-[-10%] w-[40vh] h-[40vh] bg-blue-500/8 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm mb-4">
-        <Link href="/dashboard" className="text-white/40 hover:text-white transition-colors">
-          Dashboard
-        </Link>
-        <span className="text-white/20">›</span>
-        <Link href="/dashboard/herramientas" className="text-white/40 hover:text-white transition-colors">
-          Herramientas
-        </Link>
-        <span className="text-white/20">›</span>
-        <span className="text-white/80 font-medium">Punto de Venta</span>
-      </div>
+      <Breadcrumbs
+        showBack
+        backHref="/dashboard/herramientas"
+        backLabel="Herramientas"
+        items={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Herramientas', href: '/dashboard/herramientas' },
+          { label: 'Punto de Venta' },
+        ]}
+        className="mb-4"
+      />
 
       {/* Header Bar */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">

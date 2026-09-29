@@ -9,6 +9,7 @@ import { seccionesBloqueadasDe, type SeccionBloqueable } from '@/lib/gating';
 import LockedSection, { SkeletonBloque, SkeletonTarjetas } from '@/components/ui/LockedSection';
 import { AnalysisLoader } from '@/components/ui/AnalysisLoader';
 import { AnalysisError } from '@/components/ui/AnalysisError';
+import { Breadcrumbs } from '@/components/ui';
 import { useAnalysisEvents } from '@/app/hooks/useAnalysisEvents';
 import { useAnalysisLoaderGate } from '@/app/hooks/useAnalysisLoaderGate';
 import { gsap } from 'gsap';
@@ -1479,15 +1480,19 @@ export default function ResultadoMercadoPage() {
       <div className="fixed top-0 right-[-10%] w-[55vh] h-[55vh] bg-brand-primary/12 rounded-full blur-[130px] pointer-events-none" />
       <div className="fixed bottom-0 left-[-5%] w-[40vh] h-[40vh] bg-rose-500/8 rounded-full blur-[100px] pointer-events-none" />
 
-      {/* ── Breadcrumb ── */}
-      <div className="reveal flex items-center justify-between mb-8 text-sm" data-print="hide">
-        <div className="flex items-center gap-2">
-          <Link href="/dashboard" className="text-white/30 hover:text-white transition-colors">Dashboard</Link>
-          <span className="text-white/15">›</span>
-          <Link href={`/dashboard/mercado/${productoId}`} className="text-white/30 hover:text-white transition-colors">Mercado</Link>
-          <span className="text-white/15">›</span>
-          <span className="text-white/60">Resultado</span>
-        </div>
+      {/* ── Breadcrumb & Retorno ── */}
+      <div className="reveal flex flex-wrap items-center justify-between gap-4 mb-8" data-print="hide">
+        <Breadcrumbs
+          showBack
+          backHref={`/dashboard/producto/${productoId}`}
+          backLabel="Ficha del producto"
+          items={[
+            { label: 'Dashboard', href: '/dashboard' },
+            { label: 'Mercado', href: `/dashboard/mercado/${productoId}` },
+            { label: 'Resultado' },
+          ]}
+          className="mb-0"
+        />
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold uppercase tracking-widest bg-brand-primary/10 text-brand-primary/80 border border-brand-primary/20 px-3 py-1.5 rounded-full hidden sm:inline-flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5 text-brand-primary/80 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -1497,7 +1502,7 @@ export default function ResultadoMercadoPage() {
             {analisis.scope}
           </span>
           <button onClick={() => window.print()}
-            className="text-[11px] font-bold border border-white/8 text-white/40 px-3 py-1.5 rounded-xl hover:border-white/20 hover:text-white/60 transition-all">
+            className="text-[11px] font-bold border border-white/8 text-white/40 px-3 py-1.5 rounded-xl hover:border-white/20 hover:text-white/60 transition-all cursor-pointer">
             PDF
           </button>
         </div>

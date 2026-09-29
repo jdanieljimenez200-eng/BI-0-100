@@ -423,6 +423,9 @@ export default function HerramientasPage() {
 
       {/* Breadcrumbs */}
       <Breadcrumbs
+        showBack
+        backHref="/dashboard"
+        backLabel="Volver al panel"
         items={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Herramientas' },

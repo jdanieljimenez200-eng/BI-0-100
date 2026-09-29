@@ -6,6 +6,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import api from '@/lib/api';
 import { interpretarErrorApi } from '@/lib/apiError';
 import { MOTION_SPRINGS } from '@/lib/motion/tokens';
+import { Breadcrumbs } from '@/components/ui';
 
 // ─── Tipos (espejo de los contratos del backend /api/equipo) ──────────────────
 type Grupo = 'analisis' | 'herramientas';
@@ -572,15 +573,16 @@ export default function EquipoPage() {
   return (
     <div className="px-6 py-8 max-w-3xl mx-auto animate-fade-in">
       {/* Breadcrumb */}
-      <nav aria-label="Navegación secundaria" className="flex items-center gap-2 text-sm text-white/50 mb-6">
-        <Link href="/dashboard" className="hover:text-white transition">
-          Dashboard
-        </Link>
-        <svg className="w-3 h-3 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-        <span className="text-white font-medium">Equipo</span>
-      </nav>
+      <Breadcrumbs
+        showBack
+        backHref="/dashboard"
+        backLabel="Volver al panel"
+        items={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Equipo' },
+        ]}
+        className="mb-6"
+      />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">

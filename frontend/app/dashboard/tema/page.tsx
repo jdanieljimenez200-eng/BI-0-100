@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { useTema, type UIConfig } from '@/components/ThemeProvider';
+import { BackButton } from '@/components/ui';
 
 // ─── Catálogo de opciones (espejo de los valores válidos de sanitizeUIConfig) ──
 
@@ -172,6 +173,7 @@ export default function TemaPage() {
     <div className="max-w-3xl mx-auto px-4 pb-24">
       {/* Header */}
       <div className="mb-8">
+        <BackButton href="/dashboard" label="Volver al panel" className="mb-4" />
         <h1 className="text-2xl font-extrabold text-white tracking-tight">Tema del sistema</h1>
         <p className="text-white/40 text-sm mt-1.5">
           Personaliza la apariencia de la terminal. Los cambios se aplican a toda la cuenta.
