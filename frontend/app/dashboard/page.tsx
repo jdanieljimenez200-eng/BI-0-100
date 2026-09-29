@@ -999,53 +999,7 @@ export default function DashboardPage(): ReactElement {
         )}
       </section>
 
-      {/* ── CTA final ────────────────────────────────────────────────────── */}
-      {!loading && productos.length > 0 && (
-        <motion.section
-          initial={animar ? { opacity: 0, y: 18 } : false}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 0.55, ease: 'easeOut' }}
-          className="relative overflow-hidden rounded-2xl border border-brand-accent/20 bg-brand-accent/[0.06] p-8 backdrop-blur-xl sm:p-10"
-        >
-          <motion.div
-            className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-brand-accent/15 blur-[90px]"
-            animate={animar ? { scale: [1, 1.15, 1], opacity: [0.6, 1, 0.6] } : undefined}
-            transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
-            aria-hidden="true"
-          />
-          <div className="relative flex flex-col items-start gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-xl">
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-brand-accent/25 bg-brand-accent/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-brand-accent">
-                <IconSpark className="h-3.5 w-3.5" />
-                2–3 minutos
-              </div>
-              <h3 className="mb-2 text-xl font-black tracking-tight text-white sm:text-2xl">
-                ¿Listo para el siguiente análisis?
-              </h3>
-              <p className="text-sm text-white/50">
-                Carga otro producto o servicio y obtén Mercado, Marketing, Ventas, Finanzas y Legal
-                como informes independientes, exportables a PDF.
-              </p>
-            </div>
 
-            <motion.div
-              whileHover={animar ? { scale: 1.04 } : undefined}
-              whileTap={animar ? { scale: 0.97 } : undefined}
-              className="flex-shrink-0"
-            >
-              <Link
-                href="/dashboard/nuevo"
-                className="group inline-flex items-center gap-2.5 rounded-xl bg-gradient-accent px-7 py-4 text-base font-black text-white shadow-[0_0_28px_rgba(231,76,60,0.3)] transition-shadow duration-300 hover:shadow-[0_0_46px_rgba(231,76,60,0.48)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent/60"
-              >
-                <IconPlus className="h-5 w-5 transition-transform duration-300 group-hover:rotate-90" />
-                Nuevo análisis
-                <IconArrow className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
-              </Link>
-            </motion.div>
-          </div>
-        </motion.section>
-      )}
     </div>
   );
 }
