@@ -42,6 +42,11 @@ import {
   IconFinanzas,
   IconLegal,
 } from '@/components/ui/ModuleIcons';
+import {
+  ElevatedCircularButton,
+  SidebarScoopHero,
+  MobileCurvedBottomDock,
+} from '@/components/dashboard/CurvedScoopDock';
 
 interface Usuario {
   nombre?: string;
@@ -117,7 +122,7 @@ function RailTooltip({ children }: { children: React.ReactNode }) {
   return (
     <span
       role="tooltip"
-      className="absolute left-full ml-2.5 whitespace-nowrap rounded-md border border-white/10 bg-[#0B0F17] px-2.5 py-1 text-[11px] font-medium text-white opacity-0 shadow-xl transition-opacity pointer-events-none group-hover:opacity-100 z-50"
+      className="absolute left-full ml-3 whitespace-nowrap rounded-xl border border-white/10 bg-[#0C101A]/95 px-3 py-1.5 text-xs font-semibold text-white opacity-0 shadow-2xl transition-opacity pointer-events-none group-hover:opacity-100 z-50 backdrop-blur-md"
     >
       {children}
     </span>
@@ -154,23 +159,27 @@ function SidebarLink({
         <motion.span
           layoutId="sidebar-active-pill"
           transition={MOTION_SPRINGS.pill}
-          className="pointer-events-none absolute inset-0 rounded-lg border border-white/[0.08] bg-white/[0.06] shadow-sm"
+          className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-r from-emerald-500/10 via-white/[0.04] to-transparent border border-emerald-500/20 shadow-sm"
         />
+      )}
+
+      {estaActivo && !collapsed && (
+        <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-gradient-to-b from-emerald-400 to-teal-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
       )}
 
       <span
         className={cn(
-          'relative z-10 shrink-0 transition-colors duration-150',
-          estaActivo ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-200'
+          'relative z-10 shrink-0 transition-transform duration-200 group-hover:scale-110',
+          estaActivo ? 'text-emerald-400' : 'text-zinc-400 group-hover:text-zinc-200'
         )}
       >
-        <Icon className="h-4 w-4" strokeWidth={1.8} />
+        <Icon className="h-4 w-4" strokeWidth={estaActivo ? 2.2 : 1.8} />
       </span>
 
       {!collapsed && <span className="relative z-10 flex-1 truncate">{label}</span>}
 
       {!collapsed && badge && (
-        <span className="relative z-10 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-zinc-400 border border-white/10 bg-white/[0.04]">
+        <span className="relative z-10 rounded-md px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-zinc-400 border border-white/10 bg-white/[0.04]">
           {badge}
         </span>
       )}
@@ -184,9 +193,9 @@ function SidebarLink({
   );
 
   const className = cn(
-    'group relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17]',
-    collapsed && 'justify-center px-2 py-2',
-    estaActivo ? 'text-white' : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200'
+    'group relative flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13px] font-medium transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17]',
+    collapsed && 'justify-center px-2 py-2.5',
+    estaActivo ? 'text-white font-semibold' : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200'
   );
 
   if (externo) {
@@ -404,38 +413,80 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
   // ── Render Sidebar Content ──────────────────────────────────────────────────
   const renderSidebar = (col = false) => (
-    <aside className="group/sidebar relative flex h-full flex-col overflow-hidden border-r border-white/[0.06] bg-[#0B0F17]/98 backdrop-blur-xl">
+    <aside
+      className={cn(
+        'group/sidebar relative flex h-full flex-col rounded-[26px] border border-white/[0.08] bg-[#0A0E17]/95 backdrop-blur-2xl shadow-[0_16px_48px_rgba(0,0,0,0.55),0_0_0_1px_rgba(255,255,255,0.03)] transition-all duration-300 overflow-hidden',
+        col ? 'px-2 py-3' : 'px-3 py-3'
+      )}
+    >
       {/* ── Brand Header ─────────────────────────────────────────────────── */}
-      <button
-        type="button"
-        onClick={() => router.push('/dashboard')}
+      <div
         className={cn(
-          'group relative z-10 w-full border-b border-white/[0.05] py-3.5 text-left transition-colors hover:bg-white/[0.02]',
-          col ? 'px-2.5 text-center' : 'px-4'
+          'relative z-10 w-full pb-3 border-b border-white/[0.06] flex items-center justify-between',
+          col ? 'px-1 justify-center' : 'px-1.5'
         )}
       >
-        <div className={cn('flex items-center gap-2.5', col && 'justify-center')}>
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-b from-white to-slate-200 shadow-[0_2px_8px_rgba(255,255,255,0.25)] transition-transform duration-200 group-hover:scale-105 active:scale-95">
-            <span className="text-[11px] text-[#070E17] font-black leading-none tracking-tight font-sans select-none">
+        <button
+          type="button"
+          onClick={() => router.push('/dashboard')}
+          className="group flex items-center gap-2.5 outline-none cursor-pointer"
+        >
+          <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-white via-slate-100 to-slate-300 shadow-[0_2px_12px_rgba(255,255,255,0.3)] transition-transform duration-200 group-hover:scale-105 active:scale-95">
+            <span className="text-[12px] text-[#070E17] font-black leading-none tracking-tight font-sans select-none">
               BI
             </span>
           </div>
 
           {!col && (
-            <div className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-semibold tracking-tight text-white/90 transition-colors group-hover:text-white">
-                {tema?.nombre_sistema || 'BI 0 A 100'}
-              </span>
+            <div className="min-w-0 text-left">
+              <div className="flex items-center gap-1.5">
+                <span className="block truncate text-[13px] font-bold tracking-tight text-white group-hover:text-emerald-300 transition-colors">
+                  {tema?.nombre_sistema || 'BI 0 A 100'}
+                </span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+              </div>
               <span className="block truncate text-[10px] font-normal tracking-wide text-zinc-500">
                 Sistema Operativo
               </span>
             </div>
           )}
-        </div>
-      </button>
+        </button>
+
+        {!col && (
+          <button
+            type="button"
+            onClick={() => setCollapsed(true)}
+            aria-label="Colapsar menú"
+            className="hidden lg:flex p-1.5 text-zinc-500 hover:text-white hover:bg-white/[0.08] active:scale-90 rounded-lg transition-all duration-150 cursor-pointer"
+            title="Colapsar menú lateral"
+          >
+            <ChevronsLeft className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {/* ── Action Scoop: Elevated circular button with scoop notch ── */}
+      {puedeNuevoAnalisis && (
+        col ? (
+          <div className="py-2.5 flex justify-center relative group">
+            <ElevatedCircularButton
+              href="/dashboard/nuevo"
+              onClick={cerrarDrawer}
+              icon={Plus}
+              label="Nuevo Análisis"
+              size="sm"
+            />
+            <RailTooltip>Nuevo Análisis</RailTooltip>
+          </div>
+        ) : (
+          <div className="pt-4 pb-1">
+            <SidebarScoopHero onNavigate={cerrarDrawer} />
+          </div>
+        )
+      )}
 
       {/* ── Scrollable Navigation Container ───────────────────────────────── */}
-      <nav className="custom-scrollbar relative z-10 flex-1 space-y-3 overflow-y-auto px-2.5 py-2">
+      <nav className="custom-scrollbar relative z-10 flex-1 space-y-3 overflow-y-auto px-1.5 py-2">
 
         {/* ── 1. Visión General ── */}
         <SidebarSection titulo="Principal" collapsed={col}>
@@ -447,16 +498,6 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
             collapsed={col}
             onNavigate={cerrarDrawer}
           />
-          {puedeNuevoAnalisis && (
-            <SidebarLink
-              href="/dashboard/nuevo"
-              label="Nuevo Análisis"
-              Icon={Plus}
-              active={isActive('/dashboard/nuevo', false)}
-              collapsed={col}
-              onNavigate={cerrarDrawer}
-            />
-          )}
           <SidebarLink
             href="/dashboard/progreso"
             label="Progreso"
@@ -484,23 +525,30 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
               <div key={mod} className="relative">
                 <div
                   className={cn(
-                    'group relative flex items-center justify-between rounded-lg transition-colors duration-150',
+                    'group relative flex items-center justify-between rounded-xl transition-all duration-150',
                     active
-                      ? 'bg-white/[0.06] text-white font-medium shadow-sm'
-                      : 'text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200'
+                      ? 'bg-gradient-to-r from-white/[0.08] to-white/[0.03] text-white font-semibold shadow-sm border border-white/[0.08]'
+                      : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200'
                   )}
                 >
+                  {active && !col && (
+                    <span
+                      className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full shadow-[0_0_8px_currentColor]"
+                      style={{ backgroundColor: theme.hex, color: theme.hex }}
+                    />
+                  )}
+
                   <Link
                     href={`/dashboard/${mod}`}
                     onClick={cerrarDrawer}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-1.5 text-[13px]',
-                      col && 'justify-center px-2 py-2'
+                      'flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-[13px]',
+                      col && 'justify-center px-2 py-2.5'
                     )}
                   >
                     <span
-                      className="shrink-0 transition-colors duration-150"
+                      className="shrink-0 transition-transform duration-200 group-hover:scale-110"
                       style={active ? { color: theme.hex } : undefined}
                     >
                       <NavIcon className="h-4 w-4" />
@@ -583,22 +631,26 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
           <div className="relative">
             <div
               className={cn(
-                'group relative flex items-center justify-between rounded-lg transition-colors duration-150',
+                'group relative flex items-center justify-between rounded-xl transition-all duration-150',
                 isActive('/dashboard/herramientas', false)
-                  ? 'bg-white/[0.06] text-white font-medium shadow-sm'
-                  : 'text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200'
+                  ? 'bg-gradient-to-r from-white/[0.08] to-white/[0.03] text-white font-semibold shadow-sm border border-white/[0.08]'
+                  : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200'
               )}
             >
+              {isActive('/dashboard/herramientas', false) && !col && (
+                <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+              )}
+
               <Link
                 href="/dashboard/herramientas"
                 onClick={cerrarDrawer}
                 className={cn(
-                  'flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-1.5 text-[13px] font-medium',
-                  col && 'justify-center px-2 py-2',
+                  'flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-[13px] font-medium',
+                  col && 'justify-center px-2 py-2.5',
                   isActive('/dashboard/herramientas', false) ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-200'
                 )}
               >
-                <Wrench className="h-4 w-4 shrink-0" strokeWidth={1.8} />
+                <Wrench className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-110" strokeWidth={1.8} />
                 {!col && <span className="flex-1 truncate font-medium">Herramientas</span>}
               </Link>
 
@@ -710,8 +762,8 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       {/* ── User Profile & Footer ─────────────────────────────────────────── */}
       <div
         className={cn(
-          'relative z-10 border-t border-white/[0.06] bg-[#070B12]/80 px-3 py-2.5 backdrop-blur-md',
-          col && 'px-2 py-2 flex flex-col items-center gap-2'
+          'relative z-10 border-t border-white/[0.06] bg-[#070B12]/80 backdrop-blur-md',
+          col ? 'pt-3 pb-1 px-1 flex flex-col items-center gap-2' : 'pt-3 pb-1 px-1.5'
         )}
       >
         {col ? (
@@ -719,17 +771,19 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
             {usuario && (
               <Link
                 href="/dashboard/perfil"
-                className="group flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-xs font-semibold text-white/90 hover:border-white/20 hover:bg-white/[0.08] transition-colors"
+                className="group relative flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-xs font-semibold text-white/90 hover:border-emerald-400/40 hover:bg-white/[0.08] active:scale-95 transition-all shadow-xs"
                 title={usuario.nombre || usuario.name || 'Perfil'}
               >
                 {(usuario.nombre || usuario.name || 'U').charAt(0).toUpperCase()}
+                <RailTooltip>{usuario.nombre || usuario.name || 'Perfil'}</RailTooltip>
               </Link>
             )}
             <button
               type="button"
               onClick={() => setCollapsed(false)}
               aria-label="Expandir menú"
-              className="p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-white/5 rounded-lg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17]"
+              className="p-1.5 text-zinc-500 hover:text-white hover:bg-white/10 rounded-lg active:scale-90 transition-all outline-none cursor-pointer"
+              title="Expandir menú lateral"
             >
               <ChevronsLeft className="h-4 w-4 rotate-180" />
             </button>
@@ -737,7 +791,8 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={handleLogout}
               aria-label="Cerrar sesión"
-              className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-white/5 rounded-lg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17]"
+              className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg active:scale-90 transition-all outline-none cursor-pointer"
+              title="Cerrar sesión"
             >
               <LogOut className="h-4 w-4" />
             </button>
@@ -747,20 +802,20 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
             <Link
               href="/dashboard/perfil"
               onClick={cerrarDrawer}
-              className="group flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1 transition-colors hover:bg-white/[0.04]"
+              className="group flex min-w-0 flex-1 items-center gap-2.5 rounded-xl p-1.5 transition-all hover:bg-white/[0.05]"
             >
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-xs font-semibold text-white/90 group-hover:border-white/20 transition-colors">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-xs font-bold text-white/90 group-hover:border-emerald-400/40 group-hover:scale-105 transition-all shadow-xs">
                 {(usuario?.nombre || usuario?.name || 'U').charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <p className="truncate text-xs font-medium text-zinc-200 group-hover:text-white transition-colors">
+                  <p className="truncate text-xs font-semibold text-zinc-200 group-hover:text-white transition-colors">
                     {usuario?.nombre || usuario?.name || 'Usuario'}
                   </p>
                   {usuario?.plan && (
                     <span
                       className={cn(
-                        'rounded px-1 py-0.2 text-[8px] font-bold uppercase tracking-wider border',
+                        'rounded-md px-1.5 py-0.2 text-[8px] font-bold uppercase tracking-wider border',
                         PLAN_BADGE[usuario.plan] ?? PLAN_BADGE.freemium
                       )}
                     >
@@ -774,26 +829,15 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
               </div>
             </Link>
 
-            <div className="flex items-center gap-0.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => setCollapsed(true)}
-                aria-label="Colapsar menú"
-                className="hidden lg:flex p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] rounded-lg transition-colors"
-                title="Colapsar barra lateral"
-              >
-                <ChevronsLeft className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={handleLogout}
-                aria-label="Cerrar sesión"
-                className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-white/[0.06] rounded-lg transition-colors"
-                title="Cerrar sesión"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              aria-label="Cerrar sesión"
+              className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 active:scale-90 rounded-lg transition-all cursor-pointer"
+              title="Cerrar sesión"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         )}
       </div>
@@ -815,26 +859,30 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
         style={{ backgroundSize: '32px 32px' }}
       />
 
-      {/* Desktop sidebar rail */}
+      {/* Desktop floating sidebar dock */}
       <div
         className={cn(
-          'z-20 hidden transition-[width] duration-200 ease-in-out lg:fixed lg:inset-y-0 lg:flex lg:flex-shrink-0 lg:flex-col',
-          collapsed ? 'lg:w-[72px]' : 'lg:w-64'
+          'z-30 hidden transition-all duration-300 ease-in-out lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:flex-shrink-0 lg:flex-col lg:p-3 pointer-events-none',
+          collapsed ? 'lg:w-[96px]' : 'lg:w-[280px]'
         )}
       >
-        {renderSidebar(collapsed)}
+        <div className="w-full h-full pointer-events-auto">
+          {renderSidebar(collapsed)}
+        </div>
       </div>
 
       {/* Mobile drawer with smooth spring and backdrop blur */}
-      <MotionDrawer isOpen={sidebarOpen} onClose={cerrarDrawer} side="left" width="w-64">
-        {renderSidebar(false)}
+      <MotionDrawer isOpen={sidebarOpen} onClose={cerrarDrawer} side="left" width="w-[280px]">
+        <div className="w-full h-full p-2.5">
+          {renderSidebar(false)}
+        </div>
       </MotionDrawer>
 
       {/* Main content viewport */}
       <div
         className={cn(
-          'relative z-10 flex w-full flex-1 flex-col min-h-screen transition-[margin] duration-200 ease-in-out',
-          collapsed ? 'lg:ml-[72px]' : 'lg:ml-64'
+          'relative z-10 flex w-full flex-1 flex-col min-h-screen transition-all duration-300 ease-in-out pb-24 lg:pb-0',
+          collapsed ? 'lg:pl-[96px]' : 'lg:pl-[280px]'
         )}
       >
         {/* Mobile topbar */}
@@ -843,7 +891,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
-              className="rounded-lg border border-white/10 p-1.5 text-white/70 transition-colors hover:bg-white/5 hover:text-white"
+              className="rounded-lg border border-white/10 p-1.5 text-white/70 transition-colors hover:bg-white/5 hover:text-white cursor-pointer"
               aria-label="Abrir menú"
             >
               <Menu className="h-4 w-4" />
@@ -872,6 +920,9 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+
+      {/* Floating Bottom Scoop Dock for Mobile Viewports (exact to reference image) */}
+      <MobileCurvedBottomDock onOpenDrawer={() => setSidebarOpen(true)} />
     </div>
   );
 }
