@@ -8,6 +8,8 @@ import { interpretarErrorApi } from '@/lib/apiError';
 import AvisoErrorApi from '@/components/ui/AvisoErrorApi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BackButton } from '@/components/ui';
+import AfinaTuAnalisis from '@/components/analisis/AfinaTuAnalisis';
+import { leerPerfil, perfilParaEnviar, type PerfilNegocio } from '@/lib/perfilNegocio';
 
 interface Producto {
   id: string;
@@ -17,6 +19,7 @@ interface Producto {
   pais: string;
   imagen_url: string | null;
   descripcion: string | null;
+  perfil_negocio?: unknown;
 }
 
 // ─── Shared CSS ────────────────────────────────────────────────────────────────
@@ -209,6 +212,8 @@ export default function LegalFormPage() {
   const [vendeEnLinea, setVendeEnLinea] = useState(false);
   const [exportaImporta, setExportaImporta] = useState(false);
   const [giroEspecifico, setGiroEspecifico] = useState('');
+  // «Afina tu análisis»: se precarga con lo que ya se respondió en este u otro módulo.
+  const [perfil, setPerfil] = useState<PerfilNegocio>({});
 
   // ─── Errores de validación ───────────────────────────────────────────────────
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -223,6 +228,7 @@ export default function LegalFormPage() {
       .then(({ data }) => {
         if (!vigente) return;
         setProducto(data);
+        setPerfil(leerPerfil(data?.perfil_negocio));
         // El alta ya preguntó el tamaño del equipo: aquí se propone en vez de
         // volver a preguntarlo. El usuario lo corrige si no cuadra.
         const personas = Number(data?.tamano_equipo);
@@ -270,6 +276,7 @@ export default function LegalFormPage() {
         giro_especifico: giroEspecifico || undefined,
         estado_constitucion: estadoConstitucion || undefined,
         anios_operando: aniosOperando,
+        perfil_negocio: perfilParaEnviar(perfil),
       });
       router.push(`/dashboard/legal/${productoId}/resultado/${data.analisis_id}`);
     } catch (err: unknown) {
@@ -509,6 +516,8 @@ export default function LegalFormPage() {
                   <p className="text-[10px] text-white/20 text-right mt-1">{giroEspecifico.length}/200</p>
                 </Field>
               </Block>
+
+              <AfinaTuAnalisis perfil={perfil} onChange={setPerfil} pais={producto.pais} />
 
               <AvisoErrorApi
                 mensaje={error}

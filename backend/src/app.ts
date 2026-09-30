@@ -35,6 +35,7 @@ import marcaRoutes from './routes/marca';
 import equipoRoutes from './routes/equipo';
 import adminRoutes from './routes/admin';
 import adminSesionRoutes from './routes/adminSesion';
+import adminPromptsRoutes from './routes/adminPrompts';
 import { programarPurgaPapelera } from './services/admin/papelera';
 import eventsRoutes from './routes/events';
 import calendarioRoutes from './routes/calendario';
@@ -206,6 +207,7 @@ app.use('/api/equipo', equipoRoutes);
 // La sesión de admin emite el token que el resto de /api/admin exige: va delante.
 app.use('/api/admin/sesion', adminSesionRoutes);
 app.use('/api/admin/network', adminNetworkRouter);
+app.use('/api/admin/prompts', adminPromptsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/calendario', calendarioRoutes);

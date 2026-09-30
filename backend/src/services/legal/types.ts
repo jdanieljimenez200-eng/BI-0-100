@@ -1,3 +1,6 @@
+import type { SeccionExtraResultado, TransparenciaIA } from '../ia/contratoComun';
+import type { VersionUsada } from '../ia/componerSistema';
+
 // ─── Inputs ────────────────────────────────────────────────────────────────
 
 export interface LegalAnalisisInput {
@@ -16,11 +19,16 @@ export interface LegalAnalisisInput {
 
 // ─── Permisos y Licencias ──────────────────────────────────────────────────
 
+/** Obligación (la norma lo exige), condicionada (aplica si…) o recomendación (protege, no es exigible). */
+export type NaturalezaObligacion = 'obligacion' | 'condicionada' | 'recomendacion';
+
 export interface PermisoCumplimiento {
   nombre: string;            // "Registro en REPUVE"
   autoridad: string;         // "SEGOB / AMDA"
   descripcion: string;
   obligatorio: boolean;
+  naturaleza?: NaturalezaObligacion; // desde legal@2
+
   nivel_riesgo: 'bajo' | 'medio' | 'alto';
   plazo_tramite: string;     // "15-30 días hábiles"
   costo_estimado: string;    // "Gratuito" | "$2,000 MXN aprox."
@@ -34,6 +42,7 @@ export interface ObligacionFiscal {
   regimen_fiscal: string;    // "Régimen Simplificado de Confianza (RESICO)"
   periodicidad: string;      // "Mensual / Anual"
   descripcion: string;
+  naturaleza?: NaturalezaObligacion; // desde legal@2
   nivel_riesgo: 'bajo' | 'medio' | 'alto';
   aplica_si: string;         // "Ingresos > $3.5M MXN anuales" | "Siempre"
 }
@@ -83,4 +92,23 @@ export interface LegalResultado {
   // Recursos
   disclaimer: string;
   fuentes_recomendadas: { nombre: string; url: string }[];
+
+  // Desde legal@2 (opcionales: los análisis antiguos no los tienen)
+  transparencia?: TransparenciaIA;
+  secciones_extra?: SeccionExtraResultado[];
+  /** Claves de secciones nativas que el admin ocultó en la versión usada. */
+  secciones_ocultas?: string[];
+  meta?: MetaAnalisisIA;
+}
+
+/** Con qué se hizo el análisis: contrato, origen, versiones de prompt y datos disponibles. */
+export interface MetaAnalisisIA {
+  contrato: string;
+  origen: 'ia' | 'plantilla';
+  versiones_prompt: Record<string, VersionUsada>;
+  contexto_usado: {
+    pais_con_ficha: boolean;
+    perfil_respondido: string[];
+    perfil_sin_responder: string[];
+  };
 }

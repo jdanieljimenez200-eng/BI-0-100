@@ -8,7 +8,9 @@ import { ejecutarAnalisisLegal } from '../services/legal/legalOrchestrator';
 import { ejecutarAnalisisBrief } from '../services/brief/briefOrchestrator';
 import { ejecutarAnalisisVentas } from '../services/ventas/ventasOrchestrator';
 import { logger } from '../utils/logger';
-import { conSeguimientoIA, huboFallbackIA } from '../utils/seguimientoIA';
+import { conSeguimientoIA, huboFallbackIA, type VersionesPrompt } from '../utils/seguimientoIA';
+import { clavesDeModulo } from '../services/ia/prompts';
+import { versionesAAnclar } from '../services/ia/registroPrompts';
 import { reembolsarCreditos } from '../services/billing/creditosIA';
 import { esErrorTransitorio } from '../utils/erroresTransitorios';
 
@@ -22,14 +24,52 @@ async function cargarProducto(productoId: string): Promise<Producto> {
   return producto;
 }
 
+/**
+ * Fija las versiones de prompt de este trabajo en su primer intento y las
+ * guarda en el propio trabajo: si el admin publica una versión nueva a mitad
+ * del análisis, o el trabajo se reintenta, se sigue usando la misma.
+ *
+ * Nunca hace fallar el análisis: sin ancla, cada llamada usa la versión
+ * publicada en ese momento, que es lo que pasaba antes de existir el registro.
+ */
+export async function anclarVersionesPrompt(job: Job): Promise<VersionesPrompt | undefined> {
+  const { moduleName, productoId, versionesPrompt } = job.data ?? {};
+  if (versionesPrompt && typeof versionesPrompt === 'object') return versionesPrompt as VersionesPrompt;
+  try {
+    let pais: string | null = null;
+    if (moduleName === 'legal' && productoId) {
+      const producto = await AppDataSource.getRepository(Producto).findOne({
+        where: { id: productoId },
+        select: ['id', 'pais'],
+      });
+      pais = producto?.pais ?? null;
+    }
+    const claves = clavesDeModulo(moduleName, pais);
+    if (!claves.length) return undefined;
+    const versiones = await versionesAAnclar(claves);
+    if (typeof job.updateData === 'function') {
+      await job.updateData({ ...job.data, versionesPrompt: versiones });
+    }
+    return versiones;
+  } catch (err) {
+    logger.warn('[Worker] No se pudieron anclar las versiones de prompt', {
+      jobId: job.id,
+      moduleName,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return undefined;
+  }
+}
+
 export async function procesarAnalisis(job: Job) {
   // Cada trabajo abre su propio seguimiento de secciones que salieron de plantilla.
   const { moduleName, analisisId, usuarioId } = job.data ?? {};
+  const versionesPrompt = await anclarVersionesPrompt(job);
   return conSeguimientoIA(async () => {
     await ejecutarTrabajo(job);
     // Si alguna sección salió de plantilla, el cliente no paga ese análisis.
     if (huboFallbackIA()) await reembolsarCreditos({ referenciaId: analisisId });
-  }, { usuarioId, modulo: moduleName, analisisId });
+  }, { usuarioId, modulo: moduleName, analisisId, versionesPrompt });
 }
 
 async function ejecutarTrabajo(job: Job) {

@@ -263,6 +263,14 @@ export default function AdminPage() {
               Costos de IA
             </Link>
           )}
+          {puede('gestionarPrompts') && (
+            <Link
+              href="/dashboard/admin/prompts"
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-white/15 text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              Prompts de IA
+            </Link>
+          )}
           {puede('verAuditoria') && (
             <Link
               href="/dashboard/admin/auditoria"

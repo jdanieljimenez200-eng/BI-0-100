@@ -216,11 +216,17 @@ function registrarUso(seccion: string, mensaje: Message, duracionMs: number): vo
     `[IA] ${seccion} ${modelo} in=${uso.input_tokens} out=${uso.output_tokens} cache=${uso.cache_read_input_tokens ?? 0} $${costo.toFixed(4)} ${duracionMs}ms`
   );
 
+  // Versión del modo con la que se hizo la llamada (`legal.dictamen` → `legal.modo`):
+  // permite comparar el costo entre versiones de un prompt en el panel.
+  const claveModo = `${seccion.split('.')[0]}.modo`;
+  const promptVersionId = ctx?.versionesPrompt?.[claveModo] ?? null;
+
   if (!AppDataSource.isInitialized) return;
   AppDataSource.query(
     `INSERT INTO uso_ia (usuario_id, modulo, seccion, modelo, input_tokens, output_tokens,
-                         cache_write_tokens, cache_read_tokens, costo_usd, duracion_ms, analisis_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                         cache_write_tokens, cache_read_tokens, costo_usd, duracion_ms, analisis_id,
+                         prompt_version_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
     [
       ctx?.usuarioId ?? null,
       ctx?.modulo ?? seccion.split('.')[0],
@@ -233,6 +239,7 @@ function registrarUso(seccion: string, mensaje: Message, duracionMs: number): vo
       costo,
       duracionMs,
       ctx?.analisisId ?? null,
+      promptVersionId,
     ]
   ).catch((err: unknown) => logger.error('[IA] No se pudo registrar el uso:', err));
 }

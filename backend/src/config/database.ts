@@ -42,6 +42,7 @@ import { MantenimientoRealizado } from '../models/MantenimientoRealizado';
 import { CanalCobro } from '../models/CanalCobro';
 import { ConexionGoogleCalendar } from '../models/ConexionGoogleCalendar';
 import { AuditoriaDinero } from '../models/AuditoriaDinero';
+import { PromptIA } from '../models/PromptIA';
 
 function buildDataSourceOptions() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -91,6 +92,7 @@ function buildDataSourceOptions() {
       CanalCobro,
       ConexionGoogleCalendar,
       AuditoriaDinero,
+      PromptIA,
     ],
     migrations: [__dirname + '/../migrations/*.{js,ts}'],
     // NUNCA. El esquema lo definen solo las migraciones (CLAUDE.md, regla 1).

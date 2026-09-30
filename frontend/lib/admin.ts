@@ -70,6 +70,112 @@ export async function leerCostosIA(dias: number) {
   return data;
 }
 
+// ─── Prompts de IA (superadmin) ─────────────────────────────────────────────
+
+export type EstadoPrompt = 'borrador' | 'publicado' | 'archivado';
+
+export interface ResumenVersionPrompt {
+  id: string;
+  version: number;
+  estado: EstadoPrompt;
+  notas: string | null;
+  fecha_creacion: string;
+  fecha_actualizacion: string;
+  fecha_publicacion: string | null;
+}
+
+export interface ClavePrompt {
+  clave: string;
+  modulo: string;
+  tipo: 'modo' | 'ficha_pais';
+  titulo: string;
+  en_uso: 'publicada' | 'repositorio' | 'sin_texto';
+  publicada: ResumenVersionPrompt | null;
+  borrador: ResumenVersionPrompt | null;
+}
+
+export interface SeccionExtraDef {
+  slug: string;
+  titulo: string;
+  instrucciones: string;
+}
+
+export interface VersionPrompt extends ResumenVersionPrompt {
+  contenido: string;
+  secciones_extra: SeccionExtraDef[];
+  secciones_ocultas: string[];
+  creado_por: string | null;
+  publicado_por: string | null;
+}
+
+export interface DetallePrompt {
+  clave: string;
+  modulo: string;
+  tipo: 'modo' | 'ficha_pais';
+  titulo: string;
+  repositorio: string | null;
+  versiones: VersionPrompt[];
+  secciones_nativas: { clave: string; titulo: string; ocultable: boolean }[];
+  casos: { id: string; titulo: string; pais: string }[];
+}
+
+export async function listarPrompts() {
+  const { data } = await api.get<{ claves: ClavePrompt[]; hay_clave_anthropic: boolean }>('/admin/prompts');
+  return data;
+}
+
+export async function leerPrompt(clave: string) {
+  const { data } = await api.get<DetallePrompt>(`/admin/prompts/claves/${encodeURIComponent(clave)}`);
+  return data;
+}
+
+export async function crearBorradorPrompt(clave: string, desde?: string) {
+  const { data } = await api.post<{ id: string; version: number }>(
+    `/admin/prompts/claves/${encodeURIComponent(clave)}/borradores`,
+    desde ? { desde } : {}
+  );
+  return data;
+}
+
+export async function guardarBorradorPrompt(
+  id: string,
+  cambios: Partial<Pick<VersionPrompt, 'contenido' | 'secciones_extra' | 'secciones_ocultas' | 'notas'>>
+) {
+  await api.patch(`/admin/prompts/versiones/${id}`, cambios);
+}
+
+export async function descartarBorradorPrompt(id: string) {
+  await api.delete(`/admin/prompts/versiones/${id}`);
+}
+
+export async function probarPrompt(id: string, caso: string) {
+  const { data } = await api.post<{
+    caso: { id: string; titulo: string; pais: string };
+    duracion_ms: number;
+    sin_clave_ia: boolean;
+    resultado: Record<string, unknown>;
+  }>(`/admin/prompts/versiones/${id}/probar`, { caso });
+  return data;
+}
+
+/** Publicar (o restaurar una versión archivada) cambia lo que la IA dice a todos: pide código fresco. */
+export async function publicarPrompt(id: string, notas: string, codigoTotp: string) {
+  const { data } = await api.post<{ ok: true; clave: string; version: number }>(
+    `/admin/prompts/versiones/${id}/publicar`,
+    { notas },
+    { headers: { 'X-Admin-Totp': codigoTotp } }
+  );
+  return data;
+}
+
+export async function usarRepositorioPrompt(clave: string, notas: string, codigoTotp: string) {
+  await api.post(
+    `/admin/prompts/claves/${encodeURIComponent(clave)}/usar-repositorio`,
+    { notas },
+    { headers: { 'X-Admin-Totp': codigoTotp } }
+  );
+}
+
 // ─── Roles ───────────────────────────────────────────────────────────────────
 
 export type AdminRol = 'soporte' | 'moderador' | 'superadmin';
@@ -82,7 +188,8 @@ export type Permiso =
   | 'gestionarRoles'
   | 'verAuditoria'
   | 'gestionarPapelera'
-  | 'verCostos';
+  | 'verCostos'
+  | 'gestionarPrompts';
 
 export const NOMBRE_ROL: Record<AdminRol, string> = {
   soporte: 'Soporte',

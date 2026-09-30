@@ -11,6 +11,7 @@ import { requireAnalisisLock } from '../middleware/idempotency';
 import { validateBody, exigirUuid } from '../middleware/validate';
 import { logger } from '../utils/logger';
 import { MAX_ENTERO } from '../utils/limitesNumericos';
+import { PerfilNegocioSchema, fusionarPerfil } from '../services/ia/perfilNegocio';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
 
@@ -34,6 +35,8 @@ const AnalizarLegalSchema = z
     giro_especifico: z.string().max(200).optional(),
     estado_constitucion: z.string().max(100).optional(),
     anios_operando: z.enum(['0', '1-2', '3-5', '+5']),
+    // «Afina tu análisis»: opcional; se guarda en el producto y lo reutilizan los demás módulos.
+    perfil_negocio: PerfilNegocioSchema.optional(),
   })
   .refine((d) => Boolean(d.producto_id ?? d.productoId), {
     message: 'producto_id es requerido',
@@ -68,6 +71,10 @@ router.post(
     const productoId = bodySrc.productoId ?? bodySrc.producto_id;
     delete bodySrc.productoId;
     delete bodySrc.producto_id;
+    // El perfil es del negocio, no de este análisis: va al producto y el worker lo
+    // lee de ahí. No viaja en el payload del trabajo.
+    const perfilNuevo = bodySrc.perfil_negocio;
+    delete bodySrc.perfil_negocio;
     const payload = bodySrc;
     const usuarioId = req.userId;
 
@@ -77,6 +84,12 @@ router.post(
     });
     if (!producto) {
       return res.status(404).json({ error: 'Producto no encontrado' });
+    }
+
+    if (perfilNuevo) {
+      await AppDataSource.getRepository(Producto).update(producto.id, {
+        perfil_negocio: fusionarPerfil(producto.perfil_negocio, perfilNuevo),
+      });
     }
 
     // Create analysis record

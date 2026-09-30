@@ -12,14 +12,20 @@ import LockedSection, { SkeletonBloque, SkeletonTarjetas } from '@/components/ui
 import { estaBloqueada } from '@/lib/gating';
 import AvisoEstimacion from '@/components/ui/AvisoEstimacion';
 import { Breadcrumbs } from '@/components/ui';
+import TransparenciaIA, { type Transparencia } from '@/components/analisis/TransparenciaIA';
+import SeccionesExtra, { type SeccionExtra } from '@/components/analisis/SeccionesExtra';
 
 // ─── Types (espejo del backend) ────────────────────────────────────────────────
+
+/** Desde legal@2: obligación, obligación condicionada o recomendación. */
+type Naturaleza = 'obligacion' | 'condicionada' | 'recomendacion';
 
 interface PermisoCumplimiento {
   nombre: string;
   autoridad: string;
   descripcion: string;
   obligatorio: boolean;
+  naturaleza?: Naturaleza;
   nivel_riesgo: 'bajo' | 'medio' | 'alto';
   plazo_tramite: string;
   costo_estimado: string;
@@ -31,6 +37,7 @@ interface ObligacionFiscal {
   regimen_fiscal: string;
   periodicidad: string;
   descripcion: string;
+  naturaleza?: Naturaleza;
   nivel_riesgo: 'bajo' | 'medio' | 'alto';
   aplica_si: string;
 }
@@ -65,6 +72,10 @@ interface LegalResultado {
   checklist: ChecklistItem[];
   disclaimer: string;
   fuentes_recomendadas: { nombre: string; url: string }[];
+  // Desde legal@2; los análisis antiguos no los traen.
+  transparencia?: Transparencia;
+  secciones_extra?: SeccionExtra[];
+  secciones_ocultas?: string[];
 }
 
 interface AnalisisLegal {
@@ -241,6 +252,9 @@ function normalizeLegalResultado(analisis: AnalisisLegal): LegalResultado {
       { nombre: 'IMPI - Marca en Línea', url: 'https://www.gob.mx/impi' },
       { nombre: 'INAI - Protección de Datos', url: 'https://home.inai.org.mx' },
     ],
+    transparencia: raw.transparencia && typeof raw.transparencia === 'object' ? raw.transparencia : undefined,
+    secciones_extra: Array.isArray(raw.secciones_extra) ? raw.secciones_extra : [],
+    secciones_ocultas: Array.isArray(raw.secciones_ocultas) ? raw.secciones_ocultas : [],
   };
 }
 
@@ -456,6 +470,23 @@ const CAT_COLOR: Record<string, string> = {
 
 const PRIORIDAD_ORDER = { alta: 0, media: 1, baja: 2 };
 
+/** Etiqueta de naturaleza (legal@2). Sin ella, el permiso usa su `obligatorio` de siempre. */
+const NATURALEZA_LABEL: Record<Naturaleza, string> = {
+  obligacion: 'OBLIGATORIO',
+  condicionada: 'SI APLICA',
+  recomendacion: 'RECOMENDADO',
+};
+
+function BadgeNaturaleza({ naturaleza, obligatorio }: { naturaleza?: Naturaleza; obligatorio?: boolean }) {
+  const texto = naturaleza ? NATURALEZA_LABEL[naturaleza] : obligatorio ? 'OBLIGATORIO' : null;
+  if (!texto) return null;
+  return (
+    <span className="text-[10px] font-bold text-white/50 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+      {texto}
+    </span>
+  );
+}
+
 // ─── Sub-componentes ───────────────────────────────────────────────────────────
 
 function Section({ title, icon, children, count }: {
@@ -487,11 +518,7 @@ function PermisoCard({ item }: { item: PermisoCumplimiento }) {
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-bold text-white">{item.nombre}</h3>
-            {item.obligatorio && (
-              <span className="text-[10px] font-bold text-white/50 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                OBLIGATORIO
-              </span>
-            )}
+            <BadgeNaturaleza naturaleza={item.naturaleza} obligatorio={item.obligatorio} />
           </div>
           <p className="text-xs text-white/40 mt-0.5">{item.autoridad}</p>
         </div>
@@ -534,7 +561,10 @@ function ObligacionCard({ item }: { item: ObligacionFiscal }) {
     <div className={`rounded-xl border ${clr.border} bg-[#0F1C2A] p-4 space-y-2`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
-          <h3 className="text-sm font-bold text-white">{item.nombre}</h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-bold text-white">{item.nombre}</h3>
+            <BadgeNaturaleza naturaleza={item.naturaleza} />
+          </div>
           <p className="text-[11px] text-white/40 mt-0.5">{item.regimen_fiscal} · {item.periodicidad}</p>
         </div>
         <span className={`flex-shrink-0 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full border ${clr.bg} ${clr.border} ${clr.text}`}>
@@ -771,6 +801,8 @@ export default function LegalResultadoPage() {
   const checklistOrdenado = [...(r.checklist || [])].sort(
     (a, b) => (PRIORIDAD_ORDER[a.prioridad] ?? 2) - (PRIORIDAD_ORDER[b.prioridad] ?? 2)
   );
+  // Secciones que el equipo ocultó en la versión del prompt con la que se hizo el análisis.
+  const checklistOculto = (r.secciones_ocultas ?? []).includes('legal.checklist');
   const completados = checklistOrdenado.filter((_, i) => checkedItems.has(i)).length;
   const pctChecklist = checklistOrdenado.length > 0 ? Math.round((completados / checklistOrdenado.length) * 100) : 0;
 
@@ -825,7 +857,7 @@ export default function LegalResultadoPage() {
               { id: 'obligaciones' as const, label: 'Obligaciones Normativas', icon: <IconFiscalDoc className="w-4 h-4" /> },
               { id: 'checklist' as const, label: 'Checklist de Acción', icon: <IconChecklist className="w-4 h-4" />, count: `${completados}/${checklistOrdenado.length}` },
               { id: 'completo' as const, label: 'Vista Completa', icon: <IconPortalOficial className="w-4 h-4" /> },
-            ].map((t) => {
+            ].filter((t) => !(t.id === 'checklist' && checklistOculto)).map((t) => {
               const isActive = activeTab === t.id;
               return (
                 <button
@@ -887,6 +919,10 @@ export default function LegalResultadoPage() {
                 <p className="text-sm text-white/70 leading-relaxed">{r.resumen_ejecutivo}</p>
               </div>
             </div>
+
+            <TransparenciaIA transparencia={r.transparencia} hrefCompletar={`/dashboard/legal/${productoId}`} />
+
+            <SeccionesExtra secciones={r.secciones_extra} />
 
             {/* Alertas */}
             {(r.alertas || []).length > 0 && (
@@ -1007,7 +1043,7 @@ export default function LegalResultadoPage() {
         )}
 
         {/* ══ TAB 4: CHECKLIST DE ACCIÓN ══ */}
-        {(activeTab === 'checklist' || activeTab === 'completo') && (
+        {!checklistOculto && (activeTab === 'checklist' || activeTab === 'completo') && (
           <div className="space-y-6">
             <Section title="Checklist de Cumplimiento Institucional" icon={<IconChecklist className="w-4 h-4" />}>
               <div className="bg-[#0F1C2A] rounded-2xl border border-white/10 overflow-hidden">

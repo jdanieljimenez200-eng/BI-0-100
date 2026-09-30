@@ -24,6 +24,7 @@ import {
  * | Cambiar plan                                  |    –    |     –     |     ✓      |
  * | Asignar roles, ver auditoría                  |    –    |     –     |     ✓      |
  * | Enviar a papelera / restaurar cuentas         |    –    |     –     |     ✓      |
+ * | Editar, probar y publicar prompts de IA       |    –    |     –     |     ✓      |
  *
  * Tres capas, en este orden:
  *
@@ -53,6 +54,8 @@ export const PERMISOS = {
   gestionarPapelera: ['superadmin'],
   // Gasto de IA por cuenta: dato de negocio y de clientes, solo superadmin.
   verCostos: ['superadmin'],
+  // Los prompts deciden lo que la IA dice a todos los clientes: solo superadmin.
+  gestionarPrompts: ['superadmin'],
 } as const satisfies Record<string, readonly AdminRol[]>;
 
 export type Permiso = keyof typeof PERMISOS;

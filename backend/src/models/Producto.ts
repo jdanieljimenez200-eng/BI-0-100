@@ -15,6 +15,7 @@ import { AnalisisFinanzas } from './AnalisisFinanzas';
 import { AnalisisLegal } from './AnalisisLegal';
 import { AnalisisBrief } from './AnalisisBrief';
 import { AnalisisVentas } from './AnalisisVentas';
+import type { PerfilNegocio } from '../services/ia/perfilNegocio';
 
 @Entity('productos')
 export class Producto {
@@ -123,6 +124,14 @@ export class Producto {
   /** % de clientes que repiten compra (0-100). */
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
   tasa_repeticion?: number | null;
+
+  /**
+   * «Afina tu análisis»: régimen, ingresos, sector regulado… Se responde una vez
+   * y lo reutilizan todos los módulos. Forma y límites en
+   * `services/ia/perfilNegocio.ts`; léelo siempre con `leerPerfil()`.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  perfil_negocio?: PerfilNegocio | null;
 
   /** URL pública de la imagen del producto (S3 en prod, /uploads en dev). */
   @Column({ type: 'varchar', length: 500, nullable: true })

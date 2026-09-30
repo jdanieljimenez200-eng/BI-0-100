@@ -136,6 +136,23 @@ describe('config/anthropic', () => {
     expect(valores[10]).toBe('a-1');
   });
 
+  it('registra con qué versión del modo se hizo la llamada', async () => {
+    mockCrear.mockResolvedValueOnce(respuesta());
+    await conSeguimientoIA(() => crearMensaje('legal.dictamen', 'estrategia', PARAMS), {
+      modulo: 'legal',
+      versionesPrompt: { 'legal.modo': 'v-3', 'legal.pais.MX': null },
+    });
+    const [sql, valores] = mockQuery.mock.calls[0];
+    expect(sql).toContain('prompt_version_id');
+    expect(valores[11]).toBe('v-3');
+  });
+
+  it('sin versión anclada, prompt_version_id va vacío', async () => {
+    mockCrear.mockResolvedValueOnce(respuesta());
+    await crearMensaje('mercado.dafo', 'estrategia', PARAMS);
+    expect(mockQuery.mock.calls[0][1][11]).toBeNull();
+  });
+
   it('en producción exige una clave con formato válido', () => {
     process.env.NODE_ENV = 'production';
     process.env.ANTHROPIC_API_KEY = '';

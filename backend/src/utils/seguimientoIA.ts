@@ -12,11 +12,20 @@ import { AsyncLocalStorage } from 'async_hooks';
  *
  * Fuera de un trabajo (endpoints on-demand) `registrarFallbackIA` no hace nada.
  */
+/**
+ * Versiones de prompt ancladas a un trabajo: clave → id de `prompts_ia`, o
+ * `null` para el texto por defecto del repositorio. Se fijan al empezar el
+ * análisis para que publicar una versión nueva no cambie uno que ya está en
+ * curso (ni sus reintentos).
+ */
+export type VersionesPrompt = Record<string, string | null>;
+
 /** Quién y para qué se llama a la IA: alimenta el registro de costos (`uso_ia`). */
 export interface ContextoIA {
   usuarioId?: string;
   modulo?: string;
   analisisId?: string;
+  versionesPrompt?: VersionesPrompt;
 }
 
 interface Seguimiento extends ContextoIA {
@@ -32,7 +41,9 @@ export function conSeguimientoIA<T>(fn: () => Promise<T>, contexto: ContextoIA =
 /** Contexto del trabajo o petición en curso, si lo hay. */
 export function contextoIA(): ContextoIA | undefined {
   const s = almacen.getStore();
-  return s ? { usuarioId: s.usuarioId, modulo: s.modulo, analisisId: s.analisisId } : undefined;
+  return s
+    ? { usuarioId: s.usuarioId, modulo: s.modulo, analisisId: s.analisisId, versionesPrompt: s.versionesPrompt }
+    : undefined;
 }
 
 /**
