@@ -470,34 +470,29 @@ router.post(
       return res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
     }
 
-    return await AppDataSource.transaction(async (manager) => {
-      // Cerrojo consultivo de transacción por usuario para evitar condiciones de carrera en altas simultáneas
-      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['net0:cupo:' + req.userId]);
+    type Resultado =
+      | { tipo: 'sin-cupo'; cupo: Awaited<ReturnType<typeof obtenerCupoNet0>> }
+      | { tipo: 'ya-tiene'; expertoId: string }
+      | { tipo: 'ok'; experto: Experto };
 
-      const cupo = await obtenerCupoNet0(req.userId!, manager);
-      if (!cupo.puede_crear) {
-        return res.status(403).json({
-          error: `Has alcanzado el límite de ${cupo.limite_permitido} perfil${cupo.limite_permitido > 1 ? 'es' : ''} en Net0. ${
-            cupo.negocios_activos === 0
-              ? 'Las cuentas independientes tienen un cupo base de 2 perfiles. Registra y analiza tus negocios con IA en BI 0 A 100 para desbloquear 1 perfil adicional por cada negocio.'
-              : 'Para crear un perfil adicional en Net0, registra y valida un nuevo negocio con análisis de IA en la plataforma.'
-          }`,
-          cupo,
+    // Se responde DESPUÉS del COMMIT, nunca desde dentro de la transacción: si
+    // el 201 sale antes, el cliente puede usar el id (subir la cédula, editar)
+    // mientras la fila aún no es visible para otras conexiones, y recibe 404.
+    let resultado: Resultado;
+    try {
+      resultado = await AppDataSource.transaction(async (manager): Promise<Resultado> => {
+        // Cerrojo consultivo de transacción por usuario para evitar condiciones de carrera en altas simultáneas
+        await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['net0:cupo:' + req.userId]);
+
+        const cupo = await obtenerCupoNet0(req.userId!, manager);
+        if (!cupo.puede_crear) return { tipo: 'sin-cupo', cupo };
+
+        const repo = manager.getRepository(Experto);
+        const yaTiene = await repo.findOne({
+          where: { usuario_id: req.userId!, categoria: parsed.data.categoria, eliminado_en: IsNull() },
         });
-      }
+        if (yaTiene) return { tipo: 'ya-tiene', expertoId: yaTiene.id };
 
-      const repo = manager.getRepository(Experto);
-      const yaTiene = await repo.findOne({
-        where: { usuario_id: req.userId!, categoria: parsed.data.categoria, eliminado_en: IsNull() },
-      });
-      if (yaTiene) {
-        return res.status(409).json({
-          error: 'Ya tienes una ficha en esta categoría. Edítala en vez de crear otra.',
-          experto_id: yaTiene.id,
-        });
-      }
-
-      try {
         const experto = await repo.save(
           repo.create({
             ...parsed.data,
@@ -508,15 +503,34 @@ router.post(
             total_resenas: 0,
           })
         );
-        return res.status(201).json({ experto: sinClaveDocumento(experto), mensaje: 'Ficha enviada a revisión' });
-      } catch (e) {
-        // El índice único es la red de seguridad ante dos altas simultáneas.
-        if ((e as { code?: string }).code === '23505') {
-          return res.status(409).json({ error: 'Ya tienes una ficha en esta categoría.' });
-        }
-        throw e;
+        return { tipo: 'ok', experto };
+      });
+    } catch (e) {
+      // El índice único es la red de seguridad ante dos altas simultáneas.
+      if ((e as { code?: string }).code === '23505') {
+        return res.status(409).json({ error: 'Ya tienes una ficha en esta categoría.' });
       }
-    });
+      throw e;
+    }
+
+    if (resultado.tipo === 'sin-cupo') {
+      const { cupo } = resultado;
+      return res.status(403).json({
+        error: `Has alcanzado el límite de ${cupo.limite_permitido} perfil${cupo.limite_permitido > 1 ? 'es' : ''} en Net0. ${
+          cupo.negocios_activos === 0
+            ? 'Las cuentas independientes tienen un cupo base de 2 perfiles. Registra y analiza tus negocios con IA en BI 0 A 100 para desbloquear 1 perfil adicional por cada negocio.'
+            : 'Para crear un perfil adicional en Net0, registra y valida un nuevo negocio con análisis de IA en la plataforma.'
+        }`,
+        cupo,
+      });
+    }
+    if (resultado.tipo === 'ya-tiene') {
+      return res.status(409).json({
+        error: 'Ya tienes una ficha en esta categoría. Edítala en vez de crear otra.',
+        experto_id: resultado.expertoId,
+      });
+    }
+    return res.status(201).json({ experto: sinClaveDocumento(resultado.experto), mensaje: 'Ficha enviada a revisión' });
   })
 );
 

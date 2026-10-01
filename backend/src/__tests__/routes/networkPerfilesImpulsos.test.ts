@@ -6,6 +6,7 @@ import { signupTestUser, hacerAdmin, cabeceras, type TestUser, type AdminTestUse
 import { AppDataSource } from '../../config/database';
 import * as impulsos from '../../services/network/impulsosService';
 import { TIPO_PAGO_IMPULSO } from '../../services/billing/stripeService';
+import { MAX_MULTIMEDIA } from '../../routes/network';
 
 jest.mock('../../services/billing/stripeService', () => {
   const actual = jest.requireActual('../../services/billing/stripeService');
@@ -135,7 +136,7 @@ describeWithDb('Red: perfiles e impulsos', () => {
 
     it('no pasa del límite de la galería', async () => {
       const [{ total }] = await q(`SELECT count(*)::int AS total FROM experto_imagenes WHERE experto_id = $1`, [fichaId]);
-      for (let i = total; i < 15; i++) {
+      for (let i = total; i < MAX_MULTIMEDIA; i++) {
         await q(`INSERT INTO experto_imagenes (experto_id, url, orden) VALUES ($1, $2, $3)`, [fichaId, `/uploads/images/r${i}.png`, i]);
       }
       const res = await api()
@@ -172,7 +173,8 @@ describeWithDb('Red: perfiles e impulsos', () => {
     it('el perfil público trae galería, servicios y WhatsApp, sin el id del dueño', async () => {
       const res = await api().get(`/api/network/expertos/${fichaId}`);
       expect(res.status).toBe(200);
-      expect(res.body.experto.imagenes.length).toBe(12);
+      // La galería quedó llena en «no pasa del límite»: el perfil la trae entera.
+      expect(res.body.experto.imagenes.length).toBe(MAX_MULTIMEDIA);
       expect(res.body.experto.servicios).toEqual([
         expect.objectContaining({ nombre: 'Identidad de marca', precio_desde: 5000 }),
       ]);

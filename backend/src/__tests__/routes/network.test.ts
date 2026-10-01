@@ -1,4 +1,5 @@
 import * as request from 'supertest';
+import { PostgresQueryRunner } from 'typeorm/driver/postgres/PostgresQueryRunner';
 import { app, initTestDb, closeTestDb } from '../helpers/testApp';
 import { describeWithDb } from '../helpers/dbGuard';
 import { signupTestUser, TestUser, hacerAdmin, cabeceras, type AdminTestUser } from '../helpers/authHelper';
@@ -270,6 +271,27 @@ describeWithDb('Red de expertos (/api/network)', () => {
         .get('/api/network/cupo')
         .set('Authorization', `Bearer ${usuario.accessToken}`);
       expect(cupo.body).toMatchObject({ fichas_actuales: 2, limite_permitido: 2, puede_crear: false });
+    });
+
+    it('responde cuando la ficha ya está guardada: el paso siguiente la encuentra', async () => {
+      // El registro sube la cédula en cuanto recibe el id. Si el 201 saliera
+      // desde dentro de la transacción, un COMMIT lento (base cargada) dejaba
+      // esa subida en 404 y la ficha sin documento.
+      const usuario = await signupTestUser();
+      const commit = PostgresQueryRunner.prototype.commitTransaction;
+      const commitLento = jest
+        .spyOn(PostgresQueryRunner.prototype, 'commitTransaction')
+        .mockImplementation(async function (this: PostgresQueryRunner) {
+          await new Promise((resolver) => setTimeout(resolver, 300));
+          return commit.call(this);
+        });
+      try {
+        const res = await crearFicha(usuario.accessToken, baseLegal);
+        expect(res.status).toBe(201);
+        expect((await subirDocumento(usuario.accessToken, res.body.experto.id)).status).toBe(200);
+      } finally {
+        commitLento.mockRestore();
+      }
     });
   });
 
