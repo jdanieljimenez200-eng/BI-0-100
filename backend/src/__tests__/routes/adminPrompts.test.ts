@@ -19,7 +19,7 @@ jest.mock('../../workers/analysisQueue', () => ({
   analysisQueue: { add: jest.fn().mockResolvedValue({}) },
 }));
 
-const CLAVES = ['legal.modo', 'legal.pais.GT', 'mercado.modo'];
+const CLAVES = ['legal.modo', 'legal.pais.GT', 'mercado.modo', 'finanzas.modo'];
 
 /**
  * El panel de prompts. Lo que se protege:
@@ -205,6 +205,26 @@ describeWithDb('Prompts de IA (/api/admin/prompts)', () => {
     expect(probar.body.resultado.dafo).toBeNull();
     expect(probar.body.resultado.meta_ia.secciones_ocultas).toEqual(['mercado.dafo']);
     expect(probar.body.resultado.meta_ia.meta).toMatchObject({ contrato: 'mercado@2', versiones_prompt: { 'mercado.modo': { id, version: 1 } } });
+
+    expect((await api().delete(`/api/admin/prompts/versiones/${id}`).set(cabeceras(admin2))).status).toBe(200);
+  });
+
+  it('Finanzas: prueba un caso con el cálculo completo y solo deja ocultar los riesgos', async () => {
+    const detalle = await api().get('/api/admin/prompts/claves/finanzas.modo').set(cabeceras(admin2));
+    expect(detalle.status).toBe(200);
+    expect(detalle.body.casos.map((c: { id: string }) => c.id)).toContain('pe_tienda_online_deuda');
+
+    const crear = await api().post('/api/admin/prompts/claves/finanzas.modo/borradores').set(cabeceras(admin2)).send({});
+    expect(crear.status).toBe(201);
+    const id = crear.body.id;
+    const calculo = await api().patch(`/api/admin/prompts/versiones/${id}`).set(cabeceras(admin2)).send({ secciones_ocultas: ['finanzas.proyeccion_12m'] });
+    expect(calculo.status).toBe(400);
+
+    const probar = await api().post(`/api/admin/prompts/versiones/${id}/probar`).set(cabeceras(admin2)).send({ caso: 'pe_tienda_online_deuda' });
+    expect(probar.status).toBe(200);
+    expect(probar.body.caso.pais).toBe('PE');
+    expect(probar.body.resultado.proyeccion.cobertura_deuda).not.toBeNull();
+    expect(probar.body.resultado.meta_ia.meta).toMatchObject({ contrato: 'finanzas@2', versiones_prompt: { 'finanzas.modo': { id, version: 1 } } });
 
     expect((await api().delete(`/api/admin/prompts/versiones/${id}`).set(cabeceras(admin2))).status).toBe(200);
   });

@@ -257,6 +257,8 @@ function redactFinanzas(fila: Fila, bloq: Set<string>): void {
     fila.resumen_data = null;
     // Riesgos financieros (antes "por qué fallan" en Ventas): mismo tier que el resumen.
     fila.riesgos_data = null;
+    // Las secciones extra del admin salen de la misma llamada que los riesgos.
+    if (esObjeto(fila.meta_ia)) fila.meta_ia = { ...fila.meta_ia, secciones_extra: [] };
   }
   if (bloq.has('finanzas.proyeccion_12m')) fila.proyeccion_data = null;
   if (bloq.has('finanzas.escenarios_avanzados')) fila.sensibilidad_data = null;

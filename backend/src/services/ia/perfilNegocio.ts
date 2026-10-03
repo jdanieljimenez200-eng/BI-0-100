@@ -39,8 +39,31 @@ export const PerfilNegocioSchema = z
     datos_sensibles: z.boolean().nullable().optional(),
     tipo_clientes: z.enum(['consumidor_final', 'empresas', 'gobierno', 'mixto']).nullable().optional(),
     marca: z.enum(['registrada', 'en_tramite', 'no', 'no_se']).nullable().optional(),
+
+    // ── Cómo cobra y paga el negocio: cambian el cálculo de Finanzas ─────────
+    // Llegan a la IA como datos de Finanzas (no por `textoPerfil`, que es el
+    // perfil general) y Marketing o Ventas los pueden reutilizar.
+    /** ¿El precio de venta ya incluye el impuesto al consumo del país (IVA, IGV…)? */
+    precio_incluye_impuesto: z.boolean().nullable().optional(),
+    /** % de cada venta que se quedan pasarelas, marketplaces o apps de reparto. */
+    comision_venta_pct: z.number().finite().min(0).max(90).nullable().optional(),
+    /** Días que tarda en cobrar una venta (0 = de contado). */
+    dias_cobro: z.number().int().min(0).max(365).nullable().optional(),
+    /** Días que dan los proveedores para pagar (0 = de contado). */
+    dias_pago: z.number().int().min(0).max(365).nullable().optional(),
+    /** Cuota mensual de las deudas del negocio (capital más intereses). */
+    pago_deuda_mensual: dinero('pago_deuda_mensual').nullable().optional(),
   })
   .strict();
+
+/** Campos de cobro y pago del perfil, en el orden en que los pregunta Finanzas. */
+export const CAMPOS_FINANCIEROS = [
+  'precio_incluye_impuesto',
+  'comision_venta_pct',
+  'dias_cobro',
+  'dias_pago',
+  'pago_deuda_mensual',
+] as const;
 
 export type PerfilNegocio = z.infer<typeof PerfilNegocioSchema>;
 

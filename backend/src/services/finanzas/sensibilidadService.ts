@@ -1,6 +1,7 @@
 import { FinanzasInput, EscenarioSensibilidad, SensibilidadAnalisis } from './types';
 import { generarProyeccion } from './proyeccionService';
 import { calcularBreakeven } from './breakevenService';
+import { economiaUnitaria } from './economiaUnitaria';
 
 function calcularEscenario(
   input: FinanzasInput,
@@ -19,9 +20,13 @@ function calcularEscenario(
   const breakeven = calcularBreakeven(inputMod, proyeccion.meses);
 
   const { totales } = proyeccion;
-  const inversion_total = input.costos_fijos_mensuales * 12;
-  const roi_anual = inversion_total > 0
-    ? Math.round((totales.utilidad_neta_total / inversion_total) * 100)
+  // Misma base que el ROI del resumen: la inversión si se declaró; si no, los
+  // costos fijos del año. Antes aquí siempre eran los fijos y los escenarios no
+  // cuadraban con el ROI de la pantalla principal.
+  const inversion = Math.max(0, Number(input.inversion_inicial) || 0);
+  const base_roi = inversion > 0 ? inversion : proyeccion.economia_unitaria.costos_fijos_efectivos * 12;
+  const roi_anual = base_roi > 0
+    ? Math.round((totales.utilidad_neta_total / base_roi) * 100)
     : 0;
 
   let viabilidad: 'alta' | 'media' | 'baja';
@@ -70,8 +75,9 @@ export function calcularSensibilidad(input: FinanzasInput): SensibilidadAnalisis
     ? 'Precio — subir tu precio un 10% tiene más impacto que vender 10% más unidades'
     : 'Volumen — vender más unidades es tu palanca de crecimiento más potente';
 
-  const margen_contrib = input.precio_venta - input.costo_variable_unitario;
-  const pregunta_clave = margen_contrib / input.precio_venta < 0.35
+  // Margen real: sin el impuesto incluido y con las comisiones.
+  const eco = economiaUnitaria(input);
+  const pregunta_clave = eco.precio_neto <= 0 || eco.margen_unitario / eco.precio_neto < 0.35
     ? '¿Puedes reducir tu costo variable? Tu margen de contribución es bajo y limita la rentabilidad.'
     : pesimista.viabilidad === 'baja'
       ? '¿Cuántos meses de runway tienes si las ventas arrancan lentas? El escenario pesimista entra en pérdida.'

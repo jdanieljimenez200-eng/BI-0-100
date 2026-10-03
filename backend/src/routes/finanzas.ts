@@ -18,6 +18,10 @@ import { logger } from '../utils/logger';
 import { hoyDePeticion } from '../utils/fechaLocal';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
+import { dinero } from '../utils/limitesNumericos';
+import { getTaxConfig } from '../utils/taxConfig';
+import { CAMPOS_FINANCIEROS, PerfilNegocioSchema } from '../services/ia/perfilNegocio';
+import { guardarPerfilNegocio } from '../services/ia/guardarPerfil';
 
 const router = Router();
 exigirUuid(router, 'id');
@@ -41,6 +45,14 @@ const AnalizarFinanzasSchema = z
     tasa_crecimiento_mensual: z.number().finite().nonnegative().max(50, 'Un crecimiento mayor al 50% mensual no es proyectable: revisa el dato'),
     // Opcional: sin ella no se calcula payback (ver breakevenService).
     inversion_inicial: z.number().finite().nonnegative().nullable().optional(),
+    // Sueldo del dueño que NO está en los costos fijos: es de este análisis
+    // (depende de cómo se llenaron los costos), no del perfil del negocio.
+    sueldo_dueno_mensual: dinero('sueldo_dueno_mensual').nullable().optional(),
+    // Los números salieron de la contabilidad (botón «usar mis números reales») o los tecleó el dueño.
+    origen_datos: z.enum(['contabilidad', 'declarado']).optional(),
+    // «Afina tu análisis»: impuesto incluido, comisiones, plazos y deuda se
+    // guardan en el producto y entran al cálculo.
+    perfil_negocio: PerfilNegocioSchema.optional(),
   })
   .refine((d) => Boolean(d.producto_id ?? d.productoId), {
     message: 'producto_id es requerido',
@@ -77,8 +89,11 @@ router.post(
     const productoId = bodySrc.productoId ?? bodySrc.producto_id;
     delete bodySrc.productoId;
     delete bodySrc.producto_id;
+    // El perfil es del negocio: va al producto, y sus datos de cobro y pago al cálculo.
+    const perfilNuevo = bodySrc.perfil_negocio;
+    delete bodySrc.perfil_negocio;
     // El mes 1 de la proyección es el mes en curso de quien la pide.
-    const payload = { ...bodySrc, mes_inicio: Number((await hoyDePeticion(req)).slice(5, 7)) };
+    const payload: Record<string, unknown> = { ...bodySrc, mes_inicio: Number((await hoyDePeticion(req)).slice(5, 7)) };
     const usuarioId = req.userId;
 
     // Validate producto belongs to user
@@ -88,12 +103,18 @@ router.post(
     if (!producto) {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
+    // Lo guardado más lo que llegó: el análisis usa lo vigente al pedirlo (viaja
+    // en el trabajo, así que un reintento no ve un perfil cambiado después).
+    const perfil = await guardarPerfilNegocio(producto, perfilNuevo);
+    for (const campo of CAMPOS_FINANCIEROS) payload[campo] = perfil[campo] ?? null;
 
     // Create analysis record
     const analisisRepo = AppDataSource.getRepository(AnalisisFinanzas);
     const analisis = analisisRepo.create({
       producto_id: productoId,
       usuario_id: usuarioId,
+      // Antes no se llenaba y todo análisis quedaba en 'MX' (moneda e IVA de México).
+      pais: getTaxConfig(producto.pais).pais,
       estado_analisis: 'procesando',
     });
     await analisisRepo.save(analisis);

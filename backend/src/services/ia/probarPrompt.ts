@@ -6,6 +6,8 @@ import { CASOS_LEGAL, productoDeCaso } from './casosPrueba';
 import { CASOS_MERCADO } from './casosPruebaMercado';
 import { generarAnalisisLegal } from '../legal/legalService';
 import { probarCasoMercado } from '../mercado/pruebaMercado';
+import { CASOS_FINANZAS } from './casosPruebaFinanzas';
+import { probarCasoFinanzas } from '../finanzas/pruebaFinanzas';
 
 /**
  * «Probar» del panel de prompts: corre la parte de IA de un módulo sobre un
@@ -20,9 +22,14 @@ export interface CasoResumen {
   pais: string;
 }
 
+const CASOS: Record<ModuloPrompt, { id: string; titulo: string; pais: string }[]> = {
+  legal: CASOS_LEGAL,
+  mercado: CASOS_MERCADO,
+  finanzas: CASOS_FINANZAS,
+};
+
 export function casosDeModulo(modulo: ModuloPrompt): CasoResumen[] {
-  const lista = modulo === 'mercado' ? CASOS_MERCADO : CASOS_LEGAL;
-  return lista.map((c) => ({ id: c.id, titulo: c.titulo, pais: c.pais }));
+  return CASOS[modulo].map((c) => ({ id: c.id, titulo: c.titulo, pais: c.pais }));
 }
 
 export class ErrorPrueba extends Error {
@@ -39,18 +46,21 @@ export async function probarVersion(
   const info = infoClave(version.clave);
   if (!info) throw new ErrorPrueba(400, 'Clave de prompt desconocida');
 
-  if (info.modulo === 'mercado') {
-    const caso = CASOS_MERCADO.find((c) => c.id === casoId);
+  // Mercado y Finanzas no tienen fichas por país: se ancla su modo y se prueba en el país del caso.
+  const probarModo = async <C extends CasoResumen>(casos: C[], correr: (caso: C) => Promise<unknown>) => {
+    const caso = casos.find((c) => c.id === casoId);
     if (!caso) throw new ErrorPrueba(404, 'Caso de prueba no encontrado');
-    const versiones = await versionesAAnclar(clavesDeModulo('mercado', caso.pais));
+    const versiones = await versionesAAnclar(clavesDeModulo(info.modulo, caso.pais));
     versiones[version.clave] = version.id;
-    const resultado = await conSeguimientoIA(() => probarCasoMercado(caso), {
+    const resultado = await conSeguimientoIA(() => correr(caso), {
       usuarioId,
       modulo: 'admin_prueba',
       versionesPrompt: versiones,
     });
     return { caso: { id: caso.id, titulo: caso.titulo, pais: caso.pais }, resultado };
-  }
+  };
+  if (info.modulo === 'mercado') return probarModo(CASOS_MERCADO, probarCasoMercado);
+  if (info.modulo === 'finanzas') return probarModo(CASOS_FINANZAS, probarCasoFinanzas);
 
   const caso = CASOS_LEGAL.find((c) => c.id === casoId);
   if (!caso) throw new ErrorPrueba(404, 'Caso de prueba no encontrado');

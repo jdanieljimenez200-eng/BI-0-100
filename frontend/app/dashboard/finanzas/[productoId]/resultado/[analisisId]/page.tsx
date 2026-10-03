@@ -7,6 +7,8 @@ import api from '@/lib/api';
 import { esPlanDePago } from '@/lib/plans';
 import { seccionesBloqueadasDe } from '@/lib/gating';
 import { getTaxConfig } from '@/lib/taxConfig';
+import TransparenciaIA, { type Transparencia } from '@/components/analisis/TransparenciaIA';
+import SeccionesExtra, { type SeccionExtra } from '@/components/analisis/SeccionesExtra';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -136,6 +138,21 @@ interface ProyeccionAnual {
   /** Caja que hay que aguantar hasta recuperar lo invertido (0 = ninguna). */
   caja_necesaria: number;
   mes_valle: number;
+  /** finanzas@2: caja extra por cobrar a crédito (0 sin plazos). */
+  capital_de_trabajo: number;
+  /** finanzas@2: veces que la utilidad cubre la cuota de deuda; null sin deuda. */
+  cobertura_deuda: number | null;
+  /** finanzas@2: lo que deja cada venta. null en análisis anteriores. */
+  economia_unitaria: EconomiaUnitaria | null;
+}
+
+interface EconomiaUnitaria {
+  precio_neto: number;
+  impuesto_unitario: number;
+  comision_unitaria: number;
+  costo_variable_efectivo: number;
+  margen_unitario: number;
+  costos_fijos_efectivos: number;
 }
 
 interface EscenarioBreakeven {
@@ -155,6 +172,8 @@ interface BreakevenData {
   mes_equilibrio: number | null;
   meses_para_recuperar_inversion: number | null;
   payback_no_disponible: string | null;
+  /** finanzas@2: unidades para cubrir también la deuda; null sin deuda. */
+  unidades_equilibrio_con_deuda: number | null;
   escenarios: EscenarioBreakeven[];
 }
 
@@ -235,13 +254,24 @@ interface OverrideValues {
   tasa_crecimiento_mensual: number;
 }
 
+/** Lo que entró al cálculo además de lo editable (finanzas@2; ausente en análisis anteriores). */
+interface InputsFinanzas extends OverrideValues {
+  precio_incluye_impuesto?: boolean | null;
+  tasa_impuesto_consumo?: number;
+  comision_venta_pct?: number | null;
+  dias_cobro?: number | null;
+  dias_pago?: number | null;
+  sueldo_dueno_mensual?: number | null;
+  pago_deuda_mensual?: number | null;
+}
+
 interface AnalisisFinanzas {
   id: string;
   pais: string;
   estado_analisis: string;
   error_mensaje?: string;
   resultado_estimado?: boolean;
-  inputs_data: OverrideValues;
+  inputs_data: InputsFinanzas;
   overrides_data: OverrideValues | null;
   // Nullables a propósito: al recortar por plan el backend no genera estas
   // secciones y la columna jsonb viaja vacía. Las normalizadoras ya aceptan
@@ -253,6 +283,12 @@ interface AnalisisFinanzas {
   riesgos_data: RiesgosNegocio | null;
   /** Secciones que el backend recortó al generar/servir este análisis. */
   secciones_bloqueadas?: string[] | null;
+  /** finanzas@2: confianza, supuestos, datos que faltan y secciones extra u ocultas. */
+  meta_ia?: {
+    transparencia?: Transparencia | null;
+    secciones_extra?: SeccionExtra[];
+    secciones_ocultas?: string[];
+  } | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -349,6 +385,22 @@ function normalizeProyeccion(raw: unknown): ProyeccionAnual {
     peor_mes: peorMes,
     caja_necesaria: num(r.caja_necesaria),
     mes_valle: num(r.mes_valle),
+    capital_de_trabajo: num(r.capital_de_trabajo),
+    cobertura_deuda: nullableNum(r.cobertura_deuda),
+    economia_unitaria: normalizeEconomia(r.economia_unitaria),
+  };
+}
+
+function normalizeEconomia(raw: unknown): EconomiaUnitaria | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const e = raw as Record<string, unknown>;
+  return {
+    precio_neto: num(e.precio_neto),
+    impuesto_unitario: num(e.impuesto_unitario),
+    comision_unitaria: num(e.comision_unitaria),
+    costo_variable_efectivo: num(e.costo_variable_efectivo),
+    margen_unitario: num(e.margen_unitario),
+    costos_fijos_efectivos: num(e.costos_fijos_efectivos),
   };
 }
 
@@ -414,6 +466,7 @@ function normalizeBreakeven(raw: unknown): BreakevenData {
     mes_equilibrio: mesEq,
     meses_para_recuperar_inversion: mesesRecup,
     payback_no_disponible: paybackNoDisponible,
+    unidades_equilibrio_con_deuda: nullableNum(r.unidades_equilibrio_con_deuda),
     escenarios,
   };
 }
@@ -829,18 +882,25 @@ export default function FinanzasResultadoPage() {
 
   const liveMetrics = useMemo(() => {
     if (!overrides) return null;
-    const { precio_venta: pv, costo_variable_unitario: cvu, costos_fijos_mensuales: cf, unidades_mes_inicial: u1 } = overrides;
+    const { precio_venta: pv, costo_variable_unitario: cvu, costos_fijos_mensuales: cfDeclarados, unidades_mes_inicial: u1 } = overrides;
     if (pv <= 0) return null;
-    const mc_u = pv - cvu;
-    const mc_pct = (mc_u / pv) * 100;
+    // Mismo margen que el backend (economiaUnitaria.ts): sin el impuesto que
+    // trae el precio, con la comisión de la plataforma y el sueldo del dueño.
+    const extra = analisis?.inputs_data;
+    const tasa = extra?.precio_incluye_impuesto ? (extra.tasa_impuesto_consumo ?? taxCfg.consumo.tasa) : 0;
+    const pNeto = pv / (1 + tasa);
+    const comision = pv * ((extra?.comision_venta_pct ?? 0) / 100);
+    const cf = cfDeclarados + (extra?.sueldo_dueno_mensual ?? 0);
+    const mc_u = pNeto - cvu - comision;
+    const mc_pct = pNeto > 0 ? (mc_u / pNeto) * 100 : 0;
     const u_be = mc_u > 0 ? Math.ceil(cf / mc_u) : Infinity;
-    const ingresos_be = u_be * pv;
+    const ingresos_be = u_be * pNeto;
     const utilidad_mes1 = (u1 * mc_u) - cf;
     const viabilidad: 'alta' | 'media' | 'baja' =
       mc_pct >= 30 && u1 >= u_be ? 'alta' :
       mc_pct >= 15 ? 'media' : 'baja';
     return { mc_u, mc_pct, u_be, ingresos_be, utilidad_mes1, viabilidad };
-  }, [overrides]);
+  }, [overrides, analisis?.inputs_data, taxCfg]);
 
   // Loader: mínimo 700ms si el análisis ya estaba completado, o 4.5s si es una corrida nueva
   const { showLoader, loaderDone } = useAnalysisLoaderGate(
@@ -880,6 +940,25 @@ export default function FinanzasResultadoPage() {
   const res = normalizeResumen(analisis.resumen_data, proy, analisis);
   const riesgos = normalizeRiesgos(analisis.riesgos_data);
   const inp = normalizeInputs(analisis.inputs_data);
+  // Lo que entró al cálculo además de lo editable (análisis viejos: nada).
+  const inputsExtra: InputsFinanzas = analisis.inputs_data ?? inp;
+  const eco = proy.economia_unitaria;
+  const parametrosExtra: { label: string; value: string }[] = [];
+  if (eco && eco.impuesto_unitario > 0) {
+    parametrosExtra.push({ label: `Precio sin ${taxCfg.consumo.nombre}`, value: fmtCurrency(eco.precio_neto) });
+  }
+  if (eco && eco.comision_unitaria > 0) {
+    parametrosExtra.push({ label: 'Comisión por venta', value: `${fmtCurrency(eco.comision_unitaria)} (${inputsExtra.comision_venta_pct ?? 0}%)` });
+  }
+  if ((inputsExtra.sueldo_dueno_mensual ?? 0) > 0) {
+    parametrosExtra.push({ label: 'Sueldo del dueño/mes', value: fmtCurrency(inputsExtra.sueldo_dueno_mensual ?? 0) });
+  }
+  if ((inputsExtra.dias_cobro ?? 0) > 0 || (inputsExtra.dias_pago ?? 0) > 0) {
+    parametrosExtra.push({ label: 'Cobro / pago', value: `${inputsExtra.dias_cobro ?? 0} / ${inputsExtra.dias_pago ?? 0} días` });
+  }
+  if ((inputsExtra.pago_deuda_mensual ?? 0) > 0) {
+    parametrosExtra.push({ label: 'Cuota de deuda/mes', value: fmtCurrency(inputsExtra.pago_deuda_mensual ?? 0) });
+  }
 
   // Chart data
   const chartData = (proy?.meses || []).map((m) => ({
@@ -1133,6 +1212,8 @@ export default function FinanzasResultadoPage() {
                 { label: 'Unidades mes 1',      value: fmt(inp.unidades_mes_inicial) },
                 { label: 'Crecimiento mensual', value: `${inp.tasa_crecimiento_mensual}%` },
                 { label: 'Margen contribución', value: `${Math.round(be.margen_contribucion_porcentaje)}%` },
+                // finanzas@2: lo que se descontó y sumó. Solo si se declaró.
+                ...parametrosExtra,
               ].map((i) => (
                 <div key={i.label} className="bg-white/3 border border-white/8 rounded-control p-3">
                   <p className="text-[10px] text-white/35 uppercase tracking-wider mb-1">{i.label}</p>
@@ -1269,6 +1350,45 @@ export default function FinanzasResultadoPage() {
               <p className="text-[10px] text-red-400/50 mt-0.5">{fmtCurrency(proy.meses[proy.peor_mes - 1]?.utilidad_neta)} utilidad</p>
             </div>
           </div>
+
+          {/* Plazos y deuda: solo si se declararon (finanzas@2). */}
+          {(proy.capital_de_trabajo > 0 || proy.cobertura_deuda !== null) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {proy.capital_de_trabajo > 0 && (
+                <div className="rounded-surface border border-amber-500/30 bg-amber-500/8 p-4">
+                  <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Capital de trabajo</p>
+                  <p className="text-lg font-bold text-amber-300">{fmtCurrency(proy.capital_de_trabajo)}</p>
+                  <p className="text-[11px] text-white/45 mt-0.5">
+                    Caja que inmovilizan los plazos: cobras a {inputsExtra.dias_cobro ?? 0} días y pagas a {inputsExtra.dias_pago ?? 0}. Ya está dentro de la caja necesaria.
+                  </p>
+                </div>
+              )}
+              {proy.cobertura_deuda !== null && (
+                <div className={`rounded-surface border p-4 ${
+                  proy.cobertura_deuda >= 1.25 ? 'border-emerald-500/30 bg-emerald-500/8'
+                  : proy.cobertura_deuda >= 1 ? 'border-amber-500/30 bg-amber-500/8'
+                  : 'border-red-500/30 bg-red-500/8'
+                }`}>
+                  <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Cobertura de deuda</p>
+                  <p className={`text-lg font-bold ${
+                    proy.cobertura_deuda >= 1.25 ? 'text-emerald-300' : proy.cobertura_deuda >= 1 ? 'text-amber-300' : 'text-red-300'
+                  }`}>{proy.cobertura_deuda.toLocaleString('es-MX')}×</p>
+                  <p className="text-[11px] text-white/45 mt-0.5">
+                    Veces que tu utilidad mensual paga la cuota de {fmtCurrency(inputsExtra.pago_deuda_mensual ?? 0)} (lo sano es 1,25× o más).
+                    {be.unidades_equilibrio_con_deuda ? ` Para cubrirla necesitas ${fmt(be.unidades_equilibrio_con_deuda)} unidades al mes.` : ''}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Qué tan confiable es y qué dato lo mejoraría (finanzas@2). */}
+          {analisis.meta_ia?.transparencia && (
+            <TransparenciaIA transparencia={analisis.meta_ia.transparencia} hrefCompletar={`/dashboard/finanzas/${productoId}`} />
+          )}
+          {(analisis.meta_ia?.secciones_extra?.length ?? 0) > 0 && (
+            <SeccionesExtra secciones={analisis.meta_ia?.secciones_extra} />
+          )}
         </div>
       )}
 

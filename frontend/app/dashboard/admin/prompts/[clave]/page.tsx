@@ -106,9 +106,34 @@ interface VistaComun {
 
 const largo = (v: unknown) => (Array.isArray(v) ? v.length : 0);
 
-/** Legal guarda todo en un objeto; Mercado devuelve viabilidad, DAFO, reporte BI y `meta_ia`. */
+/**
+ * Legal guarda todo en un objeto; Mercado devuelve viabilidad, DAFO, reporte BI
+ * y `meta_ia`; Finanzas, el cálculo, los riesgos y `meta_ia`.
+ */
 function vistaDePrueba(resultado: unknown): VistaComun {
   const r = (resultado ?? {}) as Record<string, unknown>;
+  if (r.meta_ia && typeof r.meta_ia === 'object' && r.resumen && typeof r.resumen === 'object') {
+    const meta = r.meta_ia as {
+      transparencia?: Transparencia;
+      secciones_extra?: SeccionExtra[];
+      secciones_ocultas?: string[];
+      meta?: { origen?: VistaComun['origen'] };
+    };
+    const resumen = r.resumen as { viabilidad?: string; mensaje_viabilidad?: string; alertas?: unknown[]; recomendaciones?: unknown[] };
+    const riesgos = (r.riesgos ?? null) as { riesgos?: unknown[] } | null;
+    return {
+      origen: meta.meta?.origen,
+      puntaje: null,
+      resumen: resumen.mensaje_viabilidad ? `Viabilidad ${resumen.viabilidad ?? '—'}: ${resumen.mensaje_viabilidad}` : null,
+      conteos: [
+        ['Riesgos', (meta.secciones_ocultas ?? []).includes('finanzas.riesgos') ? 'oculta' : largo(riesgos?.riesgos)],
+        ['Alertas del cálculo', largo(resumen.alertas)],
+        ['Recomendaciones', largo(resumen.recomendaciones)],
+      ],
+      transparencia: meta.transparencia,
+      secciones_extra: meta.secciones_extra,
+    };
+  }
   if (r.meta_ia && typeof r.meta_ia === 'object') {
     const meta = r.meta_ia as {
       transparencia?: Transparencia;

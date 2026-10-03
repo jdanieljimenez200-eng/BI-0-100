@@ -32,6 +32,12 @@ export interface PerfilNegocio {
   datos_sensibles?: boolean | null;
   tipo_clientes?: 'consumidor_final' | 'empresas' | 'gobierno' | 'mixto' | null;
   marca?: 'registrada' | 'en_tramite' | 'no' | 'no_se' | null;
+  // Cómo cobra y paga el negocio (Finanzas; ver CAMPOS_FINANCIEROS en el backend).
+  precio_incluye_impuesto?: boolean | null;
+  comision_venta_pct?: number | null;
+  dias_cobro?: number | null;
+  dias_pago?: number | null;
+  pago_deuda_mensual?: number | null;
 }
 
 export const OPCIONES = {
@@ -81,9 +87,4 @@ export function perfilParaEnviar(perfil: PerfilNegocio): PerfilNegocio | undefin
     limpio[clave] = valor;
   }
   return Object.keys(limpio).length ? (limpio as PerfilNegocio) : undefined;
-}
-
-/** Cuántas de las 8 preguntas tienen respuesta. */
-export function preguntasRespondidas(perfil: PerfilNegocio): number {
-  return Object.values(perfilParaEnviar(perfil) ?? {}).filter((v) => v !== null).length;
 }

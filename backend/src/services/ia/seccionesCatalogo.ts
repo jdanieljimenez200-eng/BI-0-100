@@ -36,6 +36,14 @@ export const SECCIONES_NATIVAS: Record<ModuloPrompt, SeccionNativa[]> = {
     { clave: 'mercado.dafo', titulo: 'DAFO', ocultable: true },
     { clave: 'mercado.reporte_bi', titulo: 'Reporte BI (diagnóstico y próximos pasos)', ocultable: true },
   ],
+  // Finanzas lo calcula el código; la IA solo escribe los riesgos.
+  finanzas: [
+    { clave: 'finanzas.punto_equilibrio', titulo: 'Punto de equilibrio', ocultable: false },
+    { clave: 'finanzas.resumen', titulo: 'Resumen y viabilidad', ocultable: false },
+    { clave: 'finanzas.proyeccion_12m', titulo: 'Proyección y flujo de caja a 12 meses', ocultable: false },
+    { clave: 'finanzas.escenarios_avanzados', titulo: 'Escenarios', ocultable: false },
+    { clave: 'finanzas.riesgos', titulo: 'Riesgos del negocio', ocultable: true },
+  ],
 };
 
 export function seccionesOcultables(modulo: ModuloPrompt): string[] {

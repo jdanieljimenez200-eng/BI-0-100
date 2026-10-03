@@ -1,18 +1,19 @@
 import { r2 } from '../../utils/dinero';
 import { FinanzasInput, BreakevenData, EscenarioBreakeven, MesProyeccion } from './types';
+import { economiaUnitaria } from './economiaUnitaria';
 
 export function calcularBreakeven(
   input: FinanzasInput,
   meses: MesProyeccion[],
 ): BreakevenData {
-  const {
-    precio_venta,
-    costo_variable_unitario,
-    costos_fijos_mensuales,
-    unidades_mes_inicial,
-  } = input;
+  const { unidades_mes_inicial } = input;
+  // El margen que de verdad queda: precio sin el impuesto incluido, menos costo
+  // variable y comisiones; los fijos llevan el sueldo del dueño que faltaba.
+  const eco = economiaUnitaria(input);
+  const precio_venta = eco.precio_neto;
+  const costos_fijos_mensuales = eco.costos_fijos_efectivos;
 
-  const margen_contribucion_unitario = precio_venta - costo_variable_unitario;
+  const margen_contribucion_unitario = eco.margen_unitario;
   const margen_contribucion_porcentaje =
     precio_venta > 0 ? (margen_contribucion_unitario / precio_venta) * 100 : 0;
 
@@ -75,10 +76,15 @@ export function calcularBreakeven(
     };
   }
 
+  // Equilibrio de caja: además de los costos, la cuota de la deuda.
+  const deuda = Math.max(0, Number(input.pago_deuda_mensual) || 0);
+  const unidades_equilibrio_con_deuda =
+    deuda > 0 && viable ? Math.ceil((costos_fijos_mensuales + deuda) / margen_contribucion_unitario) : null;
+
   const escenarios: EscenarioBreakeven[] = [
     {
       nombre: 'Punto de equilibrio',
-      descripcion: 'Cubres todos los costos, ganancia = $0',
+      descripcion: 'Cubres todos los costos, ganancia = 0',
       unidades_necesarias: unidades_breakeven_mes,
       ingresos_necesarios: ingresos_breakeven_mes,
       diferencia_vs_inicial: viable && unidades_mes_inicial > 0
@@ -99,6 +105,7 @@ export function calcularBreakeven(
     meses_para_recuperar_inversion,
     payback_no_disponible,
     inversion_inicial,
+    unidades_equilibrio_con_deuda,
     escenarios,
   };
 }

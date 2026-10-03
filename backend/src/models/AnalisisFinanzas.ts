@@ -13,16 +13,22 @@ import type { FinanzasInput, SensibilidadAnalisis } from '../services/finanzas/t
 import type { generarProyeccion } from '../services/finanzas/proyeccionService';
 import type { calcularBreakeven } from '../services/finanzas/breakevenService';
 import type { generarResumen } from '../services/finanzas/resumenService';
+import type { MetaIaAnalisis } from '../services/ia/metaAnalisis';
 
 // Tipos de salida derivados de las funciones puras (evita duplicación).
 export type ProyeccionResult = ReturnType<typeof generarProyeccion>;
 export type BreakevenResult = ReturnType<typeof calcularBreakeven>;
 export type ResumenFinanciero = ReturnType<typeof generarResumen>;
 
-// Snapshot de los inputs originales almacenado en `inputs_data`.
+// Snapshot de los inputs originales almacenado en `inputs_data`. Los de
+// finanzas@2 (impuesto incluido, comisiones, plazos, sueldo, deuda) faltan en
+// los análisis anteriores.
 export type FinanzasInputsSnapshot = Pick<FinanzasInput,
   'precio_venta' | 'costo_variable_unitario' | 'costos_fijos_mensuales'
-  | 'unidades_mes_inicial' | 'tasa_crecimiento_mensual' | 'inversion_inicial'>;
+  | 'unidades_mes_inicial' | 'tasa_crecimiento_mensual' | 'inversion_inicial'>
+  & Partial<Pick<FinanzasInput,
+    'precio_incluye_impuesto' | 'tasa_impuesto_consumo' | 'comision_venta_pct' | 'dias_cobro'
+    | 'dias_pago' | 'sueldo_dueno_mensual' | 'pago_deuda_mensual'>>;
 
 @Entity('analisis_finanzas')
 @Index(['usuario_id', 'producto_id'])
@@ -68,6 +74,13 @@ export class AnalisisFinanzas {
   // Riesgos financieros del negocio (antes vivía en Ventas como "por qué fallan").
   @Column({ nullable: true, type: 'jsonb' })
   riesgos_data!: unknown | null;
+
+  /**
+   * finanzas@2: confianza, supuestos y datos faltantes, secciones extra u
+   * ocultas del admin y versión de prompt usada (`services/ia/metaAnalisis.ts`).
+   */
+  @Column({ nullable: true, type: 'jsonb' })
+  meta_ia!: MetaIaAnalisis | null;
 
   // Estado del proceso
   @Column({ default: 'procesando' })

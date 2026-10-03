@@ -3,6 +3,17 @@ import { app, initTestDb, closeTestDb } from '../helpers/testApp';
 import { describeWithDb } from '../helpers/dbGuard';
 import { signupTestUser } from '../helpers/authHelper';
 import { crearProductoDeUsuario } from '../helpers/seedHelper';
+import { AppDataSource } from '../../config/database';
+import { Producto } from '../../models/Producto';
+import { AnalisisFinanzas } from '../../models/AnalisisFinanzas';
+import { analysisQueue } from '../../workers/analysisQueue';
+
+// Encolar de verdad abriría la conexión de BullMQ y Jest no saldría: aquí solo
+// importa lo que hace la ruta antes de encolar.
+jest.mock('../../workers/analysisQueue', () => ({
+  ...jest.requireActual('../../workers/analysisQueue'),
+  analysisQueue: { add: jest.fn().mockResolvedValue({}) },
+}));
 
 describeWithDb('Finanzas routes', () => {
   let token: string;
@@ -75,6 +86,59 @@ describeWithDb('Finanzas routes', () => {
         .send({ producto_id: await nuevoProductoId(), ...payloadValido, tasa_crecimiento_mensual: 60 });
 
       expect(res.status).toBe(400);
+    });
+
+    it('rechaza una comisión imposible en «Afina tu análisis»', async () => {
+      const res = await request
+        .default(app)
+        .post('/api/finanzas/analizar')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ producto_id: await nuevoProductoId(), ...payloadValido, perfil_negocio: { comision_venta_pct: 150 } });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('guarda el perfil, usa el país del producto y manda cobro y pago al cálculo', async () => {
+      const producto = await crearProductoDeUsuario(usuarioId, {
+        pais: 'CO',
+        perfil_negocio: { tipo_clientes: 'empresas', dias_cobro: 30 },
+      });
+      const res = await request
+        .default(app)
+        .post('/api/finanzas/analizar')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          producto_id: producto.id,
+          ...payloadValido,
+          sueldo_dueno_mensual: 2000000,
+          origen_datos: 'declarado',
+          perfil_negocio: { precio_incluye_impuesto: true, comision_venta_pct: 5, dias_cobro: 60 },
+        });
+      expect(res.status).toBe(202);
+
+      // Lo nuevo se fusiona con lo que ya había en el producto.
+      const guardado = await AppDataSource.getRepository(Producto).findOneByOrFail({ id: producto.id });
+      expect(guardado.perfil_negocio).toEqual({
+        tipo_clientes: 'empresas',
+        dias_cobro: 60,
+        precio_incluye_impuesto: true,
+        comision_venta_pct: 5,
+      });
+      // Antes la fila quedaba siempre en 'MX'.
+      const analisis = await AppDataSource.getRepository(AnalisisFinanzas).findOneByOrFail({ id: res.body.analisis_id });
+      expect(analisis.pais).toBe('CO');
+
+      const trabajo = (analysisQueue.add as jest.Mock).mock.calls.at(-1)?.[1];
+      expect(trabajo.payload).toMatchObject({
+        precio_incluye_impuesto: true,
+        comision_venta_pct: 5,
+        dias_cobro: 60,
+        dias_pago: null,
+        pago_deuda_mensual: null,
+        sueldo_dueno_mensual: 2000000,
+        origen_datos: 'declarado',
+      });
+      expect(trabajo.payload).not.toHaveProperty('perfil_negocio');
     });
   });
 

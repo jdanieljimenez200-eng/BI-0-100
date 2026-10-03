@@ -20,6 +20,43 @@ export interface FinanzasInput {
    * hiciera en septiembre, y «tu peor mes: Enero» era en realidad el primero.
    */
   mes_inicio?: number;
+
+  // ── Datos que cambian el cálculo («Afina tu análisis» y el formulario) ────
+  // Todos opcionales: sin ellos el modelo es el de siempre (precio sin
+  // impuesto, sin comisiones, de contado y sin deuda) y la transparencia del
+  // análisis lo declara como supuesto.
+
+  /** País del producto: moneda e impuesto al consumo. */
+  pais?: string;
+  /** ¿El precio de venta ya incluye el impuesto al consumo (IVA, IGV, ITBM…)? */
+  precio_incluye_impuesto?: boolean | null;
+  /** Tasa del impuesto al consumo del país (0.16…). La pone el código según el país, nunca el usuario. */
+  tasa_impuesto_consumo?: number;
+  /** % de lo que paga el cliente que se quedan pasarelas, marketplaces o apps de reparto. */
+  comision_venta_pct?: number | null;
+  /** Días que tardas en cobrar una venta (0 = de contado). */
+  dias_cobro?: number | null;
+  /** Días que te dan tus proveedores para pagar los insumos (0 = de contado). */
+  dias_pago?: number | null;
+  /** Sueldo del dueño que NO está dentro de `costos_fijos_mensuales`. */
+  sueldo_dueno_mensual?: number | null;
+  /** Cuota mensual de las deudas del negocio (capital más intereses). */
+  pago_deuda_mensual?: number | null;
+}
+
+/** Lo que de verdad deja cada venta, una vez quitado el impuesto y las comisiones. */
+export interface EconomiaUnitaria {
+  /** Precio sin el impuesto al consumo: lo que es ingreso del negocio. */
+  precio_neto: number;
+  /** Impuesto al consumo que va dentro del precio (0 si el precio no lo incluye). */
+  impuesto_unitario: number;
+  /** Comisión por venta, sobre lo que paga el cliente. */
+  comision_unitaria: number;
+  /** Costo variable declarado más la comisión. */
+  costo_variable_efectivo: number;
+  margen_unitario: number;
+  /** Costos fijos declarados más el sueldo del dueño que no estaba dentro. */
+  costos_fijos_efectivos: number;
 }
 
 export interface MesProyeccion {
@@ -33,6 +70,14 @@ export interface MesProyeccion {
   utilidad_neta: number;
   margen_neto: number; // porcentaje
   acumulado_neto: number;
+  /**
+   * Dinero que de verdad entra menos el que sale ese mes: cobros (con sus días
+   * de cobro) menos insumos (con sus días de pago), comisiones, costos fijos y
+   * cuota de deuda. Sin plazos ni deuda coincide con la utilidad neta.
+   */
+  flujo_caja: number;
+  /** Saldo de caja acumulado, empezando en menos la inversión inicial. */
+  saldo_caja: number;
 }
 
 export interface ProyeccionAnual {
@@ -55,6 +100,18 @@ export interface ProyeccionAnual {
   caja_necesaria: number;
   /** Mes de ese punto más bajo (0 = el arranque). */
   mes_valle: number;
+  /**
+   * Caja extra que inmovilizan los plazos: cobrar a crédito mientras pagas de
+   * contado. 0 sin plazos declarados.
+   */
+  capital_de_trabajo: number;
+  /**
+   * Veces que la utilidad mensual promedio cubre la cuota de deuda. `null` sin
+   * deuda declarada. Menos de 1: el negocio no puede pagarla con lo que genera.
+   */
+  cobertura_deuda: number | null;
+  /** Lo que se usó en el cálculo, para mostrarlo y explicarlo. */
+  economia_unitaria: EconomiaUnitaria;
   /** Siempre true: esta proyección no descuenta impuestos y hay que decirlo. */
   utilidad_antes_de_impuestos: true;
 }
@@ -71,6 +128,11 @@ export interface BreakevenData {
   /** Por qué no hay payback, cuando no lo hay. La pantalla lo muestra tal cual. */
   payback_no_disponible: 'sin_inversion_declarada' | 'no_se_recupera_en_12_meses' | null;
   inversion_inicial: number;
+  /**
+   * Unidades al mes para cubrir también la cuota de deuda (equilibrio de caja).
+   * `null` sin deuda declarada.
+   */
+  unidades_equilibrio_con_deuda: number | null;
   escenarios: EscenarioBreakeven[];
 }
 

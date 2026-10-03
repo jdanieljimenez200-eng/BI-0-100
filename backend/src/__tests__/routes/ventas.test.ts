@@ -7,6 +7,14 @@ import { AppDataSource } from '../../config/database';
 import { AnalisisVentas } from '../../models/AnalisisVentas';
 import { Usuario } from '../../models/Usuario';
 
+// Encolar de verdad abre la conexión de BullMQ y Jest no sale al terminar
+// (la suite entera se quedaba colgada): aquí solo importa lo que hace la ruta
+// antes de encolar.
+jest.mock('../../workers/analysisQueue', () => ({
+  ...jest.requireActual('../../workers/analysisQueue'),
+  analysisQueue: { add: jest.fn().mockResolvedValue({}) },
+}));
+
 const PERFIL_VALIDO = {
   demograficos: {
     edad_rango: '25-34',

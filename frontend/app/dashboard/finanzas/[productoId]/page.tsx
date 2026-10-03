@@ -8,6 +8,12 @@ import { getImageUrl } from '@/lib/utils';
 import { interpretarErrorApi } from '@/lib/apiError';
 import AvisoErrorApi from '@/components/ui/AvisoErrorApi';
 import { BackButton } from '@/components/ui';
+import AfinaTuAnalisis from '@/components/analisis/AfinaTuAnalisis';
+import { leerPerfil, monedaDePais, perfilParaEnviar, type PerfilNegocio } from '@/lib/perfilNegocio';
+import { getTaxConfig } from '@/lib/taxConfig';
+
+/** Las preguntas de «Afina tu análisis» que cambian el cálculo financiero. */
+const CAMPOS_PERFIL_FINANZAS = ['precio_incluye_impuesto', 'comision_venta_pct', 'dias_cobro', 'dias_pago', 'pago_deuda_mensual'] as const;
 
 interface Producto {
   id: string;
@@ -17,6 +23,8 @@ interface Producto {
   imagen_url: string | null;
   costos_fijos: number | null;
   inversion_inicial: number | null;
+  pais: string | null;
+  perfil_negocio: unknown;
 }
 
 interface FormData {
@@ -27,6 +35,8 @@ interface FormData {
   tasa_crecimiento_mensual: string;
   /** Opcional: sin ella no hay payback que calcular. */
   inversion_inicial: string;
+  /** Opcional: el sueldo del dueño que NO está en los costos fijos. */
+  sueldo_dueno_mensual: string;
 }
 
 // ─── Shared CSS ───────────────────────────────────────────────────────────────
@@ -126,7 +136,9 @@ export default function FinanzasScopePage() {
     unidades_mes_inicial: '',
     tasa_crecimiento_mensual: '10',
     inversion_inicial: '',
+    sueldo_dueno_mensual: '',
   });
+  const [perfil, setPerfil] = useState<PerfilNegocio>({});
 
   useEffect(() => {
     // Navegar de un producto a otro reutiliza este componente y relanza el
@@ -137,6 +149,7 @@ export default function FinanzasScopePage() {
       .then(({ data }) => {
         if (!vigente) return;
         setProducto(data);
+        setPerfil(leerPerfil(data?.perfil_negocio));
         // Pre-llenado desde lo que el usuario ya contestó en el alta. Solo se
         // rellenan campos vacíos: si ya escribió algo, manda lo suyo.
         const heredados: Record<string, string> = {};
@@ -212,6 +225,7 @@ export default function FinanzasScopePage() {
       unidades_mes_inicial: 'Las unidades del mes 1',
       tasa_crecimiento_mensual: 'La tasa de crecimiento',
       inversion_inicial: 'La inversión inicial',
+      sueldo_dueno_mensual: 'Tu sueldo',
     };
     const nums = ['precio_venta', 'costo_variable_unitario', 'costos_fijos_mensuales', 'unidades_mes_inicial', 'tasa_crecimiento_mensual'] as const;
     const errs: Partial<Record<keyof FormData, string>> = {};
@@ -229,6 +243,9 @@ export default function FinanzasScopePage() {
     }
     // Por encima del 50 % mensual el backend rechaza: una proyección así no
     // describe ningún negocio (×86 en un año).
+    if (form.sueldo_dueno_mensual && (isNaN(Number(form.sueldo_dueno_mensual)) || Number(form.sueldo_dueno_mensual) < 0)) {
+      errs.sueldo_dueno_mensual = 'Tu sueldo debe ser un número válido (≥ 0).';
+    }
     if (!errs.tasa_crecimiento_mensual && Number(form.tasa_crecimiento_mensual) > 50) {
       errs.tasa_crecimiento_mensual = 'Un crecimiento mayor al 50% mensual no es proyectable: revisa el dato.';
     }
@@ -247,6 +264,10 @@ export default function FinanzasScopePage() {
         unidades_mes_inicial: Number(form.unidades_mes_inicial),
         tasa_crecimiento_mensual: Number(form.tasa_crecimiento_mensual),
         inversion_inicial: form.inversion_inicial ? Number(form.inversion_inicial) : null,
+        sueldo_dueno_mensual: form.sueldo_dueno_mensual ? Number(form.sueldo_dueno_mensual) : null,
+        // Con la contabilidad real el análisis es más confiable, y lo dice.
+        origen_datos: calibracionAplicada ? 'contabilidad' : 'declarado',
+        perfil_negocio: perfilParaEnviar(perfil),
       });
       router.push(`/dashboard/finanzas/${productoId}/resultado/${data.analisis_id}`);
     } catch (err: unknown) {
@@ -274,10 +295,20 @@ export default function FinanzasScopePage() {
   }
 
   const imgUrl = getImageUrl(producto.imagen_url);
+  // Moneda e impuesto del país del producto: antes todo decía MXN.
+  const moneda = monedaDePais(producto.pais) || 'MXN';
+  const impuesto = getTaxConfig((producto.pais ?? 'MX').toUpperCase()).consumo;
+  const dinero = (n: number) => `${n.toLocaleString('es-MX')} ${moneda}`;
+  // El margen que de verdad queda (como economiaUnitaria.ts del backend): sin el
+  // impuesto incluido y con la comisión de la plataforma.
+  const precio = Number(form.precio_venta);
+  const precioNeto = perfil.precio_incluye_impuesto ? precio / (1 + impuesto.tasa) : precio;
+  const comision = precio * ((perfil.comision_venta_pct ?? 0) / 100);
   const margen =
-    form.precio_venta && form.costo_variable_unitario && Number(form.precio_venta) > 0
-      ? Math.round(((Number(form.precio_venta) - Number(form.costo_variable_unitario)) / Number(form.precio_venta)) * 100)
+    form.precio_venta && form.costo_variable_unitario && precioNeto > 0
+      ? Math.round(((precioNeto - comision - Number(form.costo_variable_unitario)) / precioNeto) * 100)
       : null;
+  const margenAjustado = Boolean(perfil.precio_incluye_impuesto || perfil.comision_venta_pct);
 
   const crecimientoLabel =
     Number(form.tasa_crecimiento_mensual) <= 5 ? 'Conservador' :
@@ -315,7 +346,7 @@ export default function FinanzasScopePage() {
           {producto.inversion_inicial && (
             <div className="text-right flex-shrink-0">
               <p className="text-[10px] text-white/35 uppercase tracking-wider font-semibold">Inversión registrada</p>
-              <p className="text-sm font-bold text-finanzas font-mono">${Number(producto.inversion_inicial).toLocaleString('es-MX')}</p>
+              <p className="text-sm font-bold text-finanzas font-mono">{dinero(Number(producto.inversion_inicial))}</p>
               <p className="text-[10px] text-white/30">usada para calcular payback</p>
             </div>
           )}
@@ -334,7 +365,7 @@ export default function FinanzasScopePage() {
               </p>
               <p className="text-[11px] text-white/50 leading-relaxed mt-0.5">
                 {calibracion.meses_analizados} {calibracion.meses_analizados === 1 ? 'mes' : 'meses'} de tu contabilidad:
-                {' '}costos fijos ≈ ${Math.round(calibracion.costos_fijos_sugeridos).toLocaleString('es-MX')}/mes
+                {' '}costos fijos ≈ {dinero(Math.round(calibracion.costos_fijos_sugeridos))}/mes
                 {calibracion.tasa_crecimiento_mensual !== null
                   ? `, crecimiento real ${calibracion.tasa_crecimiento_mensual > 0 ? '+' : ''}${Math.round(calibracion.tasa_crecimiento_mensual * 10) / 10}% mensual`
                   : ''}
@@ -356,7 +387,7 @@ export default function FinanzasScopePage() {
         {/* BLOQUE 1 - Estructura de Precios */}
         <Block n={1} title="Estructura de Precios y Costos" subtitle="La base del modelo financiero">
 
-          <Field label="Precio de venta unitario" unit="MXN" heredado={heredados.has('precio_venta')} help="El precio final que paga tu cliente por una unidad, sin descuentos. Es la base de todo el modelo: ingreso, margen y punto de equilibrio." error={fieldErrors.precio_venta}>
+          <Field label="Precio de venta unitario" unit={moneda} heredado={heredados.has('precio_venta')} help="El precio final que paga tu cliente por una unidad, sin descuentos. Es la base de todo el modelo: ingreso, margen y punto de equilibrio." error={fieldErrors.precio_venta}>
             <input
               type="number" name="precio_venta"
               value={form.precio_venta} onChange={handleChange}
@@ -367,9 +398,9 @@ export default function FinanzasScopePage() {
 
           <Field
             label="Costo variable por unidad"
-            unit="MXN"
-            hint="Incluye: producción, empaque, envío, comisión de plataforma."
-            help="Lo que te cuesta producir y entregar UNA unidad. Solo costos que suben si vendes más (materia prima, empaque, envío, comisiones). No incluyas renta ni sueldos fijos."
+            unit={moneda}
+            hint="Producción, empaque y envío. Las comisiones de plataformas van en «Afina tu análisis»."
+            help="Lo que te cuesta producir y entregar UNA unidad. Solo costos que suben si vendes más (materia prima, empaque, envío). No incluyas renta ni sueldos fijos, ni las comisiones de plataformas: esas se preguntan aparte para no contarlas dos veces."
             error={fieldErrors.costo_variable_unitario}
           >
             <input
@@ -380,13 +411,13 @@ export default function FinanzasScopePage() {
             />
             {margen !== null && (
               <p className={`text-xs mt-1.5 font-semibold ${margen >= 40 ? 'text-green-400' : margen >= 25 ? 'text-yellow-400' : 'text-orange-400'}`}>
-                Margen de contribución: {margen}%
+                {margenAjustado ? `Margen real (sin ${impuesto.nombre} incluido y comisiones)` : 'Margen de contribución'}: {margen}%
                 {margen < 25 ? ' — Revisa tu estructura de costos' : margen >= 40 ? ' — Margen saludable' : ''}
               </p>
             )}
           </Field>
 
-          <Field label="Costos fijos mensuales" unit="MXN" heredado={heredados.has('costos_fijos_mensuales')} help="Gastos que pagas cada mes vendas o no: renta, sueldos, software, publicidad fija. Determinan cuántas unidades necesitas vender para no perder dinero." error={fieldErrors.costos_fijos_mensuales}>
+          <Field label="Costos fijos mensuales" unit={moneda} heredado={heredados.has('costos_fijos_mensuales')} help="Gastos que pagas cada mes vendas o no: renta, sueldos, software, publicidad fija. Determinan cuántas unidades necesitas vender para no perder dinero." error={fieldErrors.costos_fijos_mensuales}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] text-white/40">Renta, sueldos, publicidad fija, suscripciones...</span>
               <button
@@ -421,7 +452,7 @@ export default function FinanzasScopePage() {
                 <div className="flex items-center justify-between border-t border-white/10 pt-2 mt-1">
                   <span className="text-xs font-semibold text-white/60">Total costos fijos</span>
                   <span className="text-sm font-bold text-finanzas font-mono">
-                    ${Number(form.costos_fijos_mensuales || 0).toLocaleString('es-MX')} MXN
+                    {dinero(Number(form.costos_fijos_mensuales || 0))}
                   </span>
                 </div>
               </div>
@@ -433,6 +464,21 @@ export default function FinanzasScopePage() {
                 className={`${inputCls} ${fieldErrors.costos_fijos_mensuales ? inputErrCls : ''}`}
               />
             )}
+          </Field>
+
+          <Field
+            label="Tu sueldo como dueño"
+            unit={`${moneda}, opcional`}
+            hint="Solo si NO lo incluiste en los costos fijos. Si no te pagas sueldo, déjalo vacío: el análisis lo dirá."
+            help="Muchos negocios parecen rentables porque el dueño no se paga. Si lo pones aquí, se suma a los costos fijos y el punto de equilibrio incluye pagarte."
+            error={fieldErrors.sueldo_dueno_mensual}
+          >
+            <input
+              type="number" name="sueldo_dueno_mensual"
+              value={form.sueldo_dueno_mensual} onChange={handleChange}
+              placeholder="ej. 12000" min="0"
+              className={`${inputCls} ${fieldErrors.sueldo_dueno_mensual ? inputErrCls : ''}`}
+            />
           </Field>
 
         </Block>
@@ -503,6 +549,13 @@ export default function FinanzasScopePage() {
           </div>
 
         </Block>
+
+        <AfinaTuAnalisis
+          perfil={perfil}
+          onChange={setPerfil}
+          pais={producto.pais}
+          campos={[...CAMPOS_PERFIL_FINANZAS]}
+        />
 
         <AvisoErrorApi mensaje={error} upgradeRequired={upgradeRequired} />
 
