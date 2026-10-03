@@ -11,7 +11,8 @@ import { requireAnalisisLock } from '../middleware/idempotency';
 import { validateBody, exigirUuid } from '../middleware/validate';
 import { logger } from '../utils/logger';
 import { MAX_ENTERO } from '../utils/limitesNumericos';
-import { PerfilNegocioSchema, fusionarPerfil } from '../services/ia/perfilNegocio';
+import { PerfilNegocioSchema } from '../services/ia/perfilNegocio';
+import { guardarPerfilNegocio } from '../services/ia/guardarPerfil';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
 
@@ -86,11 +87,7 @@ router.post(
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
 
-    if (perfilNuevo) {
-      await AppDataSource.getRepository(Producto).update(producto.id, {
-        perfil_negocio: fusionarPerfil(producto.perfil_negocio, perfilNuevo),
-      });
-    }
+    await guardarPerfilNegocio(producto, perfilNuevo);
 
     // Create analysis record
     const analisisRepo = AppDataSource.getRepository(AnalisisLegal);

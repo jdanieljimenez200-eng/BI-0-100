@@ -9,18 +9,16 @@ import { PromptIA } from '../models/PromptIA';
 import { Usuario } from '../models/Usuario';
 import { registrarAccionAdmin } from '../services/admin/auditoria';
 import { ah } from '../utils/asyncHandler';
-import { conSeguimientoIA } from '../utils/seguimientoIA';
 import { hayClaveAnthropic } from '../config/anthropic';
-import { catalogoClaves, clavesDeModulo, esClaveValida, infoClave, textoPorDefecto } from '../services/ia/prompts';
-import { invalidarCachePrompts, versionesAAnclar } from '../services/ia/registroPrompts';
+import { catalogoClaves, esClaveValida, infoClave, textoPorDefecto } from '../services/ia/prompts';
+import { invalidarCachePrompts } from '../services/ia/registroPrompts';
 import {
   SECCIONES_NATIVAS,
   SeccionesExtraSchema,
   errorSeccionesOcultas,
 } from '../services/ia/seccionesCatalogo';
-import { CASOS_LEGAL, productoDeCaso } from '../services/ia/casosPrueba';
+import { casosDeModulo, probarVersion, ErrorPrueba } from '../services/ia/probarPrompt';
 import { plantillaFichaNueva } from '../services/legal/fichasPais';
-import { generarAnalisisLegal } from '../services/legal/legalService';
 
 /**
  * /api/admin/prompts — prompts de IA versionados.
@@ -112,7 +110,7 @@ router.get(
         publicado_por: v.publicado_por_id ? email.get(v.publicado_por_id) ?? null : null,
       })),
       secciones_nativas: info.tipo === 'modo' ? SECCIONES_NATIVAS[info.modulo] : [],
-      casos: CASOS_LEGAL.map((c) => ({ id: c.id, titulo: c.titulo, pais: c.pais })),
+      casos: casosDeModulo(info.modulo),
     });
   })
 );
@@ -250,34 +248,16 @@ router.post(
 
     const version = await repo().findOneBy({ id: req.params.id });
     if (!version) return res.status(404).json({ error: 'Versión no encontrada' });
-    const info = infoClave(version.clave);
-    if (!info || info.modulo !== 'legal') return res.status(400).json({ error: 'Este prompt todavía no tiene casos de prueba' });
-    const caso = CASOS_LEGAL.find((c) => c.id === parsed.data.caso);
-    if (!caso) return res.status(404).json({ error: 'Caso de prueba no encontrado' });
-
-    // Una ficha se prueba en su país; un modo, en el país del caso.
-    const pais = /^legal\.pais\.([A-Z]{2})$/.exec(version.clave)?.[1] ?? caso.pais;
-    const versiones = await versionesAAnclar(clavesDeModulo('legal', pais));
-    versiones[version.clave] = version.id;
 
     const inicio = Date.now();
-    const resultado = await conSeguimientoIA(
-      () =>
-        generarAnalisisLegal(productoDeCaso(caso, pais), {
-          ...caso.input,
-          productoId: 'prueba-admin',
-          usuarioId: req.userId as string,
-        }),
+    try {
       // El módulo «admin_prueba» separa este gasto del de los clientes en el panel de costos.
-      { usuarioId: req.userId, modulo: 'admin_prueba', versionesPrompt: versiones }
-    );
-
-    res.json({
-      caso: { id: caso.id, titulo: caso.titulo, pais },
-      duracion_ms: Date.now() - inicio,
-      sin_clave_ia: !hayClaveAnthropic(),
-      resultado,
-    });
+      const { caso, resultado } = await probarVersion(version, parsed.data.caso, req.userId as string);
+      res.json({ caso, duracion_ms: Date.now() - inicio, sin_clave_ia: !hayClaveAnthropic(), resultado });
+    } catch (err) {
+      if (err instanceof ErrorPrueba) return res.status(err.status).json({ error: err.message });
+      throw err;
+    }
   })
 );
 

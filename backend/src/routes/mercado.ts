@@ -14,6 +14,8 @@ import { hoyDePeticion } from '../utils/fechaLocal';
 import { logger } from '../utils/logger';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
+import { PerfilNegocioSchema } from '../services/ia/perfilNegocio';
+import { guardarPerfilNegocio } from '../services/ia/guardarPerfil';
 
 const router = Router();
 exigirUuid(router, 'id', 'productoId');
@@ -62,6 +64,8 @@ const AnalizarMercadoSchema = z
     renta_declarada: z.number().finite().nonnegative().optional(),
     // Lo usa el cálculo de densidad; sin declararlo aquí la validación lo borraba.
     radioKm: z.number().finite().positive().max(500).optional(),
+    // «Afina tu análisis»: se guarda en el producto y lo reutilizan los demás módulos.
+    perfil_negocio: PerfilNegocioSchema.optional(),
   })
   .refine((d) => Boolean(d.producto_id ?? d.productoId), {
     message: 'producto_id es requerido',
@@ -101,6 +105,9 @@ router.post(
     const productoId = bodySrc.productoId ?? bodySrc.producto_id;
     delete bodySrc.productoId;
     delete bodySrc.producto_id;
+    // El perfil es del negocio: va al producto, no al payload del trabajo.
+    const perfilNuevo = bodySrc.perfil_negocio;
+    delete bodySrc.perfil_negocio;
     const payload = bodySrc;
     const usuarioId = req.userId;
 
@@ -116,6 +123,7 @@ router.post(
     if (!producto) {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
+    await guardarPerfilNegocio(producto, perfilNuevo);
 
     // Create analysis record
     const analisisRepo = AppDataSource.getRepository(AnalisisMercado);

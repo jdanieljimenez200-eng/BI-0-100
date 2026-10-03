@@ -11,7 +11,13 @@ import { calcularDensidadZona } from './densidadService';
 import { estimarMargen, calcularViabilidad } from './viabilidadService';
 import { generarDafo } from './dafoService';
 import { calcularTam } from './tamService';
-import { calcularPayback, generarReporteBi } from './reporteBiService';
+import { calcularPayback, generarReporteBi, type ResultadoReporteBi } from './reporteBiService';
+import { construirMetaIaMercado } from './transparenciaMercado';
+import { tipoActividadDe } from './tipoActividad';
+import { estatusEfectivo } from '../../utils/estatusProyecto';
+import { contextoIA } from '../../utils/seguimientoIA';
+import { resolverPrompt } from '../ia/registroPrompts';
+import { leerPerfil } from '../ia/perfilNegocio';
 import { calcularEstudioArea } from '../zona/estudioAreaService';
 import type { EstudioAreaInput } from '../zona/types';
 import type {
@@ -46,8 +52,7 @@ function contextoFinanciero(
       : 0);
 
   return {
-    estatus_proyecto:
-      producto?.estatus_proyecto || (payload.clientes_mes ? 'en_operacion' : 'planificacion'),
+    estatus_proyecto: estatusEfectivo(producto?.estatus_proyecto, payload.clientes_mes),
     tipo_actividad: tipoActividad,
     puv: producto?.puv ?? '',
     inversion_inicial: Math.max(0, Number(producto?.inversion_inicial) || 0),
@@ -87,7 +92,12 @@ export async function orquestarMercado(
     const descripcion = producto?.descripcion ?? null;
     const pais = payload.pais || producto?.pais || 'MX';
     const precioUsuario = Number(producto?.precio) > 0 ? Number(producto!.precio) : undefined;
-    const tipoActividad = /servici/i.test(categoria) ? ('Servicio' as const) : ('Producto' as const);
+    const tipoActividad = tipoActividadDe(producto?.tipo_actividad, categoria);
+    const perfil = leerPerfil(producto?.perfil_negocio);
+
+    // Secciones que el admin ocultó en la versión del modo anclada a este trabajo.
+    const modo = await resolverPrompt('mercado.modo', contextoIA()?.versionesPrompt?.['mercado.modo']);
+    const ocultas = new Set(modo.secciones_ocultas);
 
     const usuario = analisis.usuario;
     const gate = getPlanGate(usuario?.plan, 'mercado');
@@ -139,7 +149,12 @@ export async function orquestarMercado(
     analisis.confianza_analisis = viabilidad.confianza;
     analisis.precio_usuario = precioUsuario ?? 0;
 
-    const puede = (seccion: Parameters<typeof gate.permite>[0]) => gate.completo || gate.permite(seccion);
+    // El plan decide qué se paga; el admin, qué existe. Una sección oculta ni se genera.
+    const puede = (seccion: Parameters<typeof gate.permite>[0]) =>
+      (gate.completo || gate.permite(seccion)) && !ocultas.has(seccion);
+    const ctxFinanciero = contextoFinanciero(producto, payloadConTraccion, tipoActividad, precioUsuario);
+    /** Secciones escritas por la IA (o su plantilla): deciden el `origen` de meta_ia. */
+    const seccionesIA: { es_mock?: boolean }[] = [];
 
     // ── Alertas accionables derivadas del score ───────────────────────────────
     const alertas: { nivel: 'verde' | 'amarillo' | 'rojo'; tipo: string; mensaje: string }[] = [];
@@ -202,9 +217,17 @@ export async function orquestarMercado(
           estado: payload.estado,
           pais,
           competidores_conocidos: payload.competidores_conocidos,
+          // Lo que el dueño ya dijo en el alta: antes no llegaba al DAFO.
+          puv: producto?.puv ?? undefined,
+          cliente_ideal: producto?.cliente_ideal ?? undefined,
+          canal_venta: producto?.canal_venta ?? undefined,
+          tipo_actividad: tipoActividad,
+          estatus: ctxFinanciero.estatus_proyecto,
+          perfil,
         }
       );
       analisis.dafo_data = dafo as never;
+      seccionesIA.push(dafo);
     }
     if (puede('mercado.tam_sam_som')) {
       // Frecuencia anual según modelo de cobro: una suscripción mensual
@@ -229,7 +252,7 @@ export async function orquestarMercado(
       // costos fijos del producto, o la renta de la zona si es lo único que hay.
       // Antes se inventaban 50 000 de inversión y 8 000 de costos fijos, así que
       // el payback salía siempre y no describía ningún negocio real.
-      const ctx = contextoFinanciero(producto, payloadConTraccion, tipoActividad, precioUsuario);
+      const ctx = ctxFinanciero;
       analisis.payback_data = (ctx.inversion_inicial > 0
         ? calcularPayback(
             ctx,
@@ -240,16 +263,41 @@ export async function orquestarMercado(
           )
         : null) as never;
     }
+    let reporteBi: ResultadoReporteBi | null = null;
     if (puede('mercado.reporte_bi')) {
-      analisis.reporte_bi_data = (await generarReporteBi(
+      reporteBi = await generarReporteBi(
         payloadConTraccion,
-        contextoFinanciero(producto, payloadConTraccion, tipoActividad, precioUsuario),
+        ctxFinanciero,
         { nombre, categoria },
         tendencias,
         competencia,
-        viabilidad
-      )) as never;
+        viabilidad,
+        { cliente_ideal: producto?.cliente_ideal, canal_venta: producto?.canal_venta, perfil }
+      );
+      analisis.reporte_bi_data = reporteBi.reporte as never;
+      seccionesIA.push(reporteBi.reporte);
     }
+
+    // ── Transparencia: lo que sabe el código + lo que aporta la IA ────────────
+    analisis.meta_ia = construirMetaIaMercado({
+      datos: {
+        viabilidad,
+        competencia,
+        tendencias,
+        precioUsuario,
+        estatus: ctxFinanciero.estatus_proyecto,
+        clientesMes,
+        puv: producto?.puv,
+        clienteIdeal: producto?.cliente_ideal,
+        competidoresConocidos: payload.competidores_conocidos,
+        perfil,
+      },
+      reporteBi,
+      modo,
+      ocultas,
+      seccionesIA,
+      tipoActividad,
+    });
 
     analisis.resultado_estimado = huboFallbackIA();
     analisis.estado_analisis = 'completado';

@@ -142,6 +142,38 @@ export function aplicarContratoComun(
   };
 }
 
+/** De la escala de los datos ('alta'…) a la del contrato ('alto'…). */
+export function nivelDesdeConfianzaDatos(c: 'alta' | 'media' | 'baja' | string | null | undefined): NivelConfianza {
+  return c === 'alta' ? 'alto' : c === 'baja' ? 'bajo' : 'medio';
+}
+
+/**
+ * Une lo que sabe el código (datos que faltan de verdad, fuentes caídas) con lo
+ * que aporta la IA. La confianza final es la MENOR de las dos: el modelo puede
+ * ser más prudente que los datos, nunca más optimista.
+ */
+export function combinarTransparencia(base: TransparenciaIA, ia?: TransparenciaIA | null): TransparenciaIA {
+  if (!ia) return base;
+  const nivel = ORDEN_CONFIANZA[ia.nivel_confianza] < ORDEN_CONFIANZA[base.nivel_confianza] ? ia.nivel_confianza : base.nivel_confianza;
+  const vistos = new Set<string>();
+  const unicos = <T>(lista: T[], clave: (x: T) => string) =>
+    lista.filter((x) => {
+      const k = clave(x).trim().toLowerCase();
+      if (!k || vistos.has(k)) return false;
+      vistos.add(k);
+      return true;
+    });
+  const supuestos = unicos([...base.supuestos, ...ia.supuestos], (s) => s).slice(0, 8);
+  vistos.clear();
+  const faltante = unicos([...base.informacion_faltante, ...ia.informacion_faltante], (f) => f.dato).slice(0, 6);
+  return {
+    supuestos,
+    informacion_faltante: faltante,
+    nivel_confianza: nivel,
+    motivo_confianza: [base.motivo_confianza, ia.motivo_confianza].filter(Boolean).join(' '),
+  };
+}
+
 /** Transparencia de un resultado de plantilla: confianza baja y el porqué. */
 export function transparenciaDePlantilla(motivo: string, supuestos: string[] = []): TransparenciaIA {
   return {

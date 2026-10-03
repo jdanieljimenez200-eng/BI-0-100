@@ -45,8 +45,16 @@ describe('anclaje de versiones de prompt en el worker', () => {
     expect(job.updateData).not.toHaveBeenCalled();
   });
 
-  it('un módulo sin prompts versionados no ancla nada', async () => {
+  it('Mercado ancla su modo (no tiene fichas por país)', async () => {
+    mockAnclar.mockResolvedValue({ 'mercado.modo': 'v2' });
     const job = trabajo({ moduleName: 'mercado', productoId: 'p1' });
+    expect(await anclarVersionesPrompt(job)).toEqual({ 'mercado.modo': 'v2' });
+    expect(mockAnclar).toHaveBeenCalledWith(['mercado.modo']);
+    expect(job.updateData).toHaveBeenCalledWith(expect.objectContaining({ versionesPrompt: { 'mercado.modo': 'v2' } }));
+  });
+
+  it('un módulo sin prompts versionados no ancla nada', async () => {
+    const job = trabajo({ moduleName: 'finanzas', productoId: 'p1' });
     expect(await anclarVersionesPrompt(job)).toBeUndefined();
     expect(job.updateData).not.toHaveBeenCalled();
   });

@@ -101,6 +101,8 @@ function redactMercado(fila: Fila, bloq: Set<string>): void {
     bloq.has('mercado.comparativa_competidores')
   ) {
     fila.reporte_bi_data = null;
+    // Las secciones extra del admin salen de la misma llamada que el reporte BI.
+    if (esObjeto(fila.meta_ia)) fila.meta_ia = { ...fila.meta_ia, secciones_extra: [] };
   }
 }
 

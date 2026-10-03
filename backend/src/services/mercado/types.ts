@@ -1,5 +1,6 @@
 import type { TipoLocal } from '../zona/types';
 import type { CensoOficialResult } from '../estadisticas/types';
+import type { EstatusProyecto } from '../../utils/estatusProyecto';
 
 // ─── Inputs ────────────────────────────────────────────────────────────────
 
@@ -20,7 +21,7 @@ export interface MercadoAnalisisInput {
   recurrencia_meses?: number;
   nse_target?: string;
 
-  // Tracción (solo si "Negocio en Marcha" — leído desde Producto.estatus_proyecto)
+  // Tracción (solo si el negocio ya vende — ver utils/estatusProyecto.ts)
   clientes_mes?: number;
   tasa_repeticion?: number;
   canal_adquisicion?: string;
@@ -44,7 +45,8 @@ export interface MercadoAnalisisInput {
 // Datos del Producto que el orquestador inyecta automáticamente al prompt de IA
 // (NO se piden de nuevo en el formulario de Mercado)
 export interface ProductoContextoMercado {
-  estatus_proyecto: string;
+  /** Normalizado con `estatusEfectivo()`: nunca compares el texto crudo de la columna. */
+  estatus_proyecto: EstatusProyecto;
   tipo_actividad: string;
   puv: string;
   inversion_inicial: number;

@@ -10,6 +10,8 @@ import LockedSection, { SkeletonBloque, SkeletonTarjetas } from '@/components/ui
 import { AnalysisLoader } from '@/components/ui/AnalysisLoader';
 import { AnalysisError } from '@/components/ui/AnalysisError';
 import { Breadcrumbs } from '@/components/ui';
+import TransparenciaIA, { type Transparencia } from '@/components/analisis/TransparenciaIA';
+import SeccionesExtra, { type SeccionExtra } from '@/components/analisis/SeccionesExtra';
 import { useAnalysisEvents } from '@/app/hooks/useAnalysisEvents';
 import { useAnalysisLoaderGate } from '@/app/hooks/useAnalysisLoaderGate';
 import { gsap } from 'gsap';
@@ -141,6 +143,12 @@ interface Analisis {
   // anteriores al gate no la traen, así que el espejo estático de lib/gating
   // sigue siendo quien decide; esto solo se suma como unión.
   secciones_bloqueadas?: string[];
+  /** Confianza, supuestos, secciones extra y ocultas (mercado@2). Null en análisis anteriores. */
+  meta_ia?: {
+    transparencia?: Transparencia | null;
+    secciones_extra?: SeccionExtra[];
+    secciones_ocultas?: string[];
+  } | null;
 }
 
 // ─── Score config ─────────────────────────────────────────────────────────────
@@ -1468,6 +1476,10 @@ export default function ResultadoMercadoPage() {
   // son decorativos (LockedSection los marca aria-hidden), nunca datos reales.
   const bloqueadas = seccionesBloqueadasDe(userPlan, 'mercado', analisis.secciones_bloqueadas);
   const tapada = (clave: SeccionBloqueable) => bloqueadas.has(clave);
+  // Lo que el admin quitó del módulo no se generó: no se pinta (ni con candado
+  // ni con el texto de respaldo de normalizeReporteBi).
+  const ocultas = new Set(analisis.meta_ia?.secciones_ocultas ?? []);
+  const oculta = (clave: SeccionBloqueable) => ocultas.has(clave);
 
   const cfg      = SCORE_CFG[viabilidad_estado] ?? SCORE_CFG.MODERADO;
   const userPrice = precio_usuario ?? null;
@@ -1709,7 +1721,7 @@ export default function ResultadoMercadoPage() {
         )}
 
         {/* ── Resumen Ejecutivo ── */}
-        {tapada('mercado.reporte_bi') ? (
+        {oculta('mercado.reporte_bi') ? null : tapada('mercado.reporte_bi') ? (
           <div className="reveal">
             <SectionHeader icon={<IconBrain />} title="Resumen Ejecutivo" tag="IA" tooltip="Síntesis generada por IA cruzando precio, competencia, tendencias e inversión. Se genera en los planes de pago." />
             <LockedSection
@@ -1868,6 +1880,18 @@ export default function ResultadoMercadoPage() {
             )}
             </div>
           )}
+
+        {/* ── Qué tan confiable es y qué dato lo mejoraría ── */}
+        {analisis.meta_ia?.transparencia && (
+          <div className="reveal">
+            <TransparenciaIA transparencia={analisis.meta_ia.transparencia} hrefCompletar={`/dashboard/mercado/${productoId}`} />
+          </div>
+        )}
+        {!tapada('mercado.reporte_bi') && (analisis.meta_ia?.secciones_extra?.length ?? 0) > 0 && (
+          <div className="reveal">
+            <SeccionesExtra secciones={analisis.meta_ia?.secciones_extra} />
+          </div>
+        )}
         </>
       )}
 
@@ -2225,7 +2249,7 @@ export default function ResultadoMercadoPage() {
     {(activeTab === 'dafo' || activeTab === 'completo') && (
       <>
         {/* ── DAFO ── */}
-        {tapada('mercado.dafo') ? (
+        {oculta('mercado.dafo') ? null : tapada('mercado.dafo') ? (
           <div className="reveal">
             <SectionHeader icon={<IconSearch />} title="Análisis DAFO" tooltip="Diagnóstico en 4 dimensiones: fortalezas, debilidades, oportunidades y amenazas. Disponible en los planes de pago." />
             <LockedSection

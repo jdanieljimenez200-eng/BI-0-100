@@ -10,6 +10,7 @@ import {
 import { Producto } from './Producto';
 import { Usuario } from './Usuario';
 // `import type` — se borra en compilación, sin riesgo de ciclo en runtime.
+import type { MetaIaAnalisis } from '../services/ia/metaAnalisis';
 import type {
   TendenciasResult,
   CompetenciaResult,
@@ -144,6 +145,13 @@ export class AnalisisMercado {
   // «lo que escribiste».
   @Column({ nullable: true, type: 'jsonb' })
   traccion_data!: TraccionReal | null;
+
+  /**
+   * Transparencia de la IA (confianza, supuestos, datos faltantes), secciones
+   * extra u ocultas del admin y versión de prompt usada (`services/ia/metaAnalisis.ts`).
+   */
+  @Column({ nullable: true, type: 'jsonb' })
+  meta_ia!: MetaIaAnalisis | null;
 
   // Estado del proceso
   @Column({ default: 'procesando' })

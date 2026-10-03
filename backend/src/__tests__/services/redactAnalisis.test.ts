@@ -213,6 +213,17 @@ describe('redactAnalisisPayload — mercado en gratuito', () => {
     expect(secciones_bloqueadas).toEqual(seccionesBloqueablesDe('mercado'));
   });
 
+  it('con el reporte BI bloqueado vacía las secciones extra, pero deja la transparencia', () => {
+    const meta_ia = {
+      transparencia: { supuestos: ['x'], informacion_faltante: [], nivel_confianza: 'medio', motivo_confianza: 'm' },
+      secciones_extra: [{ slug: 'temporada', titulo: 'Temporadas', resumen: 'r', puntos: [] }],
+      secciones_ocultas: [],
+    };
+    const { payload: p } = redactAnalisisPayload('mercado', 'freemium', { ...filaMercado(), meta_ia });
+    expect(p.meta_ia.secciones_extra).toEqual([]);
+    expect(p.meta_ia.transparencia).toEqual(meta_ia.transparencia);
+  });
+
   it('no filtra el gap ni los nombres de competidores por ninguna vía', () => {
     expect(JSON.stringify(payload)).not.toContain('nadie vende de noche');
     expect(JSON.stringify(payload)).not.toContain('ACME');

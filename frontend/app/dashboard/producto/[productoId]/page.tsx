@@ -8,6 +8,7 @@ import api from '@/lib/api';
 import { Breadcrumbs } from '@/components/ui';
 import { getImageUrl } from '@/lib/utils';
 import { MODULE_THEME, type ModuloSlug } from '@/lib/moduleTheme';
+import { etiquetaEstatus } from '@/lib/estatusProyecto';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -386,7 +387,7 @@ export default function ProductoDetailPage() {
               {producto.tipo && (
                 <Chip>{producto.tipo === 'servicio' ? 'Servicio' : 'Producto'}</Chip>
               )}
-              {producto.estatus_proyecto && <Chip>{producto.estatus_proyecto}</Chip>}
+              {producto.estatus_proyecto && <Chip>{etiquetaEstatus(producto.estatus_proyecto)}</Chip>}
               {fechaCreacion && (
                 <Chip>
                   <span className="text-white/40">Creado</span> {fechaCreacion}

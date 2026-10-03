@@ -1,6 +1,7 @@
 import { PAIS_LATAM } from '../../../utils/latam';
 import { PAISES, textoFichaPais } from '../../legal/fichasPais';
 import { LEGAL_MODO } from './legal.modo';
+import { MERCADO_MODO } from './mercado.modo';
 
 /**
  * Catálogo de lo que el admin puede editar y sus textos por defecto.
@@ -11,7 +12,7 @@ import { LEGAL_MODO } from './legal.modo';
  * modos; hasta entonces sigue con su prompt de siempre, en su servicio.
  */
 
-export type ModuloPrompt = 'legal';
+export type ModuloPrompt = 'legal' | 'mercado';
 
 export interface ClavePrompt {
   clave: string;
@@ -22,6 +23,7 @@ export interface ClavePrompt {
 
 const MODOS: Record<string, { modulo: ModuloPrompt; titulo: string; texto: string }> = {
   'legal.modo': { modulo: 'legal', titulo: 'Legal — modo de comportamiento', texto: LEGAL_MODO },
+  'mercado.modo': { modulo: 'mercado', titulo: 'Mercado — modo de comportamiento', texto: MERCADO_MODO },
 };
 
 const RE_FICHA_LEGAL = /^legal\.pais\.([A-Z]{2})$/;
@@ -73,5 +75,7 @@ export function clavesDeModulo(modulo: string, pais?: string | null): string[] {
     const iso = (pais || 'MX').trim().toUpperCase();
     return ['legal.modo', `legal.pais.${iso}`];
   }
+  // Mercado no tiene fichas de país: su contexto por país sale de datos (moneda, NSE, cobertura).
+  if (modulo === 'mercado') return ['mercado.modo'];
   return [];
 }

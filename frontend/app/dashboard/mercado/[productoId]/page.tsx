@@ -9,6 +9,25 @@ import { interpretarErrorApi } from '@/lib/apiError';
 import AvisoErrorApi from '@/components/ui/AvisoErrorApi';
 import { PAISES_LATAM, REGIONES_POR_PAIS, getPaisInfo } from '@/lib/latam';
 import { BackButton } from '@/components/ui';
+import AfinaTuAnalisis from '@/components/analisis/AfinaTuAnalisis';
+import { leerPerfil, perfilParaEnviar, type PerfilNegocio } from '@/lib/perfilNegocio';
+import { ETIQUETA_ESTATUS, normalizarEstatus, type EstatusProyecto } from '@/lib/estatusProyecto';
+
+/** Las preguntas de «Afina tu análisis» que mueven el análisis de mercado. */
+const CAMPOS_PERFIL_MERCADO = ['tipo_clientes', 'ingresos_anuales', 'sectores_regulados'] as const;
+const PORQUE_MERCADO = {
+  tipo_clientes: 'Vender a personas, a empresas o a gobierno cambia el tamaño del mercado, la competencia y el canal.',
+  ingresos_anuales: 'Sitúa lo que ya vendes frente al mercado alcanzable (SOM).',
+  sectores_regulados: 'Los permisos especiales son una barrera de entrada: frenan a nuevos competidores y también a ti.',
+};
+
+/**
+ * Idea o negocio en marcha, igual que `estatusEfectivo` del backend: lo
+ * declarado y, si no hay, lo que dicen los datos.
+ */
+function estatusDe(producto: { estatus_proyecto: string | null; clientes_mes: number | null }, conVentas: boolean): EstatusProyecto {
+  return normalizarEstatus(producto.estatus_proyecto) ?? ((producto.clientes_mes ?? 0) > 0 || conVentas ? 'en_marcha' : 'idea');
+}
 
 /** Espejo de backend/src/services/mercado/traccionReal.ts. */
 interface TraccionReal {
@@ -25,10 +44,12 @@ interface Producto {
   id: string;
   nombre: string;
   categoria: string;
-  tipo: 'producto' | 'servicio';
+  tipo_actividad: string | null;
+  pais: string | null;
   precio: number | null;
   imagen_url: string | null;
   estatus_proyecto: string | null;
+  perfil_negocio: unknown;
   puv: string | null;
   inversion_inicial: number | null;
   costos_fijos: number | null;
@@ -236,6 +257,7 @@ export default function MercadoFormPage() {
   const [precioVentaM2, setPrecioVentaM2] = useState('');
   const [personal, setPersonal] = useState('');
   const [rentaDeclarada, setRentaDeclarada] = useState('');
+  const [perfil, setPerfil] = useState<PerfilNegocio>({});
 
   const paisInfo = getPaisInfo(pais);
   const regiones = REGIONES_POR_PAIS[pais] ?? [];
@@ -250,6 +272,9 @@ export default function MercadoFormPage() {
       .then(({ data }) => {
         if (!vigente) return;
         setProducto(data);
+        setPerfil(leerPerfil(data.perfil_negocio));
+        // El país del producto: antes el formulario arrancaba siempre en México.
+        if (typeof data.pais === 'string' && PAISES_LATAM.some((p) => p.code === data.pais)) setPais(data.pais);
         // Pre-llenar tracción desde Producto si existe
         if (data.clientes_mes) setClientesMes(String(data.clientes_mes));
         if (data.tasa_repeticion) setTasaRepeticion(String(data.tasa_repeticion));
@@ -286,7 +311,9 @@ export default function MercadoFormPage() {
     setLoading(true);
 
     try {
-      const esNegocio = producto?.estatus_proyecto === 'Negocio en Marcha';
+      // Antes se comparaba con 'Negocio en Marcha' (el texto de los seeds), y el
+      // alta guarda 'negocio_en_marcha': la tracción nunca se enviaba.
+      const esNegocio = producto ? estatusDe(producto, Boolean(traccion)) === 'en_marcha' : false;
       const { data } = await api.post('/mercado/analizar', {
         producto_id: productoId,
         pais,
@@ -314,6 +341,7 @@ export default function MercadoFormPage() {
               renta_declarada: toNumNonNeg(rentaDeclarada),
             }
           : {}),
+        perfil_negocio: perfilParaEnviar(perfil),
       });
       router.push(`/dashboard/mercado/${productoId}/resultado/${data.analisis_id}`);
     } catch (err: unknown) {
@@ -340,8 +368,13 @@ export default function MercadoFormPage() {
     return <div className="flex items-center justify-center h-64 text-white/50 text-sm">Cargando...</div>;
   }
 
-  const isServicio = producto.tipo === 'servicio';
-  const esNegocioEnMarcha = producto.estatus_proyecto === 'Negocio en Marcha';
+  // Lo declarado en el alta; la categoría solo para productos antiguos (como `tipoActividadDe` del backend).
+  const tipoDeclarado = (producto.tipo_actividad ?? '').trim().toLowerCase();
+  const isServicio = tipoDeclarado ? tipoDeclarado === 'servicio' : /servici/i.test(producto.categoria ?? '');
+  const estatus = estatusDe(producto, Boolean(traccion));
+  const esNegocioEnMarcha = estatus === 'en_marcha';
+  const moneda = paisInfo?.moneda ?? '';
+  const dinero = (n: number) => `${n.toLocaleString('es-MX')}${moneda ? ` ${moneda}` : ''}`;
   const clienteIdealTxt = formatClienteIdeal(producto.cliente_ideal);
 
   return (
@@ -387,9 +420,9 @@ export default function MercadoFormPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: 'Tipo', value: isServicio ? 'Servicio' : 'Producto' },
-              { label: 'Estatus', value: esNegocioEnMarcha ? 'En Marcha' : 'Idea' },
-              { label: 'Inversión Total', value: producto.inversion_inicial ? `$${Number(producto.inversion_inicial).toLocaleString('es-MX')}` : 'No registrada' },
-              { label: 'Precio Venta', value: producto.precio ? `$${Number(producto.precio).toLocaleString('es-MX')}` : 'No registrado' },
+              { label: 'Estatus', value: ETIQUETA_ESTATUS[estatus] },
+              { label: 'Inversión Total', value: producto.inversion_inicial ? dinero(Number(producto.inversion_inicial)) : 'No registrada' },
+              { label: 'Precio Venta', value: producto.precio ? dinero(Number(producto.precio)) : 'No registrado' },
             ].map(item => (
               <div key={item.label} className="bg-white/5 border border-white/8 rounded-xl px-3 py-2.5 text-center">
                 <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold">{item.label}</p>
@@ -461,8 +494,8 @@ export default function MercadoFormPage() {
                 <div className="mb-4 rounded-xl border border-brand-primary/25 bg-brand-primary/8 px-4 py-3">
                   <p className="text-sm font-semibold text-white">Tomado de tus ventas</p>
                   <p className="text-[11px] text-white/55 leading-relaxed mt-0.5">
-                    {traccion.clientes_mes} {isServicio ? 'citas' : 'ventas'} al mes de promedio y ticket de $
-                    {traccion.ticket_promedio.toLocaleString('es-MX')}, con {traccion.meses_analizados}{' '}
+                    {traccion.clientes_mes} {isServicio ? 'citas' : 'ventas'} al mes de promedio y ticket de{' '}
+                    {dinero(traccion.ticket_promedio)}, con {traccion.meses_analizados}{' '}
                     {traccion.meses_analizados === 1 ? 'mes completo' : 'meses completos'} del punto de venta
                     {traccion.tasa_repeticion !== null ? ` · ${traccion.tasa_repeticion}% de clientes repiten` : ''}.
                     {traccion.confianza === 'baja' ? ' Con un solo mes, tómalo como referencia.' : ''}
@@ -716,6 +749,14 @@ export default function MercadoFormPage() {
         {/* Aviso de error: ámbar con salida a /dashboard/billing cuando el 403
             viene de un gate de plan, rojo de validación en cualquier otro caso.
             El componente ya devuelve null si `error` está vacío. */}
+        <AfinaTuAnalisis
+          perfil={perfil}
+          onChange={setPerfil}
+          pais={pais}
+          campos={[...CAMPOS_PERFIL_MERCADO]}
+          porque={PORQUE_MERCADO}
+        />
+
         <AvisoErrorApi mensaje={error} upgradeRequired={upgradeRequired} />
 
         <button

@@ -19,7 +19,7 @@ jest.mock('../../workers/analysisQueue', () => ({
   analysisQueue: { add: jest.fn().mockResolvedValue({}) },
 }));
 
-const CLAVES = ['legal.modo', 'legal.pais.GT'];
+const CLAVES = ['legal.modo', 'legal.pais.GT', 'mercado.modo'];
 
 /**
  * El panel de prompts. Lo que se protege:
@@ -31,6 +31,11 @@ const CLAVES = ['legal.modo', 'legal.pais.GT'];
 describeWithDb('Prompts de IA (/api/admin/prompts)', () => {
   let admin: AdminTestUser;
   let admin2: AdminTestUser;
+  // Cada admin tiene 3 códigos válidos (ventana de 30 s ±1) y uno se gasta al
+  // enrolarse. El tercero es el de la ventana anterior y caduca si la petición
+  // cruza el cambio de ventana: ningún admin de este test usa más de dos.
+  let admin3: AdminTestUser;
+  let admin4: AdminTestUser;
   let soporte: AdminTestUser;
   const api = () => request.default(app);
   const conCodigo = (a: AdminTestUser) => ({ ...cabeceras(a), 'X-Admin-Totp': codigoFresco(a) });
@@ -42,6 +47,8 @@ describeWithDb('Prompts de IA (/api/admin/prompts)', () => {
     await limpiar();
     admin = await hacerAdmin(await signupTestUser());
     admin2 = await hacerAdmin(await signupTestUser());
+    admin3 = await hacerAdmin(await signupTestUser());
+    admin4 = await hacerAdmin(await signupTestUser());
     soporte = await hacerAdmin(await signupTestUser(), 'soporte');
     _reiniciarCachePrompts();
   });
@@ -130,7 +137,7 @@ describeWithDb('Prompts de IA (/api/admin/prompts)', () => {
     expect(crear.body.version).toBe(2);
     v2 = crear.body.id;
     await api().patch(`/api/admin/prompts/versiones/${v2}`).set(cabeceras(admin)).send({ contenido: contenido(2) });
-    expect((await api().post(`/api/admin/prompts/versiones/${v2}/publicar`).set(conCodigo(admin)).send({ notas: 'Segunda versión' })).status).toBe(200);
+    expect((await api().post(`/api/admin/prompts/versiones/${v2}/publicar`).set(conCodigo(admin3)).send({ notas: 'Segunda versión' })).status).toBe(200);
 
     const estados = async () =>
       Object.fromEntries(
@@ -142,7 +149,7 @@ describeWithDb('Prompts de IA (/api/admin/prompts)', () => {
     expect(e[v1].estado).toBe('archivado');
     expect(e[v2].estado).toBe('publicado');
 
-    // Cada admin tiene 3 códigos por ventana de 30 s y uno se gastó al enrolarse: restaura el segundo admin.
+    // Restaura otro admin (ver la nota de admin3/admin4 arriba).
     const revertir = await api().post(`/api/admin/prompts/versiones/${v1}/publicar`).set(conCodigo(admin2)).send({ notas: 'La v2 salió peor en Perú' });
     expect(revertir.status).toBe(200);
     e = await estados();
@@ -152,7 +159,7 @@ describeWithDb('Prompts de IA (/api/admin/prompts)', () => {
   });
 
   it('volver al repositorio deja de usar versiones de la base', async () => {
-    const r = await api().post('/api/admin/prompts/claves/legal.modo/usar-repositorio').set(conCodigo(admin2)).send({ notas: 'Volvemos al texto revisado del código' });
+    const r = await api().post('/api/admin/prompts/claves/legal.modo/usar-repositorio').set(conCodigo(admin4)).send({ notas: 'Volvemos al texto revisado del código' });
     expect(r.status).toBe(200);
     expect((await resolverPrompt('legal.modo')).origen).toBe('repositorio');
     const publicadas = await AppDataSource.query(`SELECT count(*)::int AS n FROM prompts_ia WHERE clave = 'legal.modo' AND estado = 'publicado'`);
@@ -174,10 +181,38 @@ describeWithDb('Prompts de IA (/api/admin/prompts)', () => {
     expect((await api().delete(`/api/admin/prompts/versiones/${crear.body.id}`).set(cabeceras(admin2))).status).toBe(200);
   });
 
+  it('Mercado: sus propios casos, solo oculta lo que escribe la IA y «probar» respeta lo oculto', async () => {
+    const detalle = await api().get('/api/admin/prompts/claves/mercado.modo').set(cabeceras(admin2));
+    expect(detalle.status).toBe(200);
+    expect(detalle.body.casos.map((c: { id: string }) => c.id)).toContain('co_ropa_en_marcha');
+    expect(detalle.body.casos.map((c: { id: string }) => c.id)).not.toContain('co_ecommerce');
+
+    const crear = await api().post('/api/admin/prompts/claves/mercado.modo/borradores').set(cabeceras(admin2)).send({});
+    expect(crear.status).toBe(201);
+    const id = crear.body.id;
+
+    const evidencia = await api().patch(`/api/admin/prompts/versiones/${id}`).set(cabeceras(admin2)).send({ secciones_ocultas: ['mercado.competencia'] });
+    expect(evidencia.status).toBe(400);
+    const ocultar = await api().patch(`/api/admin/prompts/versiones/${id}`).set(cabeceras(admin2)).send({ secciones_ocultas: ['mercado.dafo'] });
+    expect(ocultar.status).toBe(200);
+
+    const casoDeOtroModulo = await api().post(`/api/admin/prompts/versiones/${id}/probar`).set(cabeceras(admin2)).send({ caso: 'co_ecommerce' });
+    expect(casoDeOtroModulo.status).toBe(404);
+
+    const probar = await api().post(`/api/admin/prompts/versiones/${id}/probar`).set(cabeceras(admin2)).send({ caso: 'co_ropa_en_marcha' });
+    expect(probar.status).toBe(200);
+    expect(probar.body.caso.pais).toBe('CO');
+    expect(probar.body.resultado.dafo).toBeNull();
+    expect(probar.body.resultado.meta_ia.secciones_ocultas).toEqual(['mercado.dafo']);
+    expect(probar.body.resultado.meta_ia.meta).toMatchObject({ contrato: 'mercado@2', versiones_prompt: { 'mercado.modo': { id, version: 1 } } });
+
+    expect((await api().delete(`/api/admin/prompts/versiones/${id}`).set(cabeceras(admin2))).status).toBe(200);
+  });
+
   it('cada cambio queda en la auditoría', async () => {
     const filas = await AppDataSource.query(
       `SELECT accion FROM auditoria_admin WHERE recurso_tipo = 'prompt_ia' AND admin_id = ANY($1::uuid[])`,
-      [[admin.userId, admin2.userId]]
+      [[admin.userId, admin2.userId, admin3.userId, admin4.userId]]
     );
     const acciones = filas.map((f: { accion: string }) => f.accion);
     expect(acciones).toEqual(
@@ -237,6 +272,29 @@ describeWithDb('Legal guarda el perfil ampliado en el producto', () => {
     expect(guardado.perfil_negocio).toEqual({
       marca: 'registrada',
       tipo_clientes: 'consumidor_final',
+      sectores_regulados: ['salud'],
+      datos_sensibles: true,
+    });
+
+    // Mercado escribe en el mismo perfil: lo que se contesta en un módulo sirve a todos.
+    const mercado = await request
+      .default(app)
+      .post('/api/mercado/analizar')
+      .set(cabeceras(dueno))
+      .send({
+        producto_id: producto.id,
+        pais: 'CL',
+        scope: 'nacional',
+        forma_cobro: 'Pago Único',
+        nse_target: 'C2',
+        perfil_negocio: { tipo_clientes: 'empresas', marca: null },
+      });
+    expect(mercado.status).toBe(202);
+    const trasMercado = await repo.findOneByOrFail({ id: producto.id });
+    // `null` queda como «sin responder»: el usuario vació la respuesta.
+    expect(trasMercado.perfil_negocio).toEqual({
+      tipo_clientes: 'empresas',
+      marca: null,
       sectores_regulados: ['salud'],
       datos_sensibles: true,
     });

@@ -5,7 +5,6 @@ import {
   OPCIONES,
   SECTORES_REGULADOS,
   monedaDePais,
-  preguntasRespondidas,
   type PerfilNegocio,
   type SectorRegulado,
 } from '@/lib/perfilNegocio';
@@ -14,7 +13,37 @@ import {
  * «Afina tu análisis»: preguntas opcionales sobre el negocio que cambian el
  * resultado de la IA. Plegado por defecto para no alargar el formulario; lo
  * contestado se guarda en el producto y lo reutilizan los demás módulos.
+ *
+ * Cada módulo elige qué preguntas muestra (`campos`) y puede explicar con sus
+ * palabras por qué le importan (`porque`): Legal pregunta las 8, Mercado solo
+ * las que mueven su análisis.
  */
+
+type Campo = keyof PerfilNegocio;
+
+const TODOS: Campo[] = [
+  'situacion_fiscal',
+  'regimen_actual',
+  'ingresos_anuales',
+  'local_fisico',
+  'sectores_regulados',
+  'datos_sensibles',
+  'tipo_clientes',
+  'marca',
+];
+
+const PORQUE_LEGAL: Record<Campo, string> = {
+  situacion_fiscal: 'Si falta el alta, regularizarla va antes que cualquier otro trámite.',
+  regimen_actual: 'Define qué declaraciones y comprobantes te tocan.',
+  ingresos_anuales: 'Los regímenes simplificados tienen topes; pasarlos cambia tus obligaciones.',
+  local_fisico: 'Un local suele exigir licencia de funcionamiento, uso de suelo y revisión de seguridad.',
+  sectores_regulados: 'Los sectores regulados necesitan permisos adicionales (sanitarios, licencias especiales).',
+  datos_sensibles: 'Salud, datos biométricos o financieros tienen reglas de protección más estrictas.',
+  tipo_clientes: 'Vender a empresas o a gobierno exige comprobantes fiscales y, a veces, registro como proveedor.',
+  marca: 'Sin registro podrías tener que cambiar de nombre si otra empresa ya lo tiene.',
+};
+
+const respondido = (v: unknown) => v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0);
 
 const inputCls =
   'w-full bg-white/5 border border-white/10 text-white placeholder-white/25 rounded-xl px-3.5 py-2.5 text-sm ' +
@@ -71,16 +100,23 @@ export default function AfinaTuAnalisis({
   perfil,
   onChange,
   pais,
+  campos = TODOS,
+  porque,
 }: {
   perfil: PerfilNegocio;
   onChange: (perfil: PerfilNegocio) => void;
   pais?: string | null;
+  /** Preguntas a mostrar, en este orden. Por defecto, las 8. */
+  campos?: Campo[];
+  /** Por qué le importa cada pregunta a este módulo (si no, el texto de Legal). */
+  porque?: Partial<Record<Campo, string>>;
 }) {
-  const respondidas = preguntasRespondidas(perfil);
+  const respondidas = campos.filter((c) => respondido(perfil[c])).length;
   const [abierto, setAbierto] = useState(false);
   const idPanel = useId();
   const moneda = monedaDePais(pais);
-  const set = <K extends keyof PerfilNegocio>(campo: K, valor: PerfilNegocio[K]) => onChange({ ...perfil, [campo]: valor });
+  const set = <K extends Campo>(campo: K, valor: PerfilNegocio[K]) => onChange({ ...perfil, [campo]: valor });
+  const explicar = (c: Campo) => porque?.[c] ?? PORQUE_LEGAL[c];
 
   const alternarSector = (s: SectorRegulado) => {
     const actuales = perfil.sectores_regulados ?? [];
@@ -88,6 +124,109 @@ export default function AfinaTuAnalisis({
     const sinNinguno = actuales.filter((x) => x !== 'ninguno');
     const nuevos = sinNinguno.includes(s) ? sinNinguno.filter((x) => x !== s) : [...sinNinguno, s];
     set('sectores_regulados', nuevos.length ? nuevos : null);
+  };
+
+  const preguntas: Record<Campo, () => React.ReactNode> = {
+    situacion_fiscal: () => (
+      <Pregunta titulo="¿Ya estás dado de alta ante la autoridad fiscal?" porque={explicar('situacion_fiscal')}>
+        <Opciones
+          nombre="Situación fiscal"
+          opciones={OPCIONES.situacion_fiscal}
+          valor={perfil.situacion_fiscal}
+          onChange={(v) => set('situacion_fiscal', v)}
+        />
+      </Pregunta>
+    ),
+    regimen_actual: () => (
+      <Pregunta titulo="¿En qué régimen fiscal estás?" porque={explicar('regimen_actual')}>
+        <input
+          type="text"
+          value={perfil.regimen_actual ?? ''}
+          maxLength={120}
+          onChange={(e) => set('regimen_actual', e.target.value || null)}
+          placeholder="Ej.: RESICO, Régimen simple, Monotributo… o «no lo sé»"
+          className={inputCls}
+        />
+      </Pregunta>
+    ),
+    ingresos_anuales: () => (
+      <Pregunta titulo={`Ingresos anuales aproximados${moneda ? ` (${moneda})` : ''}`} porque={explicar('ingresos_anuales')}>
+        <input
+          type="number"
+          min={0}
+          inputMode="decimal"
+          value={perfil.ingresos_anuales ?? ''}
+          onChange={(e) => {
+            const n = e.target.value === '' ? null : Number(e.target.value);
+            set('ingresos_anuales', n !== null && Number.isFinite(n) && n >= 0 ? n : null);
+          }}
+          placeholder="Una estimación basta"
+          className={inputCls}
+        />
+      </Pregunta>
+    ),
+    local_fisico: () => (
+      <Pregunta titulo="¿Dónde operas?" porque={explicar('local_fisico')}>
+        <Opciones
+          nombre="Local físico"
+          opciones={OPCIONES.local_fisico}
+          valor={perfil.local_fisico}
+          onChange={(v) => set('local_fisico', v)}
+        />
+      </Pregunta>
+    ),
+    sectores_regulados: () => (
+      <Pregunta titulo="¿Tu giro pertenece a alguno de estos sectores?" porque={explicar('sectores_regulados')}>
+        <div className="flex flex-wrap gap-2">
+          {SECTORES_REGULADOS.map((s) => {
+            const activo = perfil.sectores_regulados?.includes(s.value) ?? false;
+            return (
+              <button
+                key={s.value}
+                type="button"
+                aria-pressed={activo}
+                onClick={() => alternarSector(s.value)}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  activo
+                    ? 'bg-white/10 border-white/30 text-white'
+                    : 'bg-white/[0.03] border-white/10 text-white/50 hover:border-white/20 hover:text-white/80'
+                }`}
+              >
+                {s.label}
+              </button>
+            );
+          })}
+        </div>
+      </Pregunta>
+    ),
+    datos_sensibles: () => (
+      <Pregunta titulo="¿Manejas datos sensibles de tus clientes?" porque={explicar('datos_sensibles')}>
+        <Opciones
+          nombre="Datos sensibles"
+          opciones={[
+            { value: 'si', label: 'Sí' },
+            { value: 'no', label: 'No' },
+          ]}
+          valor={perfil.datos_sensibles == null ? null : perfil.datos_sensibles ? 'si' : 'no'}
+          onChange={(v) => set('datos_sensibles', v === null ? null : v === 'si')}
+        />
+      </Pregunta>
+    ),
+    tipo_clientes: () => (
+      <Pregunta titulo="¿A quién le vendes?" porque={explicar('tipo_clientes')}>
+        <Opciones
+          nombre="Tipo de clientes"
+          opciones={OPCIONES.tipo_clientes}
+          valor={perfil.tipo_clientes}
+          onChange={(v) => set('tipo_clientes', v)}
+        />
+      </Pregunta>
+    ),
+    marca: () => (
+      <Pregunta titulo="¿Tu marca está registrada?" porque={explicar('marca')}>
+        <Opciones nombre="Marca" opciones={OPCIONES.marca} valor={perfil.marca} onChange={(v) => set('marca', v)} />
+      </Pregunta>
+    ),
   };
 
   return (
@@ -102,11 +241,14 @@ export default function AfinaTuAnalisis({
         <div>
           <h2 className="text-sm font-bold text-white">Afina tu análisis</h2>
           <p className="text-[11px] text-white/40 mt-0.5">
-            Opcional · 8 preguntas que cambian el resultado. Si no las respondes, el análisis lo dice y trabaja con supuestos.
+            Opcional · {campos.length} {campos.length === 1 ? 'pregunta que cambia' : 'preguntas que cambian'} el resultado. Si no las
+            respondes, el análisis lo dice y trabaja con supuestos.
           </p>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
-          <span className="text-[11px] tabular-nums text-white/40">{respondidas}/8</span>
+          <span className="text-[11px] tabular-nums text-white/40">
+            {respondidas}/{campos.length}
+          </span>
           <svg
             className={`w-4 h-4 text-white/40 transition-transform ${abierto ? 'rotate-180' : ''}`}
             viewBox="0 0 24 24"
@@ -122,118 +264,9 @@ export default function AfinaTuAnalisis({
 
       {abierto && (
         <div id={idPanel} className="px-6 pb-6 pt-2 space-y-5 border-t border-white/[0.06]">
-          <Pregunta
-            titulo="¿Ya estás dado de alta ante la autoridad fiscal?"
-            porque="Si falta el alta, regularizarla va antes que cualquier otro trámite."
-          >
-            <Opciones
-              nombre="Situación fiscal"
-              opciones={OPCIONES.situacion_fiscal}
-              valor={perfil.situacion_fiscal}
-              onChange={(v) => set('situacion_fiscal', v)}
-            />
-          </Pregunta>
-
-          <Pregunta titulo="¿En qué régimen fiscal estás?" porque="Define qué declaraciones y comprobantes te tocan.">
-            <input
-              type="text"
-              value={perfil.regimen_actual ?? ''}
-              maxLength={120}
-              onChange={(e) => set('regimen_actual', e.target.value || null)}
-              placeholder="Ej.: RESICO, Régimen simple, Monotributo… o «no lo sé»"
-              className={inputCls}
-            />
-          </Pregunta>
-
-          <Pregunta
-            titulo={`Ingresos anuales aproximados${moneda ? ` (${moneda})` : ''}`}
-            porque="Los regímenes simplificados tienen topes; pasarlos cambia tus obligaciones."
-          >
-            <input
-              type="number"
-              min={0}
-              inputMode="decimal"
-              value={perfil.ingresos_anuales ?? ''}
-              onChange={(e) => {
-                const n = e.target.value === '' ? null : Number(e.target.value);
-                set('ingresos_anuales', n !== null && Number.isFinite(n) && n >= 0 ? n : null);
-              }}
-              placeholder="Una estimación basta"
-              className={inputCls}
-            />
-          </Pregunta>
-
-          <Pregunta
-            titulo="¿Dónde operas?"
-            porque="Un local suele exigir licencia de funcionamiento, uso de suelo y revisión de seguridad."
-          >
-            <Opciones
-              nombre="Local físico"
-              opciones={OPCIONES.local_fisico}
-              valor={perfil.local_fisico}
-              onChange={(v) => set('local_fisico', v)}
-            />
-          </Pregunta>
-
-          <Pregunta
-            titulo="¿Tu giro pertenece a alguno de estos sectores?"
-            porque="Los sectores regulados necesitan permisos adicionales (sanitarios, licencias especiales)."
-          >
-            <div className="flex flex-wrap gap-2">
-              {SECTORES_REGULADOS.map((s) => {
-                const activo = perfil.sectores_regulados?.includes(s.value) ?? false;
-                return (
-                  <button
-                    key={s.value}
-                    type="button"
-                    aria-pressed={activo}
-                    onClick={() => alternarSector(s.value)}
-                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                      activo
-                        ? 'bg-white/10 border-white/30 text-white'
-                        : 'bg-white/[0.03] border-white/10 text-white/50 hover:border-white/20 hover:text-white/80'
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                );
-              })}
-            </div>
-          </Pregunta>
-
-          <Pregunta
-            titulo="¿Manejas datos sensibles de tus clientes?"
-            porque="Salud, datos biométricos o financieros tienen reglas de protección más estrictas."
-          >
-            <Opciones
-              nombre="Datos sensibles"
-              opciones={[
-                { value: 'si', label: 'Sí' },
-                { value: 'no', label: 'No' },
-              ]}
-              valor={perfil.datos_sensibles == null ? null : perfil.datos_sensibles ? 'si' : 'no'}
-              onChange={(v) => set('datos_sensibles', v === null ? null : v === 'si')}
-            />
-          </Pregunta>
-
-          <Pregunta
-            titulo="¿A quién le vendes?"
-            porque="Vender a empresas o a gobierno exige comprobantes fiscales y, a veces, registro como proveedor."
-          >
-            <Opciones
-              nombre="Tipo de clientes"
-              opciones={OPCIONES.tipo_clientes}
-              valor={perfil.tipo_clientes}
-              onChange={(v) => set('tipo_clientes', v)}
-            />
-          </Pregunta>
-
-          <Pregunta
-            titulo="¿Tu marca está registrada?"
-            porque="Sin registro podrías tener que cambiar de nombre si otra empresa ya lo tiene."
-          >
-            <Opciones nombre="Marca" opciones={OPCIONES.marca} valor={perfil.marca} onChange={(v) => set('marca', v)} />
-          </Pregunta>
+          {campos.map((c) => (
+            <div key={c}>{preguntas[c]()}</div>
+          ))}
         </div>
       )}
     </div>

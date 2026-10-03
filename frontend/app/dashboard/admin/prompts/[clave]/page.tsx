@@ -94,25 +94,81 @@ function VistaDiff({ antes, despues }: { antes: string; despues: string }) {
 
 type ResultadoPrueba = Awaited<ReturnType<typeof probarPrompt>>;
 
-function VistaPrueba({ prueba }: { prueba: ResultadoPrueba }) {
-  const r = prueba.resultado as {
-    resumen_ejecutivo?: string;
-    puntaje_cumplimiento?: number;
-    transparencia?: Transparencia;
-    secciones_extra?: SeccionExtra[];
-    meta?: { origen?: string };
-    [k: string]: unknown;
+/** Lo común a cualquier módulo, para pintar la prueba con los mismos componentes. */
+interface VistaComun {
+  origen: 'ia' | 'plantilla' | 'mixto' | undefined;
+  puntaje: { etiqueta: string; valor: number } | null;
+  resumen: string | null;
+  conteos: [etiqueta: string, valor: number | 'oculta'][];
+  transparencia?: Transparencia | null;
+  secciones_extra?: SeccionExtra[];
+}
+
+const largo = (v: unknown) => (Array.isArray(v) ? v.length : 0);
+
+/** Legal guarda todo en un objeto; Mercado devuelve viabilidad, DAFO, reporte BI y `meta_ia`. */
+function vistaDePrueba(resultado: unknown): VistaComun {
+  const r = (resultado ?? {}) as Record<string, unknown>;
+  if (r.meta_ia && typeof r.meta_ia === 'object') {
+    const meta = r.meta_ia as {
+      transparencia?: Transparencia;
+      secciones_extra?: SeccionExtra[];
+      secciones_ocultas?: string[];
+      meta?: { origen?: VistaComun['origen'] };
+    };
+    const ocultas = new Set(meta.secciones_ocultas ?? []);
+    const viab = (r.viabilidad ?? {}) as { score?: number };
+    const dafo = (r.dafo ?? null) as Record<string, unknown> | null;
+    const reporte = (r.reporte_bi ?? null) as { resumen_ejecutivo?: string; alertas_ia?: unknown[] } | null;
+    const cuadrante = (etiqueta: string, clave: string): [string, number | 'oculta'] => [
+      etiqueta,
+      ocultas.has('mercado.dafo') ? 'oculta' : largo(dafo?.[clave]),
+    ];
+    return {
+      origen: meta.meta?.origen,
+      puntaje: typeof viab.score === 'number' ? { etiqueta: 'Viabilidad', valor: viab.score } : null,
+      resumen: reporte?.resumen_ejecutivo ?? null,
+      conteos: [
+        cuadrante('Fortalezas', 'fortalezas'),
+        cuadrante('Debilidades', 'debilidades'),
+        cuadrante('Oportunidades', 'oportunidades'),
+        cuadrante('Amenazas', 'amenazas'),
+        ['Alertas del reporte', ocultas.has('mercado.reporte_bi') ? 'oculta' : largo(reporte?.alertas_ia)],
+      ],
+      transparencia: meta.transparencia,
+      secciones_extra: meta.secciones_extra,
+    };
+  }
+  const meta = r.meta as { origen?: VistaComun['origen'] } | undefined;
+  return {
+    origen: meta?.origen,
+    puntaje: typeof r.puntaje_cumplimiento === 'number' ? { etiqueta: 'Puntaje de cumplimiento', valor: r.puntaje_cumplimiento } : null,
+    resumen: typeof r.resumen_ejecutivo === 'string' ? r.resumen_ejecutivo : null,
+    conteos: (
+      [
+        ['Permisos', 'permisos_licencias'],
+        ['Fiscales', 'obligaciones_fiscales'],
+        ['Laborales', 'obligaciones_laborales'],
+        ['Digital', 'regulacion_digital'],
+        ['Comercio exterior', 'regulacion_comercio_exterior'],
+        ['Alertas', 'alertas'],
+        ['Checklist', 'checklist'],
+      ] as const
+    ).map(([etiqueta, clave]) => [etiqueta, largo(r[clave])]),
+    transparencia: r.transparencia as Transparencia | undefined,
+    secciones_extra: r.secciones_extra as SeccionExtra[] | undefined,
   };
-  const conteo = (clave: string) => (Array.isArray(r[clave]) ? (r[clave] as unknown[]).length : 0);
-  const secciones = [
-    ['Permisos', 'permisos_licencias'],
-    ['Fiscales', 'obligaciones_fiscales'],
-    ['Laborales', 'obligaciones_laborales'],
-    ['Digital', 'regulacion_digital'],
-    ['Comercio exterior', 'regulacion_comercio_exterior'],
-    ['Alertas', 'alertas'],
-    ['Checklist', 'checklist'],
-  ] as const;
+}
+
+const ORIGEN: Record<NonNullable<VistaComun['origen']>, { texto: string; clase: string }> = {
+  ia: { texto: 'Respuesta de la IA', clase: 'text-emerald-300 border-emerald-500/25 bg-emerald-500/10' },
+  mixto: { texto: 'Parte de la IA, parte de plantilla', clase: 'text-amber-300 border-amber-500/25 bg-amber-500/10' },
+  plantilla: { texto: 'Plantilla (la IA no se usó o falló)', clase: 'text-amber-300 border-amber-500/25 bg-amber-500/10' },
+};
+
+function VistaPrueba({ prueba }: { prueba: ResultadoPrueba }) {
+  const v = vistaDePrueba(prueba.resultado);
+  const origen = ORIGEN[v.origen ?? 'plantilla'];
 
   return (
     <div className="space-y-4">
@@ -120,34 +176,26 @@ function VistaPrueba({ prueba }: { prueba: ResultadoPrueba }) {
         <span className="font-semibold text-white/80">{prueba.caso.titulo}</span>
         <span>· {prueba.caso.pais}</span>
         <span>· {(prueba.duracion_ms / 1000).toFixed(1)} s</span>
-        <span
-          className={`rounded-full border px-2 py-0.5 font-bold ${
-            r.meta?.origen === 'ia'
-              ? 'text-emerald-300 border-emerald-500/25 bg-emerald-500/10'
-              : 'text-amber-300 border-amber-500/25 bg-amber-500/10'
-          }`}
-        >
-          {r.meta?.origen === 'ia' ? 'Respuesta de la IA' : 'Plantilla (la IA no se usó o falló)'}
-        </span>
+        <span className={`rounded-full border px-2 py-0.5 font-bold ${origen.clase}`}>{origen.texto}</span>
       </div>
       {prueba.sin_clave_ia && (
         <p className="text-xs text-amber-200/80">Este servidor no tiene clave de IA: la prueba no ejercita el prompt.</p>
       )}
-      {typeof r.puntaje_cumplimiento === 'number' && (
+      {v.puntaje && (
         <p className="text-xs text-white/50">
-          Puntaje de cumplimiento: <span className="font-bold text-white/80">{r.puntaje_cumplimiento}/100</span>
+          {v.puntaje.etiqueta}: <span className="font-bold text-white/80">{v.puntaje.valor}/100</span>
         </p>
       )}
-      {r.resumen_ejecutivo && <p className="text-sm text-white/75 leading-relaxed">{r.resumen_ejecutivo}</p>}
+      {v.resumen && <p className="text-sm text-white/75 leading-relaxed">{v.resumen}</p>}
       <div className="flex flex-wrap gap-2">
-        {secciones.map(([etiqueta, clave]) => (
-          <span key={clave} className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] text-white/60">
-            {etiqueta}: <span className="font-bold text-white/85">{conteo(clave)}</span>
+        {v.conteos.map(([etiqueta, valor]) => (
+          <span key={etiqueta} className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] text-white/60">
+            {etiqueta}: <span className="font-bold text-white/85">{valor === 'oculta' ? 'oculta' : valor}</span>
           </span>
         ))}
       </div>
-      <TransparenciaIA transparencia={r.transparencia} />
-      <SeccionesExtra secciones={r.secciones_extra} />
+      <TransparenciaIA transparencia={v.transparencia} />
+      <SeccionesExtra secciones={v.secciones_extra} />
       <details className="rounded-xl border border-white/[0.08] bg-black/20">
         <summary className="cursor-pointer px-3 py-2 text-[11px] text-white/50">Ver JSON completo</summary>
         <pre className="max-h-[360px] overflow-auto px-3 pb-3 text-[10px] text-white/60 whitespace-pre-wrap">

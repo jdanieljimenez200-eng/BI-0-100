@@ -26,6 +26,16 @@ export const SECCIONES_NATIVAS: Record<ModuloPrompt, SeccionNativa[]> = {
     { clave: 'legal.alertas', titulo: 'Alertas', ocultable: true },
     { clave: 'legal.checklist', titulo: 'Plan de acción (checklist)', ocultable: true },
   ],
+  // Solo se ocultan las secciones que escribe la IA; las de datos (tendencias,
+  // competencia, TAM) son la evidencia del análisis y siempre se muestran.
+  mercado: [
+    { clave: 'mercado.resumen_ejecutivo', titulo: 'Viabilidad', ocultable: false },
+    { clave: 'mercado.tendencias', titulo: 'Tendencias de demanda', ocultable: false },
+    { clave: 'mercado.competencia', titulo: 'Competencia', ocultable: false },
+    { clave: 'mercado.tam_sam_som', titulo: 'Tamaño de mercado (TAM/SAM/SOM)', ocultable: false },
+    { clave: 'mercado.dafo', titulo: 'DAFO', ocultable: true },
+    { clave: 'mercado.reporte_bi', titulo: 'Reporte BI (diagnóstico y próximos pasos)', ocultable: true },
+  ],
 };
 
 export function seccionesOcultables(modulo: ModuloPrompt): string[] {
