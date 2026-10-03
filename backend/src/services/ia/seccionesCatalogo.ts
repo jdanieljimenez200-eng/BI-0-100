@@ -44,6 +44,13 @@ export const SECCIONES_NATIVAS: Record<ModuloPrompt, SeccionNativa[]> = {
     { clave: 'finanzas.escenarios_avanzados', titulo: 'Escenarios', ocultable: false },
     { clave: 'finanzas.riesgos', titulo: 'Riesgos del negocio', ocultable: true },
   ],
+  // Los tips llevan la transparencia y el perfil de cliente alimenta objeciones,
+  // seguimientos y palabras clave: solo la historia del día se puede quitar.
+  ventas: [
+    { clave: 'ventas.tips', titulo: 'Tips de venta', ocultable: false },
+    { clave: 'ventas.perfil_cliente', titulo: 'Perfil de cliente ideal', ocultable: false },
+    { clave: 'ventas.historia', titulo: 'Historia del día', ocultable: true },
+  ],
 };
 
 export function seccionesOcultables(modulo: ModuloPrompt): string[] {

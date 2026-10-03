@@ -16,6 +16,8 @@ import FollowUpsCard from '@/components/ventas/FollowUpsCard';
 import CompetitorIntelPanel from '@/components/ventas/CompetitorIntelPanel';
 import AvisoEstimacion from '@/components/ui/AvisoEstimacion';
 import { BackButton } from '@/components/ui';
+import TransparenciaIA, { type Transparencia } from '@/components/analisis/TransparenciaIA';
+import SeccionesExtra, { type SeccionExtra } from '@/components/analisis/SeccionesExtra';
 
 interface TipNegociacion {
   titulo: string;
@@ -62,6 +64,12 @@ interface AnalisisVentas {
   nombre_producto?: string;
   categoria?: string;
   pais?: string;
+  /** ventas@2: confianza, supuestos, datos del embudo que faltan y secciones extra u ocultas. */
+  meta_ia?: {
+    transparencia?: Transparencia | null;
+    secciones_extra?: SeccionExtra[];
+    secciones_ocultas?: string[];
+  } | null;
 }
 
 type TabId = 'tips' | 'historia' | 'fallan' | 'icp' | 'guiones' | 'competidores' | 'completo';
@@ -364,6 +372,8 @@ export default function ResultadoVentasPage() {
   const bloqueoICP = estaBloqueada(plan, 'ventas.perfil_cliente', analisis.secciones_bloqueadas ?? []);
   const bloqueoScorer = estaBloqueada(plan, 'ventas.script_scorer', analisis.secciones_bloqueadas ?? []);
   const bloqueoCompetidores = estaBloqueada(plan, 'ventas.competitor_intel', analisis.secciones_bloqueadas ?? []);
+  // Lo que el admin quitó del módulo no se generó: ni pestaña ni aviso de «no disponible».
+  const historiaOculta = (analisis.meta_ia?.secciones_ocultas ?? []).includes('ventas.historia');
 
   // Normalización universal de tips de negociación (soporta Array directo y Objeto con clave .tips)
   const rawTips = Array.isArray(analisis.tips_data)
@@ -490,7 +500,7 @@ export default function ResultadoVentasPage() {
         {/* ─── NAVEGACIÓN POR PESTAÑAS (LUJO SILENCIOSO) ─── */}
         <div data-print="hide" className="sticky top-16 z-20 mb-6">
           <div className="p-1.5 rounded-2xl bg-[#08101a]/90 border border-white/10 backdrop-blur-xl shadow-2xl flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-            {TABS.filter((tab) => tab.id !== 'fallan' || bloqueoFallan || !!porqueFallan).map((tab) => {
+            {TABS.filter((tab) => (tab.id !== 'fallan' || bloqueoFallan || !!porqueFallan) && (tab.id !== 'historia' || !historiaOculta)).map((tab) => {
               const isActive = activeTab === tab.id;
               const isLocked = (tab.id === 'fallan' && bloqueoFallan) ||
                                (tab.id === 'icp' && bloqueoICP) ||
@@ -566,11 +576,18 @@ export default function ResultadoVentasPage() {
                 </div>
               )}
               {!printMode && <FollowUpsCard analisisId={analisisId} bloqueado={bloqueoScorer} />}
+              {/* Qué tan confiable es y qué dato lo mejoraría (ventas@2). */}
+              {analisis.meta_ia?.transparencia && (
+                <TransparenciaIA transparencia={analisis.meta_ia.transparencia} hrefCompletar={`/dashboard/ventas/${productoId}`} />
+              )}
+              {(analisis.meta_ia?.secciones_extra?.length ?? 0) > 0 && (
+                <SeccionesExtra secciones={analisis.meta_ia?.secciones_extra} />
+              )}
             </div>
           )}
 
           {/* ── HISTORIA DEL DÍA ── */}
-          {(printMode || activeTab === 'historia' || activeTab === 'completo') && (
+          {(printMode || activeTab === 'historia' || activeTab === 'completo') && !historiaOculta && (
             <div className="print-section">
               <h2 className="print-only mb-4 text-lg">Historia ilustrativa (generada con IA)</h2>
               {historia ? (

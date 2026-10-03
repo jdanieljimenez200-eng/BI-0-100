@@ -112,6 +112,29 @@ const largo = (v: unknown) => (Array.isArray(v) ? v.length : 0);
  */
 function vistaDePrueba(resultado: unknown): VistaComun {
   const r = (resultado ?? {}) as Record<string, unknown>;
+  // Ventas: tips, historia del día y perfil de cliente.
+  if (r.meta_ia && typeof r.meta_ia === 'object' && Array.isArray(r.tips)) {
+    const meta = r.meta_ia as {
+      transparencia?: Transparencia;
+      secciones_extra?: SeccionExtra[];
+      secciones_ocultas?: string[];
+      meta?: { origen?: VistaComun['origen'] };
+    };
+    const tips = r.tips as { titulo?: string }[];
+    const perfil = (r.perfil_cliente ?? null) as { score_afinidad?: number; psicografia?: { objeciones_tipicas?: unknown[] } } | null;
+    return {
+      origen: meta.meta?.origen,
+      puntaje: typeof perfil?.score_afinidad === 'number' ? { etiqueta: 'Afinidad del perfil de cliente', valor: perfil.score_afinidad } : null,
+      resumen: tips.map((t) => t.titulo).filter(Boolean).join(' · ') || null,
+      conteos: [
+        ['Tips', tips.length],
+        ['Historia del día', (meta.secciones_ocultas ?? []).includes('ventas.historia') ? 'oculta' : r.historia ? 1 : 0],
+        ['Objeciones del perfil', largo(perfil?.psicografia?.objeciones_tipicas)],
+      ],
+      transparencia: meta.transparencia,
+      secciones_extra: meta.secciones_extra,
+    };
+  }
   if (r.meta_ia && typeof r.meta_ia === 'object' && r.resumen && typeof r.resumen === 'object') {
     const meta = r.meta_ia as {
       transparencia?: Transparencia;

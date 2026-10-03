@@ -19,7 +19,7 @@ jest.mock('../../workers/analysisQueue', () => ({
   analysisQueue: { add: jest.fn().mockResolvedValue({}) },
 }));
 
-const CLAVES = ['legal.modo', 'legal.pais.GT', 'mercado.modo', 'finanzas.modo'];
+const CLAVES = ['legal.modo', 'legal.pais.GT', 'mercado.modo', 'finanzas.modo', 'ventas.modo'];
 
 /**
  * El panel de prompts. Lo que se protege:
@@ -225,6 +225,27 @@ describeWithDb('Prompts de IA (/api/admin/prompts)', () => {
     expect(probar.body.caso.pais).toBe('PE');
     expect(probar.body.resultado.proyeccion.cobertura_deuda).not.toBeNull();
     expect(probar.body.resultado.meta_ia.meta).toMatchObject({ contrato: 'finanzas@2', versiones_prompt: { 'finanzas.modo': { id, version: 1 } } });
+
+    expect((await api().delete(`/api/admin/prompts/versiones/${id}`).set(cabeceras(admin2))).status).toBe(200);
+  });
+
+  it('Ventas: prueba un caso B2B y solo deja ocultar la historia del día', async () => {
+    const detalle = await api().get('/api/admin/prompts/claves/ventas.modo').set(cabeceras(admin2));
+    expect(detalle.status).toBe(200);
+    expect(detalle.body.casos.map((c: { id: string }) => c.id)).toContain('co_software_b2b');
+
+    const crear = await api().post('/api/admin/prompts/claves/ventas.modo/borradores').set(cabeceras(admin2)).send({});
+    expect(crear.status).toBe(201);
+    const id = crear.body.id;
+    const tips = await api().patch(`/api/admin/prompts/versiones/${id}`).set(cabeceras(admin2)).send({ secciones_ocultas: ['ventas.tips'] });
+    expect(tips.status).toBe(400);
+    const historia = await api().patch(`/api/admin/prompts/versiones/${id}`).set(cabeceras(admin2)).send({ secciones_ocultas: ['ventas.historia'] });
+    expect(historia.status).toBe(200);
+
+    const probar = await api().post(`/api/admin/prompts/versiones/${id}/probar`).set(cabeceras(admin2)).send({ caso: 'co_software_b2b' });
+    expect(probar.status).toBe(200);
+    expect(probar.body.resultado.historia).toBeNull();
+    expect(probar.body.resultado.meta_ia.meta).toMatchObject({ contrato: 'ventas@2', versiones_prompt: { 'ventas.modo': { id, version: 1 } } });
 
     expect((await api().delete(`/api/admin/prompts/versiones/${id}`).set(cabeceras(admin2))).status).toBe(200);
   });

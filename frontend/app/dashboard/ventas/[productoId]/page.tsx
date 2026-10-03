@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import Link from 'next/link';
 import api from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { interpretarErrorApi } from '@/lib/apiError';
@@ -10,6 +9,7 @@ import AvisoErrorApi from '@/components/ui/AvisoErrorApi';
 import { HelpTip } from '@/components/ui/HelpTip';
 import VentasVideoUploader from '@/components/ventas/VentasVideoUploader';
 import { BackButton } from '@/components/ui';
+import { monedaDePais } from '@/lib/perfilNegocio';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -25,6 +25,60 @@ interface Producto {
   precio_esperado: number | null;
   imagen_url: string | null;
   video_url: string | null;
+  pais: string | null;
+}
+
+// ─── Tu embudo de ventas (opcional; ver services/ventas/types.ts) ────────────
+
+const CICLOS = [
+  { value: 'mismo_dia', label: 'El mismo día' },
+  { value: 'dias', label: 'Unos días' },
+  { value: 'semanas', label: 'Semanas' },
+  { value: 'meses', label: 'Meses' },
+] as const;
+
+const DECIDE = [
+  { value: 'el_mismo', label: 'El mismo cliente' },
+  { value: 'pareja_familia', label: 'Con su pareja o familia' },
+  { value: 'dueno_empresa', label: 'El dueño de la empresa' },
+  { value: 'compras_comite', label: 'Compras o un comité' },
+] as const;
+
+function Pildoras<T extends string>({
+  opciones,
+  valor,
+  onChange,
+  nombre,
+}: {
+  opciones: readonly { value: T; label: string }[];
+  valor: T | '';
+  onChange: (v: T | '') => void;
+  nombre: string;
+}) {
+  return (
+    <div role="radiogroup" aria-label={nombre} className="flex flex-wrap gap-2 mt-1">
+      {opciones.map((o) => {
+        const activo = valor === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={activo}
+            // Volver a pulsar la opción elegida la deja sin responder.
+            onClick={() => onChange(activo ? '' : o.value)}
+            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+              activo
+                ? 'bg-ventas/15 border-ventas/40 text-white'
+                : 'bg-white/[0.03] border-white/10 text-white/50 hover:border-white/20 hover:text-white/80'
+            }`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 // ─── Vector Icons (0 Emojis) ──────────────────────────────────────────────────
@@ -263,11 +317,17 @@ export default function VentasScopePage() {
   const [unidadesPreview, setUnidadesPreview] = useState<number>(60);
   const [tamanoEquipo, setTamanoEquipo] = useState<Equipo>('solo_tu');
   const [objetivoVentas, setObjetivoVentas] = useState('');
+  // Embudo: vacío = no declarado (el análisis lo dice y trabaja con supuestos).
+  const [contactosMes, setContactosMes] = useState('');
+  const [cierreDeDiez, setCierreDeDiez] = useState('');
+  const [cicloVenta, setCicloVenta] = useState<(typeof CICLOS)[number]['value'] | ''>('');
+  const [quienDecide, setQuienDecide] = useState<(typeof DECIDE)[number]['value'] | ''>('');
+  const [objeciones, setObjeciones] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [upgradeRequired, setUpgradeRequired] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<{ ticketPromedio?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ ticketPromedio?: string; embudo?: string }>({});
 
   useEffect(() => {
     // Navegar de un producto a otro reutiliza este componente y relanza el
@@ -304,6 +364,16 @@ export default function VentasScopePage() {
       setFieldErrors({ ticketPromedio: 'El ticket promedio debe ser mayor a 0.' });
       return;
     }
+    const contactos = contactosMes.trim() === '' ? undefined : Number(contactosMes);
+    const deDiez = cierreDeDiez.trim() === '' ? undefined : Number(cierreDeDiez);
+    if (contactos !== undefined && (!Number.isInteger(contactos) || contactos < 0)) {
+      setFieldErrors({ embudo: 'Los contactos al mes deben ser un número entero.' });
+      return;
+    }
+    if (deDiez !== undefined && (!Number.isFinite(deDiez) || deDiez < 0 || deDiez > 10)) {
+      setFieldErrors({ embudo: 'De cada 10 que preguntan, compran entre 0 y 10.' });
+      return;
+    }
 
     setLoading(true);
     try {
@@ -314,6 +384,11 @@ export default function VentasScopePage() {
         ticket_promedio: ticketPromedio,
         tamano_equipo: tamanoEquipo,
         objetivo_ventas: objetivoVentas || undefined,
+        contactos_mes: contactos,
+        tasa_cierre_pct: deDiez === undefined ? undefined : deDiez * 10,
+        ciclo_venta: cicloVenta || undefined,
+        quien_decide: quienDecide || undefined,
+        objeciones_frecuentes: objeciones.trim() || undefined,
       });
       router.push(`/dashboard/ventas/${productoId}/resultado/${data.analisis_id}`);
     } catch (err: unknown) {
@@ -332,6 +407,8 @@ export default function VentasScopePage() {
   }
 
   const imgUrl = getImageUrl(producto.imagen_url);
+  // Moneda del país del producto: antes todo decía MXN.
+  const moneda = monedaDePais(producto.pais) || 'MXN';
 
   return (
     <div className="px-4 py-8 max-w-2xl mx-auto animate-fade-in">
@@ -363,7 +440,7 @@ export default function VentasScopePage() {
           <div className="flex-1 min-w-0">
             <p className="font-bold text-white truncate">{producto.nombre}</p>
             <p className="text-sm text-white/50">
-              {producto.categoria}{producto.precio_esperado ? ` · $${Number(producto.precio_esperado).toFixed(0)} MXN` : ''}
+              {producto.categoria}{producto.precio_esperado ? ` · ${Number(producto.precio_esperado).toLocaleString('es-MX')} ${moneda}` : ''}
             </p>
           </div>
         </div>
@@ -411,7 +488,6 @@ export default function VentasScopePage() {
         <Block n={3} title="Ticket Promedio" subtitle="Valor medio por transacción comercial">
           <Field label="Ticket promedio por venta" required hint="Utilizado para modelar escenarios de facturación y calibrar sensibilidad de precio." help="El monto promedio cobrado por transacción normal. Calibra la matriz de objeciones y la justificación de valor." error={fieldErrors.ticketPromedio}>
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-sm text-white/50 font-mono">$</span>
               <input
                 type="number"
                 min={1}
@@ -421,7 +497,7 @@ export default function VentasScopePage() {
                 className={`${inputCls} font-mono tabular-nums`}
                 placeholder="ej. 350"
               />
-              <span className="text-sm text-white/50 whitespace-nowrap">MXN</span>
+              <span className="text-sm text-white/50 whitespace-nowrap">{moneda}</span>
             </div>
           </Field>
 
@@ -430,7 +506,7 @@ export default function VentasScopePage() {
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-white/40 uppercase tracking-wider font-semibold">Potencial mensual estimado</span>
               <span className="text-sm font-bold text-ventas font-mono tabular-nums">
-                ${proyeccionMes.toLocaleString('es-MX')} MXN
+                {proyeccionMes.toLocaleString('es-MX')} {moneda}
               </span>
             </div>
             <div className="flex items-center gap-3">
@@ -498,8 +574,49 @@ export default function VentasScopePage() {
           </Field>
         </Block>
 
-        {/* BLOQUE 6 - Vídeo de venta */}
-        <Block n={6} title="Material Audiovisual" subtitle="Opcional: registro de pitch o demostración técnica vinculado al producto">
+        {/* BLOQUE 6 - Embudo */}
+        <Block n={6} title="Tu embudo de ventas" subtitle="Opcional — con estos datos los tips atacan tu cuello de botella real">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="¿Cuántas personas te preguntan al mes?" optional help="Mensajes, llamadas o visitas de gente interesada en un mes típico. Dice si te faltan clientes o si se te escapan los que ya llegan.">
+              <input
+                type="number" min={0} step={1} inputMode="numeric"
+                value={contactosMes}
+                onChange={(e) => { setContactosMes(e.target.value); setFieldErrors({}); }}
+                className={`${inputCls} font-mono tabular-nums`}
+                placeholder="ej. 80"
+              />
+            </Field>
+            <Field label="De cada 10 que preguntan, ¿cuántos compran?" optional help="Tu tasa de cierre. Si de 10 compran 3, escribe 3.">
+              <input
+                type="number" min={0} max={10} step={0.5} inputMode="decimal"
+                value={cierreDeDiez}
+                onChange={(e) => { setCierreDeDiez(e.target.value); setFieldErrors({}); }}
+                className={`${inputCls} font-mono tabular-nums`}
+                placeholder="ej. 3"
+              />
+            </Field>
+          </div>
+          <Field label="¿Cuánto tarda un cliente desde que pregunta hasta que paga?" optional>
+            <Pildoras nombre="Ciclo de venta" opciones={CICLOS} valor={cicloVenta} onChange={setCicloVenta} />
+          </Field>
+          <Field label="¿Quién decide la compra?" optional>
+            <Pildoras nombre="Quién decide" opciones={DECIDE} valor={quienDecide} onChange={setQuienDecide} />
+          </Field>
+          <Field label="¿Qué te dicen para no comprar?" optional hint="Con sus palabras: las rebatidas usarán estas objeciones reales.">
+            <textarea
+              rows={2}
+              maxLength={400}
+              value={objeciones}
+              onChange={(e) => setObjeciones(e.target.value)}
+              placeholder='Ej: "Lo voy a pensar", "En el tianguis está más barato"'
+              className={`${inputCls} resize-none`}
+            />
+          </Field>
+          {fieldErrors.embudo && <p className="text-xs text-brand-accent">{fieldErrors.embudo}</p>}
+        </Block>
+
+        {/* BLOQUE 7 - Vídeo de venta */}
+        <Block n={7} title="Material Audiovisual" subtitle="Opcional: registro de pitch o demostración técnica vinculado al producto">
           <Field
             label="Demostración o pitch grabado"
             optional

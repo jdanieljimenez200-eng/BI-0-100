@@ -3,6 +3,7 @@ import { PAISES, textoFichaPais } from '../../legal/fichasPais';
 import { LEGAL_MODO } from './legal.modo';
 import { MERCADO_MODO } from './mercado.modo';
 import { FINANZAS_MODO } from './finanzas.modo';
+import { VENTAS_MODO } from './ventas.modo';
 
 /**
  * Catálogo de lo que el admin puede editar y sus textos por defecto.
@@ -13,7 +14,7 @@ import { FINANZAS_MODO } from './finanzas.modo';
  * modos; hasta entonces sigue con su prompt de siempre, en su servicio.
  */
 
-export type ModuloPrompt = 'legal' | 'mercado' | 'finanzas';
+export type ModuloPrompt = 'legal' | 'mercado' | 'finanzas' | 'ventas';
 
 export interface ClavePrompt {
   clave: string;
@@ -26,6 +27,7 @@ const MODOS: Record<string, { modulo: ModuloPrompt; titulo: string; texto: strin
   'legal.modo': { modulo: 'legal', titulo: 'Legal — modo de comportamiento', texto: LEGAL_MODO },
   'mercado.modo': { modulo: 'mercado', titulo: 'Mercado — modo de comportamiento', texto: MERCADO_MODO },
   'finanzas.modo': { modulo: 'finanzas', titulo: 'Finanzas — modo de comportamiento', texto: FINANZAS_MODO },
+  'ventas.modo': { modulo: 'ventas', titulo: 'Ventas — modo de comportamiento', texto: VENTAS_MODO },
 };
 
 const RE_FICHA_LEGAL = /^legal\.pais\.([A-Z]{2})$/;
@@ -81,5 +83,6 @@ export function clavesDeModulo(modulo: string, pais?: string | null): string[] {
   if (modulo === 'mercado') return ['mercado.modo'];
   // Finanzas tampoco: la moneda y el impuesto al consumo salen de utils/taxConfig.ts.
   if (modulo === 'finanzas') return ['finanzas.modo'];
+  if (modulo === 'ventas') return ['ventas.modo'];
   return [];
 }

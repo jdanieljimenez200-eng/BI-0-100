@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { Usuario } from './Usuario';
 import { Producto } from './Producto';
+import type { MetaIaAnalisis } from '../services/ia/metaAnalisis';
 
 @Entity('analisis_ventas')
 @Index(['usuario_id', 'producto_id', 'estado_analisis'])
@@ -100,6 +101,13 @@ export class AnalisisVentas {
   /** Secciones NO generadas por plan (fuente de verdad para la UI). */
   @Column('simple-array', { nullable: true })
   secciones_bloqueadas!: string[] | null;
+
+  /**
+   * ventas@2: confianza, supuestos y datos del embudo que faltan, secciones
+   * extra u ocultas del admin y versión de prompt usada (`services/ia/metaAnalisis.ts`).
+   */
+  @Column({ nullable: true, type: 'jsonb' })
+  meta_ia!: MetaIaAnalisis | null;
 
   @Column({ type: 'varchar', default: 'procesando' })
   estado_analisis!: string; // 'procesando', 'completado', 'error'

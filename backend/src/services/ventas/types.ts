@@ -1,3 +1,6 @@
+import type { EstatusProyecto } from '../../utils/estatusProyecto';
+import type { PerfilNegocio } from '../ia/perfilNegocio';
+
 // ─── Input del análisis ───────────────────────────────────────────────────────
 
 export interface VentasAnalisisInput {
@@ -23,7 +26,33 @@ export interface VentasAnalisisInput {
    * venta. Para usar el contenido haría falta transcribirlo.
    */
   tiene_video?: boolean;
+
+  // ── Tu embudo de ventas (opcional; ventas@2) ─────────────────────────────
+  // Datos del ANÁLISIS, no del perfil del negocio: cambian mes a mes. Sin
+  // ellos la IA trabaja con supuestos y la transparencia lo declara.
+  /** Cuánto tarda un cliente desde que pregunta hasta que paga. */
+  ciclo_venta?: CicloVenta;
+  /** Cuántas personas preguntan o te contactan al mes. */
+  contactos_mes?: number;
+  /** De cada 100 que preguntan, cuántos compran. */
+  tasa_cierre_pct?: number;
+  /** Lo que más te dicen para no comprar, en sus palabras. */
+  objeciones_frecuentes?: string;
+  /** Quién toma la decisión de compra. */
+  quien_decide?: QuienDecide;
+
+  // ── Contexto del producto que antes no llegaba (lo llena el orquestador) ─
+  estatus?: EstatusProyecto;
+  tipo_actividad?: string;
+  puv?: string;
+  cliente_ideal?: string;
+  perfil?: PerfilNegocio;
 }
+
+export const CICLOS_VENTA = ['mismo_dia', 'dias', 'semanas', 'meses'] as const;
+export type CicloVenta = (typeof CICLOS_VENTA)[number];
+export const QUIEN_DECIDE = ['el_mismo', 'pareja_familia', 'dueno_empresa', 'compras_comite'] as const;
+export type QuienDecide = (typeof QUIEN_DECIDE)[number];
 
 // ─── Tip de emprendedor / negociación ────────────────────────────────────────
 

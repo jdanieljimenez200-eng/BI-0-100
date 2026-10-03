@@ -6,6 +6,7 @@ import { crearProductoDeUsuario } from '../helpers/seedHelper';
 import { AppDataSource } from '../../config/database';
 import { AnalisisVentas } from '../../models/AnalisisVentas';
 import { Usuario } from '../../models/Usuario';
+import { analysisQueue } from '../../workers/analysisQueue';
 
 // Encolar de verdad abre la conexión de BullMQ y Jest no sale al terminar
 // (la suite entera se quedaba colgada): aquí solo importa lo que hace la ruta
@@ -105,6 +106,40 @@ describeWithDb('Ventas routes', () => {
 
       expect(res.status).toBe(202);
       expect(res.body.analisis_id).toBeTruthy();
+    });
+
+    it('un dato del embudo fuera de rango responde 400', async () => {
+      const producto = await crearProductoDeUsuario(userId);
+      const res = await request
+        .default(app)
+        .post('/api/ventas/analizar')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ producto_id: producto.id, tipo_venta: 'B2B', canal_principal: 'telefono', tamano_equipo: 'solo_tu', ticket_promedio: 450, tasa_cierre_pct: 140 });
+      expect(res.status).toBe(400);
+      expect(String(res.body.error)).toMatch(/tasa_cierre_pct/);
+    });
+
+    it('el embudo declarado viaja en el trabajo y se guarda en el análisis', async () => {
+      const producto = await crearProductoDeUsuario(userId, { pais: 'CO' });
+      const embudo = {
+        contactos_mes: 30,
+        tasa_cierre_pct: 12.5,
+        ciclo_venta: 'semanas',
+        quien_decide: 'compras_comite',
+        objeciones_frecuentes: 'Ya usamos Excel',
+      };
+      const res = await request
+        .default(app)
+        .post('/api/ventas/analizar')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ producto_id: producto.id, tipo_venta: 'B2B', canal_principal: 'telefono', tamano_equipo: '1_2_personas', ticket_promedio: 390000, ...embudo });
+      expect(res.status).toBe(202);
+
+      const trabajo = (analysisQueue.add as jest.Mock).mock.calls.at(-1)?.[1];
+      expect(trabajo.payload).toMatchObject(embudo);
+      const analisis = await AppDataSource.getRepository(AnalisisVentas).findOneByOrFail({ id: res.body.analisis_id });
+      expect(analisis.pais).toBe('CO');
+      expect(analisis.inputs_data).toMatchObject(embudo);
     });
   });
 

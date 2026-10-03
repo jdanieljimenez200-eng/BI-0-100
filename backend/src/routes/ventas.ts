@@ -22,7 +22,8 @@ import {
   isTranscripcionAvailable,
   transcribirAudio,
 } from '../services/media/transcripcionService';
-import type { TipNegociacion, VentasAnalisisInput } from '../services/ventas/types';
+import { CICLOS_VENTA, QUIEN_DECIDE, type TipNegociacion, type VentasAnalisisInput } from '../services/ventas/types';
+import { embudoDePayload, inputDeVentas } from '../services/ventas/ventasOrchestrator';
 
 const router = Router();
 exigirUuid(router, 'id', 'productoId');
@@ -76,6 +77,32 @@ function parseInput(body: Record<string, unknown>): { input?: VentasAnalisisInpu
     return { error: `ticket_promedio no puede pasar de ${TICKET_MAXIMO.toLocaleString('es-MX')}` };
   }
 
+  // Tu embudo de ventas (opcional): vacío = no declarado; fuera de rango = 400.
+  const opcional = (v: unknown) => v === undefined || v === null || v === '';
+  const embudo: Partial<VentasAnalisisInput> = {};
+  if (!opcional(body.contactos_mes)) {
+    const n = Number(body.contactos_mes);
+    if (!Number.isInteger(n) || n < 0 || n > 1_000_000) return { error: 'contactos_mes debe ser un entero entre 0 y 1,000,000' };
+    embudo.contactos_mes = n;
+  }
+  if (!opcional(body.tasa_cierre_pct)) {
+    const n = Number(body.tasa_cierre_pct);
+    if (!Number.isFinite(n) || n < 0 || n > 100) return { error: 'tasa_cierre_pct debe estar entre 0 y 100' };
+    embudo.tasa_cierre_pct = n;
+  }
+  if (!opcional(body.ciclo_venta)) {
+    if (!(CICLOS_VENTA as readonly unknown[]).includes(body.ciclo_venta)) return { error: 'ciclo_venta inválido' };
+    embudo.ciclo_venta = body.ciclo_venta as VentasAnalisisInput['ciclo_venta'];
+  }
+  if (!opcional(body.quien_decide)) {
+    if (!(QUIEN_DECIDE as readonly unknown[]).includes(body.quien_decide)) return { error: 'quien_decide inválido' };
+    embudo.quien_decide = body.quien_decide as VentasAnalisisInput['quien_decide'];
+  }
+  if (typeof body.objeciones_frecuentes === 'string' && body.objeciones_frecuentes.trim()) {
+    if (body.objeciones_frecuentes.trim().length > 400) return { error: 'objeciones_frecuentes no puede pasar de 400 caracteres' };
+    embudo.objeciones_frecuentes = body.objeciones_frecuentes.trim();
+  }
+
   return {
     input: {
       tipo_venta: tipo_venta as VentasAnalisisInput['tipo_venta'],
@@ -86,6 +113,7 @@ function parseInput(body: Record<string, unknown>): { input?: VentasAnalisisInpu
         typeof body.objetivo_ventas === 'string' && body.objetivo_ventas.trim()
           ? body.objetivo_ventas.trim().slice(0, 300)
           : undefined,
+      ...embudo,
     },
   };
 }
@@ -319,6 +347,11 @@ router.post(
               ticket_promedio: input.ticket_promedio,
               tamano_equipo: input.tamano_equipo,
               objetivo_ventas: input.objetivo_ventas,
+              contactos_mes: input.contactos_mes,
+              tasa_cierre_pct: input.tasa_cierre_pct,
+              ciclo_venta: input.ciclo_venta,
+              quien_decide: input.quien_decide,
+              objeciones_frecuentes: input.objeciones_frecuentes,
               // El worker no tiene la petición: el día local viaja con el trabajo.
               fecha_local: await hoyDePeticion(req),
             },
@@ -491,17 +524,35 @@ router.patch('/:id/perfil', ...acceso,async (req: AuthRequest, res: Response) =>
   }
 });
 
-/** Reconstruye el input del análisis a partir de la fila (mismo patrón que /guion). */
-function inputDesdeAnalisis(analisis: AnalisisVentas): import('../services/ventas/types').VentasAnalisisInput {
-  return {
-    tipo_venta: (analisis.tipo_venta as any) ?? 'B2C_directo',
-    canal_principal: (analisis.canal_principal as any) ?? 'directo',
+/**
+ * Input de las llamadas bajo demanda (objeciones, seguimientos, guiones,
+ * competencia): lo que se declaró en el análisis más lo que sabe hoy el
+ * producto (descripción, propuesta de valor, perfil). Antes cada ruta lo armaba
+ * a mano con la mitad de los datos, y la de borrar competidor sin el país.
+ */
+async function inputDesdeAnalisis(analisis: AnalisisVentas): Promise<VentasAnalisisInput> {
+  const payload: Record<string, unknown> = {
+    ...(analisis.inputs_data ?? {}),
+    tipo_venta: analisis.tipo_venta,
+    canal_principal: analisis.canal_principal,
     ticket_promedio: Number(analisis.ticket_promedio) || 0,
-    tamano_equipo: (analisis.tamano_equipo as any) ?? 'solo_tu',
+    tamano_equipo: analisis.tamano_equipo,
+    objetivo_ventas: analisis.objetivo_ventas ?? undefined,
+  };
+  const producto = await AppDataSource.getRepository(Producto).findOneBy({ id: analisis.producto_id });
+  if (producto) return inputDeVentas(producto, payload);
+  // Sin producto: lo que guardó el análisis.
+  return {
+    tipo_venta: (analisis.tipo_venta as VentasAnalisisInput['tipo_venta']) ?? 'B2C_directo',
+    canal_principal: (analisis.canal_principal as VentasAnalisisInput['canal_principal']) ?? 'directo',
+    ticket_promedio: Number(analisis.ticket_promedio) || 0,
+    tamano_equipo: (analisis.tamano_equipo as VentasAnalisisInput['tamano_equipo']) ?? 'solo_tu',
+    objetivo_ventas: analisis.objetivo_ventas ?? undefined,
     nombre_producto: analisis.nombre_producto,
     categoria: analisis.categoria,
     precio: Number(analisis.precio) || undefined,
     pais: analisis.pais,
+    ...embudoDePayload(payload),
   };
 }
 
@@ -524,8 +575,9 @@ router.get('/:id/objeciones', ...acceso,async (req: AuthRequest, res: Response) 
 
     if (!analisis.rebatidas_objeciones_data) {
       // Se genera una sola vez por análisis y queda guardada: se cobra esa vez.
+      const input = await inputDesdeAnalisis(analisis);
       const rebatidas = await conCreditos(req.userId!, plan, 'ventas_objeciones', () =>
-        generarRebatidas(perfil, inputDesdeAnalisis(analisis))
+        generarRebatidas(perfil, input)
       );
       analisis.rebatidas_objeciones_data = rebatidas;
       await repo.save(analisis);
@@ -557,7 +609,7 @@ router.get('/:id/palabras-clave-ads', ...acceso,async (req: AuthRequest, res: Re
     if (!perfil) return res.status(400).json({ error: 'Este análisis no tiene un Perfil de Cliente Ideal generado' });
 
     if (!analisis.palabras_clave_ads_data) {
-      const palabras = await generarPalabrasClaveAds(perfil, inputDesdeAnalisis(analisis));
+      const palabras = await generarPalabrasClaveAds(perfil, await inputDesdeAnalisis(analisis));
       analisis.palabras_clave_ads_data = palabras;
       await repo.save(analisis);
     }
@@ -597,7 +649,7 @@ router.get('/:id/followups', ...acceso,async (req: AuthRequest, res: Response) =
 
     if (!analisis.followups_data) {
       const tono = await cargarTonoBrief(req.userId!, analisis.producto_id);
-      const followups = await generarFollowUps(inputDesdeAnalisis(analisis), tono);
+      const followups = await generarFollowUps(await inputDesdeAnalisis(analisis), tono);
       analisis.followups_data = followups;
       await repo.save(analisis);
     }
@@ -729,16 +781,7 @@ router.post(
       }
 
       // Input del análisis para personalizar el scorer
-      const input: import('../services/ventas/types').VentasAnalisisInput = {
-        tipo_venta: (analisis.tipo_venta as any) ?? 'B2C_directo',
-        canal_principal: (analisis.canal_principal as any) ?? 'directo',
-        ticket_promedio: Number(analisis.ticket_promedio) || 0,
-        tamano_equipo: (analisis.tamano_equipo as any) ?? 'solo_tu',
-        nombre_producto: analisis.nombre_producto,
-        categoria: analisis.categoria,
-        precio: Number(analisis.precio) || undefined,
-        pais: analisis.pais,
-      };
+      const input = await inputDesdeAnalisis(analisis);
 
       const perfilCliente = analisis.perfil_cliente_data as PerfilClienteIdeal | null;
       const evaluacion: EvaluacionGuion = await conCreditos(req.userId!, plan, 'ventas_guion', () =>
@@ -834,16 +877,7 @@ router.post(
       }
 
       // Input del análisis propio para comparar
-      const input: import('../services/ventas/types').VentasAnalisisInput = {
-        tipo_venta: (analisis.tipo_venta as any) ?? 'B2C_directo',
-        canal_principal: (analisis.canal_principal as any) ?? 'directo',
-        ticket_promedio: Number(analisis.ticket_promedio) || 0,
-        tamano_equipo: (analisis.tamano_equipo as any) ?? 'solo_tu',
-        nombre_producto: analisis.nombre_producto,
-        categoria: analisis.categoria,
-        precio: Number(analisis.precio) || undefined,
-        pais: analisis.pais,
-      };
+      const input = await inputDesdeAnalisis(analisis);
 
       const archivos = (req as AuthRequest & { files?: Record<string, Express.Multer.File[]> }).files;
       const archivoVideo = archivos?.video?.[0];
@@ -959,15 +993,7 @@ router.delete('/:id/competidores/:compId', ...acceso,async (req: AuthRequest, re
     };
     const nuevaLista = (datos.competidores ?? []).filter((c) => c.id !== req.params.compId);
 
-    const input: import('../services/ventas/types').VentasAnalisisInput = {
-      tipo_venta: (analisis.tipo_venta as any) ?? 'B2C_directo',
-      canal_principal: (analisis.canal_principal as any) ?? 'directo',
-      ticket_promedio: Number(analisis.ticket_promedio) || 0,
-      tamano_equipo: (analisis.tamano_equipo as any) ?? 'solo_tu',
-      nombre_producto: analisis.nombre_producto,
-      categoria: analisis.categoria,
-      precio: Number(analisis.precio) || undefined,
-    };
+    const input = await inputDesdeAnalisis(analisis);
 
     const miProducto = { nombre: analisis.nombre_producto, categoria: analisis.categoria ?? undefined };
     const comparativa = nuevaLista.length > 0 ? await generarComparativa(miProducto, nuevaLista, input) : null;

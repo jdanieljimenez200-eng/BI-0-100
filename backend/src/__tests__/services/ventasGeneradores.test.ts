@@ -69,7 +69,7 @@ describe('ventasService — generadores deterministas (mock sin IA)', () => {
       expect(h.mentalidad_clave).toBeTruthy();
       expect(h.obstaculo_principal).toBeTruthy();
       expect(h.estrategia_marketing).toBeTruthy();
-      expect(h.metricas).toContain('$');
+      expect(h.metricas).toContain('MXN');
       expect(h.leccion_aplicable).toBeTruthy();
     });
   });
