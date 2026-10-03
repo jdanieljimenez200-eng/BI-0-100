@@ -29,6 +29,7 @@ import VentasPlusEstrategiaView, {
   type UnitEconomicsVentasPlus,
   type ScriptWhatsAppVentasPlus,
   type SecuenciaSeguimientoVentasPlus,
+  type KpisRealesVentasPlus,
 } from './VentasPlusEstrategiaView';
 import {
   PlatformBadge,
@@ -63,6 +64,9 @@ function esEstrategiaBloqueada(
   return !!e && typeof e.nombre === 'string' && (e.nombre.trim().startsWith(CANDADO_PRO_PREFIJO) || e.nombre.includes('Disponible en Plan Pro'));
 }
 import ExpertosRecomendados from '@/components/network/ExpertosRecomendados';
+import TransparenciaIA, { type Transparencia } from '@/components/analisis/TransparenciaIA';
+import SeccionesExtra, { type SeccionExtra } from '@/components/analisis/SeccionesExtra';
+import { monedaDePais } from '@/lib/perfilNegocio';
 
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
@@ -109,8 +113,8 @@ interface EstrategiaMarketing {
   secuencia_seguimiento?: SecuenciaSeguimientoVentasPlus;
   garantia_irresistible?: string;
   order_bump_sugerido?: string;
-  kpis_reales?: Array<{ metrica: string; objetivo: string; como_medir: string }>;
-  plan_accion_paso_a_paso?: Array<{ semana: number; accion: string; entregable: string }>;
+  kpis_reales?: KpisRealesVentasPlus;
+  plan_accion_paso_a_paso?: string[];
 }
 
 interface CopyEstrategia {
@@ -250,6 +254,14 @@ interface AnalisisMarketing {
   reporte_ads_data?: ReporteAdsProcesado | null;
   /** Inyectada por GET /marketing/:id en los tres caminos de la ruta. */
   secciones_bloqueadas?: string[];
+  /** GET /marketing/:id trae el producto: su país fija la moneda desde el primer render. */
+  producto?: { pais?: string | null } | null;
+  /** marketing@2: confianza, supuestos, datos que faltan y secciones extra u ocultas. */
+  meta_ia?: {
+    transparencia?: Transparencia | null;
+    secciones_extra?: SeccionExtra[];
+    secciones_ocultas?: string[];
+  } | null;
 }
 
 interface DayCardProps {
@@ -1768,6 +1780,10 @@ export default function MarketingResultadoPage() {
   const vistaBloqueada = esEstrategiaBloqueada(estrategiaVista);
   // Copy de la estrategia activa. Lo consumen las DayCard del calendario vía getPlatformCopy.
   const copyVista = copies.find((c) => c.tipo === estrategiaVista.tipo) ?? copies[0];
+  const paisProducto = analisis.producto?.pais ?? producto?.pais ?? null;
+  const moneda = monedaDePais(paisProducto) || 'MXN';
+  // CPC de la simulación de Ventas+: el de referencia del país o el del reporte de anuncios.
+  const cpcReferencia = estrategias.find((e) => e.unit_economics?.cpc_promedio)?.unit_economics?.cpc_promedio ?? null;
   const semanaVista = calSemanas.find((s) => s.numero === semanaActiva) ?? calSemanas[0];
   const semanaIndex = semanaVista ? semanaVista.numero - 1 : 0;
 
@@ -1989,11 +2005,11 @@ export default function MarketingResultadoPage() {
                         <div className="pt-2 flex justify-between items-center border-t border-white/5">
                           <div>
                             <p className="text-[10px] font-mono text-white/40 uppercase tracking-wider">Precio sugerido</p>
-                            <p className="font-semibold font-mono text-xs text-white mt-0.5">${(e.precio_sugerido ?? 0).toLocaleString()}</p>
+                            <p className="font-semibold font-mono text-xs text-white mt-0.5">{(e.precio_sugerido ?? 0).toLocaleString('es-MX')} {moneda}</p>
                           </div>
                           <div className="text-right">
                             <p className="text-[10px] font-mono text-white/40 uppercase tracking-wider">Presupuesto/mes</p>
-                            <p className={`font-semibold font-mono text-xs mt-0.5 ${invColor}`}>${(e.presupuesto_mensual_sugerido ?? 0).toLocaleString()}</p>
+                            <p className={`font-semibold font-mono text-xs mt-0.5 ${invColor}`}>{(e.presupuesto_mensual_sugerido ?? 0).toLocaleString('es-MX')} {moneda}</p>
                           </div>
                         </div>
                       </div>
@@ -2051,7 +2067,7 @@ export default function MarketingResultadoPage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                     {[
                       { label: 'Margen Estimado', value: estrategiaVista.margen_rango ?? `${estrategiaVista.margen_estimado ?? '—'}%`, isMono: true, text: 'text-emerald-400' },
-                      { label: 'Rango de Precio', value: `$${minP.toLocaleString()} – $${maxP.toLocaleString()}`, isMono: true, text: 'text-white' },
+                      { label: 'Rango de Precio', value: `${minP.toLocaleString('es-MX')} – ${maxP.toLocaleString('es-MX')} ${moneda}`, isMono: true, text: 'text-white' },
                       { label: 'Nivel de Riesgo', value: estrategiaVista.riesgo ?? '—', isMono: false, text: estrategiaVista.riesgo === 'ALTO' ? 'text-rose-400' : estrategiaVista.riesgo === 'MEDIO' ? 'text-amber-300' : 'text-emerald-400' },
                       { label: 'Inversión Sugerida', value: estrategiaVista.nivel_inversion ?? '—', isMono: false, text: 'text-white' },
                     ].map((item) => (
@@ -2147,10 +2163,19 @@ export default function MarketingResultadoPage() {
                     order_bump_sugerido={estrategiaVista.order_bump_sugerido}
                     kpis_reales={estrategiaVista.kpis_reales}
                     plan_accion_paso_a_paso={estrategiaVista.plan_accion_paso_a_paso}
+                    moneda={moneda}
                   />
                 </section>
               );
             })()}
+
+            {/* Qué tan confiable es y qué dato lo mejoraría (marketing@2). */}
+            {analisis.meta_ia?.transparencia && (
+              <TransparenciaIA transparencia={analisis.meta_ia.transparencia} hrefCompletar={`/dashboard/marketing/${productoId}`} />
+            )}
+            {(analisis.meta_ia?.secciones_extra?.length ?? 0) > 0 && (
+              <SeccionesExtra secciones={analisis.meta_ia?.secciones_extra} />
+            )}
 
             {seccionActiva === 'estrategia' && (
               <div className="flex justify-end pt-2" data-print="hide">
@@ -2317,7 +2342,12 @@ export default function MarketingResultadoPage() {
                 </div>
               </LockedSection>
             ) : (
-              <PlanInversionSection semanas={calSemanas} estrategia={estrategiaVista} />
+              <PlanInversionSection
+                semanas={calSemanas}
+                estrategia={estrategiaVista}
+                pais={paisProducto}
+                cpcReferencia={cpcReferencia}
+              />
             )}
 
             {seccionActiva === 'inversion' && (

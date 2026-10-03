@@ -51,6 +51,13 @@ export const SECCIONES_NATIVAS: Record<ModuloPrompt, SeccionNativa[]> = {
     { clave: 'ventas.perfil_cliente', titulo: 'Perfil de cliente ideal', ocultable: false },
     { clave: 'ventas.historia', titulo: 'Historia del día', ocultable: true },
   ],
+  // Las estrategias las calcula el código y el calendario lleva la
+  // transparencia: lo único que se puede quitar son los copies.
+  marketing: [
+    { clave: 'marketing.estrategias', titulo: 'Estrategias (4 pilares)', ocultable: false },
+    { clave: 'marketing.calendario', titulo: 'Calendario editorial y tendencias', ocultable: false },
+    { clave: 'marketing.copies', titulo: 'Copies de anuncios', ocultable: true },
+  ],
 };
 
 export function seccionesOcultables(modulo: ModuloPrompt): string[] {

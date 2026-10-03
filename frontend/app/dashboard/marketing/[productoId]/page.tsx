@@ -9,6 +9,7 @@ import { interpretarErrorApi } from '@/lib/apiError';
 import AvisoErrorApi from '@/components/ui/AvisoErrorApi';
 import ReporteAdsUploader from './ReporteAdsUploader';
 import { BackButton } from '@/components/ui';
+import { monedaDePais } from '@/lib/perfilNegocio';
 import type { ReporteAdsProcesado } from './resultado/[analisisId]/RendimientoPasadoSection';
 
 type VozMarca = 'Profesional' | 'Divertido' | 'Urgente' | 'Empático';
@@ -28,7 +29,18 @@ interface Producto {
   imagen_url: string | null;
   inversion_inicial: number | null;
   cliente_ideal: string | null;
+  pais: string | null;
 }
+
+/** Activos para producir contenido (ver ACTIVOS_MARKETING en el backend). */
+const ACTIVOS: { id: string; label: string }[] = [
+  { id: 'fotos_propias', label: 'Fotos propias del producto' },
+  { id: 'videos_propios', label: 'Videos propios' },
+  { id: 'testimonios', label: 'Testimonios o reseñas reales' },
+  { id: 'seguidores', label: 'Seguidores en redes' },
+  { id: 'lista_clientes', label: 'Lista de clientes o WhatsApp' },
+  { id: 'local_visible', label: 'Local a la vista del público' },
+];
 
 interface AnalisisBriefPrevio {
   id: string;
@@ -124,6 +136,10 @@ export default function MarketingScopePage() {
   const [metaCampana, setMetaCampana] = useState<'Lanzamiento' | 'Crecimiento'>('Lanzamiento');
 
   const [clienteIdeal, setClienteIdeal] = useState('');
+  // «Afina tu análisis» de Marketing: vacío = no declarado (el análisis lo dice).
+  const [yaProbado, setYaProbado] = useState('');
+  const [activos, setActivos] = useState<string[]>([]);
+  const [zonaClientes, setZonaClientes] = useState('');
   const [briefPrevios, setBriefPrevios] = useState<AnalisisBriefPrevio[]>([]);
   const [briefAnalisisId, setBriefAnalisisId] = useState('');
   const [vincularBrief, setVincularBrief] = useState(true);
@@ -297,6 +313,9 @@ export default function MarketingScopePage() {
         nivel_traccion: nivelTraccion,
         // Sólo el resumen agregado: el archivo original nunca sale del parser.
         reporte_ads: reporteAds ?? undefined,
+        ya_probado: yaProbado.trim() || undefined,
+        activos: activos.length ? activos : undefined,
+        zona_clientes: zonaClientes.trim() || undefined,
       });
       router.push(`/dashboard/marketing/${productoId}/resultado/${data.analisis_id}`);
     } catch (err: unknown) {
@@ -358,7 +377,7 @@ export default function MarketingScopePage() {
           <div>
             <p className="font-bold text-white">{producto.nombre}</p>
             <p className="text-sm text-white/50">
-              {producto.categoria}{producto.precio ? ` · $${Number(producto.precio).toFixed(0)} MXN` : ''}
+              {producto.categoria}{producto.precio ? ` · ${Number(producto.precio).toLocaleString('es-MX')} ${monedaDePais(producto.pais) || 'MXN'}` : ''}
             </p>
           </div>
         </div>
@@ -568,12 +587,12 @@ export default function MarketingScopePage() {
             <div className="bg-white/5 border border-white/8 rounded-xl px-4 py-3 mb-2 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-white/40 uppercase tracking-wider font-semibold">Capital total del proyecto</span>
-                <span className="text-sm font-bold text-white font-mono tabular-nums">${Number(producto.inversion_inicial).toLocaleString('es-MX')} MXN</span>
+                <span className="text-sm font-bold text-white font-mono tabular-nums">{Number(producto.inversion_inicial).toLocaleString('es-MX')} {monedaDePais(producto.pais) || 'MXN'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-marketing/70 uppercase tracking-wider font-semibold">Sugerido para marketing (~15%)</span>
                 <span className="text-sm font-bold text-marketing font-mono tabular-nums">
-                  ${Math.max(1000, Math.min(50000, Math.round((Number(producto.inversion_inicial) * 0.15) / 1000) * 1000)).toLocaleString('es-MX')} MXN
+                  {Math.max(1000, Math.min(50000, Math.round((Number(producto.inversion_inicial) * 0.15) / 1000) * 1000)).toLocaleString('es-MX')} {monedaDePais(producto.pais) || 'MXN'}
                 </span>
               </div>
               <p className="text-[10px] text-white/30 leading-relaxed border-t border-white/5 pt-2">
@@ -584,7 +603,6 @@ export default function MarketingScopePage() {
 
           <Field label="¿Cuánto de tu inversión destinas a marketing?" required hint="El motor proyectará metas reales de alcance y ROI basadas en este presupuesto." help="El monto mensual que gastarás en publicidad y contenido. Una guía común es ~15% del capital del proyecto. Con esto la IA estima alcance, clics y retorno realistas.">
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-sm text-white/50 font-mono">$</span>
               <input
                 type="number"
                 min={0}
@@ -594,7 +612,7 @@ export default function MarketingScopePage() {
                 className={`${inputCls} font-mono tabular-nums`}
                 placeholder="Ej. 15000"
               />
-              <span className="text-sm text-white/50 whitespace-nowrap">MXN/mes</span>
+              <span className="text-sm text-white/50 whitespace-nowrap">{monedaDePais(producto?.pais) || 'MXN'}/mes</span>
             </div>
           </Field>
 
@@ -653,7 +671,7 @@ export default function MarketingScopePage() {
               value={clienteIdeal}
               onChange={e => setClienteIdeal(e.target.value)}
               maxLength={500}
-              placeholder="Ej: Mamás de 28-40 años en CDMX que buscan productos orgánicos para sus hijos y compran por Instagram..."
+              placeholder="Ej: Mamás de 28-40 años de tu ciudad que buscan productos orgánicos para sus hijos y compran por Instagram..."
               className={`${inputCls} resize-none`}
             />
           </Field>
@@ -746,10 +764,60 @@ export default function MarketingScopePage() {
             </div>
           )}
 
+          {/* Afina tu análisis: lo que cambia el plan y casi nadie dice. */}
+          <Field
+            label="¿Qué ya probaste que no te funcionó?"
+            optional
+            hint="Así el plan no te recomienda lo mismo."
+          >
+            <textarea
+              rows={2}
+              maxLength={400}
+              value={yaProbado}
+              onChange={(e) => setYaProbado(e.target.value)}
+              placeholder='Ej: "Sorteos en Instagram: muchos seguidores, cero ventas"'
+              className={`${inputCls} resize-none`}
+            />
+          </Field>
+
+          <Field label="¿Con qué cuentas para hacer contenido?" optional hint="El calendario se apoya en lo que ya tienes.">
+            <div className="flex flex-wrap gap-2 mt-1">
+              {ACTIVOS.map((a) => {
+                const activo = activos.includes(a.id);
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    aria-pressed={activo}
+                    onClick={() => setActivos((prev) => (activo ? prev.filter((x) => x !== a.id) : [...prev, a.id]))}
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                      activo
+                        ? 'bg-marketing/15 border-marketing/40 text-white'
+                        : 'bg-white/[0.03] border-white/10 text-white/50 hover:border-white/20 hover:text-white/80'
+                    }`}
+                  >
+                    {a.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
+          <Field label="¿Dónde están tus clientes?" optional hint="Zona, ciudad o país: cambia la segmentación de anuncios.">
+            <input
+              type="text"
+              maxLength={120}
+              value={zonaClientes}
+              onChange={(e) => setZonaClientes(e.target.value)}
+              placeholder="Ej: zona norte de la ciudad"
+              className={inputCls}
+            />
+          </Field>
+
         </Block>
 
         <Block
-          n={5}
+          n={6}
           title="Tus métricas anteriores"
           subtitle="Opcional — sube lo que ya exportas de Google Ads, Meta o TikTok y la IA lo analiza"
         >

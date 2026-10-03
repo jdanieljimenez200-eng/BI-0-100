@@ -286,6 +286,17 @@ describe('redactAnalisisPayload — marketing en gratuito', () => {
     expect(JSON.stringify(payload)).not.toContain('detrás de cámaras');
     expect(JSON.stringify(payload)).not.toContain('foto cenital');
   });
+
+  it('con el calendario bloqueado vacía las secciones extra, pero deja la transparencia', () => {
+    const meta_ia = {
+      transparencia: { supuestos: ['x'], informacion_faltante: [], nivel_confianza: 'bajo', motivo_confianza: 'm' },
+      secciones_extra: [{ slug: 'temporada', titulo: 'Temporadas', resumen: 'r', puntos: [] }],
+      secciones_ocultas: [],
+    };
+    const { payload: p } = redactAnalisisPayload('marketing', 'freemium', { ...filaMarketing(), meta_ia });
+    expect(p.meta_ia.secciones_extra).toEqual([]);
+    expect(p.meta_ia.transparencia).toEqual(meta_ia.transparencia);
+  });
 });
 
 describe('redactAnalisisPayload — marketing recortado con lista persistida ajena', () => {

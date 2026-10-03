@@ -143,9 +143,8 @@ describe('copywritingService.copyMock', () => {
 
   it('VOLUMEN incluye el precio mínimo formateado en Facebook e Instagram, con cualquier voz', () => {
     const e = estrategia('VOLUMEN', { precio_rango: { min: 1200, max: 1800 } });
-    // El servicio usa `toLocaleString()` sin locale: se formatea igual aquí para
-    // no atar el test al ICU de la máquina que corre la suite.
-    const esperado = `$${(1200).toLocaleString()}`;
+    // En la moneda del país del negocio (México por defecto), nunca «$» suelto.
+    const esperado = `${(1200).toLocaleString('es-MX')} MXN`;
 
     for (const voz of VOCES) {
       const copy = copyMock('Gadget X', 'Tecnología y gadgets', e, voz);
@@ -172,7 +171,7 @@ describe('copywritingService.copyMock', () => {
 
     // Comportamiento actual: la línea del público queda solo con el emoji.
     expect(copy.copy_facebook).toContain('🎯');
-    expect(copy.copy_facebook).toContain('$0');
+    expect(copy.copy_facebook).toContain('0 MXN');
   });
 });
 

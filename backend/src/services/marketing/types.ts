@@ -36,7 +36,24 @@ export interface MarketingAnalisisInput {
   nivelTraccion?: NivelTraccion;
   margenEstimado?: RangoMargen;
   reporteAds?: ReporteAdsProcesado;
+  // ── «Afina tu análisis» de Marketing (opcional; marketing@2) ──────────────
+  /** Lo que ya probó y no le funcionó, en sus palabras. */
+  yaProbado?: string;
+  /** Activos con los que ya cuenta para producir contenido. */
+  activos?: ActivoMarketing[];
+  /** Dónde están sus clientes (zona, ciudad o país). */
+  zonaClientes?: string;
 }
+
+export const ACTIVOS_MARKETING = [
+  'fotos_propias',
+  'videos_propios',
+  'testimonios',
+  'seguidores',
+  'lista_clientes',
+  'local_visible',
+] as const;
+export type ActivoMarketing = (typeof ACTIVOS_MARKETING)[number];
 
 /**
  * Recorte del calendario según el plan. Se decide ANTES de llamar al LLM (ver
@@ -145,6 +162,7 @@ export interface EstrategiaMarketing {
   recomendada: boolean;
   // Extensiones de Agencia y Ventas+
   pilar?: PilarMarketing;
+  // kpis_reales y plan_accion_paso_a_paso tienen gemelo en VentasPlusEstrategiaView.tsx: se mueven juntos.
   kpis_reales?: {
     metrica_norte: string;
     benchmark_industria: string;

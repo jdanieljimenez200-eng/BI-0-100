@@ -47,14 +47,24 @@ export interface SecuenciaSeguimientoVentasPlus {
   dia5_despedida_urgencia: string;
 }
 
+/** Igual que `kpis_reales` de EstrategiaMarketing en el backend (marketing/types.ts): se mueven juntos. */
+export interface KpisRealesVentasPlus {
+  metrica_norte: string;
+  benchmark_industria: string;
+  frecuencia_revision: string;
+}
+
 export interface VentasPlusProps {
   unit_economics?: UnitEconomicsVentasPlus;
   script_cierre?: ScriptWhatsAppVentasPlus;
   secuencia_seguimiento?: SecuenciaSeguimientoVentasPlus;
   garantia_irresistible?: string;
   order_bump_sugerido?: string;
-  kpis_reales?: Array<{ metrica: string; objetivo: string; como_medir: string }>;
-  plan_accion_paso_a_paso?: Array<{ semana: number; accion: string; entregable: string }>;
+  kpis_reales?: KpisRealesVentasPlus;
+  /** Pasos en orden, como texto («1. …»): así los manda el backend. */
+  plan_accion_paso_a_paso?: string[];
+  /** Moneda del país del producto: la simulación usa el CPC de referencia de ese país. */
+  moneda?: string;
 }
 
 export default function VentasPlusEstrategiaView({
@@ -65,7 +75,9 @@ export default function VentasPlusEstrategiaView({
   order_bump_sugerido,
   kpis_reales,
   plan_accion_paso_a_paso,
+  moneda = 'MXN',
 }: VentasPlusProps) {
+  const dinero = (v: number) => `${v.toLocaleString('es-MX', { maximumFractionDigits: v < 100 ? 2 : 0 })} ${moneda}`;
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [activeObjectionTab, setActiveObjectionTab] = useState<'precio' | 'pensarlo' | 'competencia'>('precio');
 
@@ -83,7 +95,7 @@ export default function VentasPlusEstrategiaView({
     secuencia_seguimiento ||
     garantia_irresistible ||
     order_bump_sugerido ||
-    (kpis_reales && kpis_reales.length > 0) ||
+    Boolean(kpis_reales?.metrica_norte) ||
     (plan_accion_paso_a_paso && plan_accion_paso_a_paso.length > 0);
 
   if (!hasAnyData) return null;
@@ -102,7 +114,7 @@ export default function VentasPlusEstrategiaView({
                 Arsenal de Conversión Ventas +
               </h4>
               <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                Máxima Certeza
+                Listo para ejecutar
               </span>
             </div>
             <p className="text-xs text-white/60">
@@ -126,7 +138,7 @@ export default function VentasPlusEstrategiaView({
               </h5>
             </div>
             <span className="text-[11px] font-mono text-white/50 bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
-              Presupuesto Base: ${unit_economics.presupuesto_simulado?.toLocaleString() ?? "—"}
+              Presupuesto base: {unit_economics.presupuesto_simulado != null ? dinero(unit_economics.presupuesto_simulado) : '—'}
             </span>
           </div>
 
@@ -136,7 +148,7 @@ export default function VentasPlusEstrategiaView({
               <span className="text-[10px] font-mono text-white/40 uppercase tracking-wider">Tráfico / Clics</span>
               <div className="mt-2">
                 <p className="text-base font-bold font-mono text-white">{(unit_economics.clics_estimados ?? 0).toLocaleString()}</p>
-                <p className="text-[11px] font-mono text-white/40 mt-0.5">CPC est: ${unit_economics.cpc_promedio ?? "—"}</p>
+                <p className="text-[11px] font-mono text-white/40 mt-0.5">CPC est: {unit_economics.cpc_promedio != null ? dinero(unit_economics.cpc_promedio) : '—'}</p>
               </div>
             </div>
 
@@ -147,8 +159,8 @@ export default function VentasPlusEstrategiaView({
                 {/* El CPL sale del presupuesto entre los leads: el backend no
                     lo manda aparte y antes salía siempre «—». */}
                 <p className="text-[11px] font-mono text-white/40 mt-0.5">
-                  CPL est: ${unit_economics.leads_o_conversaciones > 0
-                    ? Math.round(unit_economics.presupuesto_simulado / unit_economics.leads_o_conversaciones).toLocaleString()
+                  CPL est: {unit_economics.leads_o_conversaciones > 0
+                    ? dinero(Math.round(unit_economics.presupuesto_simulado / unit_economics.leads_o_conversaciones))
                     : '—'} ({unit_economics.tasa_conversion_prospecto ?? 0}%)
                 </p>
               </div>
@@ -176,7 +188,7 @@ export default function VentasPlusEstrategiaView({
                 <p className={`text-xl font-bold font-mono ${
                   unit_economics.rentable === false ? 'text-red-300' : 'text-amber-300'
                 }`}>{unit_economics.roas_estimado ?? 0}x</p>
-                <p className="text-[11px] font-mono text-white/60 mt-0.5">Ingreso: ${(unit_economics.ingreso_proyectado ?? 0).toLocaleString()}</p>
+                <p className="text-[11px] font-mono text-white/60 mt-0.5">Ingreso: {dinero(unit_economics.ingreso_proyectado ?? 0)}</p>
               </div>
             </div>
           </div>
@@ -185,7 +197,7 @@ export default function VentasPlusEstrategiaView({
             <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3">
               <p className="text-xs text-red-200 leading-relaxed">
                 <span className="font-semibold">Con estos supuestos la campaña pierde dinero.</span>{' '}
-                Por cada peso de pauta vuelven ${unit_economics.roas_estimado}. Sube el ticket, mejora el cierre
+                Por cada 1 {moneda} de pauta vuelven {unit_economics.roas_estimado} {moneda}. Sube el ticket, mejora el cierre
                 o baja el presupuesto antes de invertir.
               </p>
             </div>
@@ -204,7 +216,7 @@ export default function VentasPlusEstrategiaView({
                 CAC Máximo Tolerable
               </span>
               <p className="text-xs font-semibold text-rose-300 font-mono">
-                ${(unit_economics.cac_maximo_tolerable ?? 0).toLocaleString()}
+                {dinero(unit_economics.cac_maximo_tolerable ?? 0)}
               </p>
               <p className="text-[10px] text-white/40 mt-1 leading-tight">
                 Límite de costo por cliente antes de comprometer el margen neto.
@@ -232,7 +244,7 @@ export default function VentasPlusEstrategiaView({
               <p className={`text-xs font-semibold font-mono ${
                 unit_economics.ingreso_proyectado - unit_economics.presupuesto_simulado >= 0 ? 'text-emerald-400' : 'text-red-400'
               }`}>
-                ${(unit_economics.ingreso_proyectado - unit_economics.presupuesto_simulado).toLocaleString()}
+                {dinero(unit_economics.ingreso_proyectado - unit_economics.presupuesto_simulado)}
               </p>
               <p className="text-[10px] text-white/40 mt-1 leading-tight">
                 Ingreso proyectado menos la inversión en pauta (sin descontar costo del producto).
@@ -496,7 +508,7 @@ export default function VentasPlusEstrategiaView({
               </h5>
             </div>
             <span className="text-[11px] font-mono text-white/40">
-              Recupera hasta un 25% de leads fríos
+              Para quien no respondió al primer mensaje
             </span>
           </div>
 
@@ -567,7 +579,7 @@ export default function VentasPlusEstrategiaView({
         </div>
       )}
 
-      {/* ── 5. Plan de Acción Paso a Paso (4 Semanas) ── */}
+      {/* ── 5. Plan de Acción Paso a Paso ── */}
       {plan_accion_paso_a_paso && plan_accion_paso_a_paso.length > 0 && (
         <div className="rounded-2xl border border-white/[0.08] bg-[#0A0F17] p-5 sm:p-6 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-white/5">
@@ -576,27 +588,17 @@ export default function VentasPlusEstrategiaView({
                 Cronograma de Ejecución
               </p>
               <h5 className="text-sm font-semibold text-white mt-0.5">
-                Plan de Acción de 4 Semanas con Entregables Verificables
+                Plan de Acción Paso a Paso
               </h5>
             </div>
-            <span className="text-[10px] font-mono text-white/40">Sin ambigüedades</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {plan_accion_paso_a_paso.map((p) => (
-              <div key={p.semana} className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-mono text-amber-300 font-bold">
-                      Semana {p.semana}
-                    </span>
-                  </div>
-                  <p className="text-xs text-white/90 font-medium mb-2 leading-snug">{p.accion}</p>
-                </div>
-                <div className="pt-2 border-t border-white/5">
-                  <span className="text-[9px] font-mono text-white/40 uppercase block mb-0.5">Entregable:</span>
-                  <p className="text-[11px] text-emerald-300/90 font-mono leading-tight">{p.entregable}</p>
-                </div>
+            {plan_accion_paso_a_paso.map((texto, i) => (
+              <div key={i} className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
+                <span className="text-[11px] font-mono text-amber-300 font-bold block mb-2">Paso {i + 1}</span>
+                {/* El backend ya numera cada paso («1. …»): se quita para no repetirlo. */}
+                <p className="text-xs text-white/90 font-medium leading-snug">{texto.replace(/^\s*\d+[.)]\s*/, '')}</p>
               </div>
             ))}
           </div>
@@ -604,7 +606,7 @@ export default function VentasPlusEstrategiaView({
       )}
 
       {/* ── 6. KPIs de Rendimiento Real ── */}
-      {kpis_reales && kpis_reales.length > 0 && (
+      {kpis_reales?.metrica_norte && (
         <div className="rounded-2xl border border-white/[0.08] bg-[#0A0F17] p-5 sm:p-6 space-y-4">
           <div className="pb-3 border-b border-white/5">
             <p className="text-[10px] font-mono uppercase tracking-wider text-white/40">
@@ -615,26 +617,18 @@ export default function VentasPlusEstrategiaView({
             </h5>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-white/10 text-white/40 font-mono text-[10px] uppercase">
-                  <th className="pb-2">Métrica</th>
-                  <th className="pb-2">Objetivo Proyectado</th>
-                  <th className="pb-2">Cómo Medirlo en Plataforma</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {kpis_reales.map((k, i) => (
-                  <tr key={i} className="hover:bg-white/[0.02]">
-                    <td className="py-2.5 font-medium text-white pr-4">{k.metrica}</td>
-                    <td className="py-2.5 font-mono text-amber-300 font-semibold pr-4">{k.objetivo}</td>
-                    <td className="py-2.5 text-white/60 leading-relaxed">{k.como_medir}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            {[
+              { etiqueta: 'Métrica principal', valor: kpis_reales.metrica_norte, cls: 'text-white font-medium' },
+              { etiqueta: 'Referencia del sector', valor: kpis_reales.benchmark_industria, cls: 'text-amber-300 font-mono' },
+              { etiqueta: 'Cada cuánto revisarla', valor: kpis_reales.frecuencia_revision, cls: 'text-white/70' },
+            ].map((k) => (
+              <div key={k.etiqueta} className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-3.5">
+                <dt className="text-[10px] font-mono text-white/40 uppercase tracking-wider mb-1">{k.etiqueta}</dt>
+                <dd className={`leading-relaxed ${k.cls}`}>{k.valor}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
       )}
     </div>

@@ -19,7 +19,7 @@ jest.mock('../../workers/analysisQueue', () => ({
   analysisQueue: { add: jest.fn().mockResolvedValue({}) },
 }));
 
-const CLAVES = ['legal.modo', 'legal.pais.GT', 'mercado.modo', 'finanzas.modo', 'ventas.modo'];
+const CLAVES = ['legal.modo', 'legal.pais.GT', 'mercado.modo', 'finanzas.modo', 'ventas.modo', 'marketing.modo'];
 
 /**
  * El panel de prompts. Lo que se protege:
@@ -246,6 +246,28 @@ describeWithDb('Prompts de IA (/api/admin/prompts)', () => {
     expect(probar.status).toBe(200);
     expect(probar.body.resultado.historia).toBeNull();
     expect(probar.body.resultado.meta_ia.meta).toMatchObject({ contrato: 'ventas@2', versiones_prompt: { 'ventas.modo': { id, version: 1 } } });
+
+    expect((await api().delete(`/api/admin/prompts/versiones/${id}`).set(cabeceras(admin2))).status).toBe(200);
+  });
+
+  it('Marketing: prueba un caso con el calendario completo y solo deja ocultar los copies', async () => {
+    const detalle = await api().get('/api/admin/prompts/claves/marketing.modo').set(cabeceras(admin2));
+    expect(detalle.status).toBe(200);
+    expect(detalle.body.casos.map((c: { id: string }) => c.id)).toContain('pe_gimnasio_crecimiento');
+
+    const crear = await api().post('/api/admin/prompts/claves/marketing.modo/borradores').set(cabeceras(admin2)).send({});
+    expect(crear.status).toBe(201);
+    const id = crear.body.id;
+    const calendario = await api().patch(`/api/admin/prompts/versiones/${id}`).set(cabeceras(admin2)).send({ secciones_ocultas: ['marketing.calendario'] });
+    expect(calendario.status).toBe(400);
+    const copies = await api().patch(`/api/admin/prompts/versiones/${id}`).set(cabeceras(admin2)).send({ secciones_ocultas: ['marketing.copies'] });
+    expect(copies.status).toBe(200);
+
+    const probar = await api().post(`/api/admin/prompts/versiones/${id}/probar`).set(cabeceras(admin2)).send({ caso: 'pe_gimnasio_crecimiento' });
+    expect(probar.status).toBe(200);
+    expect(probar.body.resultado.copies).toBeNull();
+    expect(probar.body.resultado.estrategias).toHaveLength(4);
+    expect(probar.body.resultado.meta_ia.meta).toMatchObject({ contrato: 'marketing@2', versiones_prompt: { 'marketing.modo': { id, version: 1 } } });
 
     expect((await api().delete(`/api/admin/prompts/versiones/${id}`).set(cabeceras(admin2))).status).toBe(200);
   });

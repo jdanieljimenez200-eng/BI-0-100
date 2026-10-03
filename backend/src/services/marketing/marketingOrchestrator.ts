@@ -13,7 +13,12 @@ import { generarCalendario, RECORTE_COMPLETO } from './calendarioService';
 import { getPlanGate, FREEMIUM_SEMANAS_CALENDARIO } from '../billing/gatingAnalisis';
 import { logger } from '../../utils/logger';
 import { emitAnalysisUpdate } from '../../events/sse';
-import { huboFallbackIA } from '../../utils/seguimientoIA';
+import { contextoIA, huboFallbackIA } from '../../utils/seguimientoIA';
+import { getMoneda } from '../../utils/latam';
+import { tipoActividadDe } from '../mercado/tipoActividad';
+import { resolverPrompt } from '../ia/registroPrompts';
+import { leerPerfil } from '../ia/perfilNegocio';
+import { construirMetaIaMarketing } from './transparenciaMarketing';
 
 const VOCES_VALIDAS: VozMarca[] = ['Profesional', 'Divertido', 'Urgente', 'Emp\u00e1tico'];
 
@@ -120,6 +125,122 @@ async function cargarContextoVentasICP(
   );
 }
 
+/** Lo del producto que usa Marketing (el real, o el de un caso de prueba del panel). */
+export interface ProductoMarketing {
+  nombre: string;
+  categoria?: string | null;
+  descripcion?: string | null;
+  precio?: number | string | null;
+  pais?: string | null;
+  tipo_actividad?: string | null;
+  puv?: string | null;
+  perfil_negocio?: unknown;
+}
+
+/**
+ * Estrategias, copies y calendario con su transparencia, sin tocar la base. Lo
+ * usan el worker y el «Probar» del panel, con las versiones ancladas.
+ */
+export async function generarResultadoMarketing(p: {
+  producto: ProductoMarketing;
+  input: MarketingAnalisisInput;
+  /** El plan incluye copies. */
+  conCopies: boolean;
+  ctx?: MercadoContexto;
+  briefCtx?: BriefContexto;
+  /** Resumen del ICP de Ventas: fuente canónica del cliente ideal si existe. */
+  icpVentas?: string;
+}) {
+  const { producto, input } = p;
+  const nombre = producto.nombre || 'Producto';
+  const categoria = producto.categoria || 'general';
+  const descripcion = producto.descripcion ?? null;
+  // Lo declarado en el alta: antes se adivinaba por la categoría.
+  const tipoActividad = tipoActividadDe(producto.tipo_actividad, categoria) === 'Servicio' ? ('servicio' as const) : ('producto' as const);
+  const pais = producto.pais || 'MX';
+  const puv = producto.puv?.trim() || undefined;
+  const perfil = leerPerfil(producto.perfil_negocio);
+  const voz = normalizarVoz(input.vozMarca);
+  const presupuesto = input.presupuestoMensual ?? 3000;
+  const clienteIdealEfectivo = p.icpVentas ?? input.clienteIdeal;
+
+  // Secciones que el admin ocultó en la versión del modo anclada a este trabajo.
+  const modo = await resolverPrompt('marketing.modo', contextoIA()?.versionesPrompt?.['marketing.modo']);
+  const ocultas = new Set(modo.secciones_ocultas);
+
+  // ── Estrategias de agencia (4 pilares: Seguidores, Reconocimiento, Ventas, Ventas+) ──
+  const estrategias = generarEstrategias(
+    nombre,
+    categoria,
+    tipoActividad,
+    Number(producto.precio) || 0,
+    presupuesto,
+    p.ctx,
+    puv,
+    input.plataformas?.[0],
+    undefined,
+    input.reporteAds,
+    input.canalCierre,
+    input.nivelTraccion,
+    input.margenEstimado,
+    pais
+  );
+  const recomendada = estrategias.find((e) => e.recomendada) ?? estrategias[0];
+
+  // ── Copies (de pago; el admin también los puede quitar) ───────────────────
+  const copies =
+    p.conCopies && !ocultas.has('marketing.copies')
+      ? await generarCopies(nombre, categoria, descripcion, [recomendada], voz, tipoActividad, clienteIdealEfectivo, p.briefCtx, input.metaCampana, input.plataformas, pais, puv)
+      : null;
+
+  // ── Calendario editorial ─────────────────────────────────────────────────
+  const calendario = await generarCalendario(
+    nombre,
+    categoria,
+    descripcion,
+    recomendada.tipo,
+    p.ctx,
+    voz,
+    tipoActividad,
+    clienteIdealEfectivo,
+    p.briefCtx,
+    input.metaCampana,
+    input.plataformas,
+    input.capacidadContenido,
+    pais,
+    puv,
+    RECORTE_COMPLETO, // el recorte por plan se aplica después, no al generar
+    input.reporteAds,
+    { ya_probado: input.yaProbado, activos: input.activos, zona_clientes: input.zonaClientes, perfil, moneda: getMoneda(pais) }
+  );
+
+  const meta_ia = construirMetaIaMarketing({
+    datos: {
+      input,
+      conMercado: Boolean(p.ctx),
+      clienteIdeal: p.icpVentas ? 'ventas' : input.clienteIdeal?.trim() ? 'formulario' : null,
+      conBrief: Boolean(p.briefCtx),
+      calendarioDePlantilla: calendario.es_mock,
+    },
+    calendario,
+    modo,
+    ocultas,
+    seccionesIA: [{ es_mock: calendario.es_mock }, ...(copies ?? []).map((c) => ({ es_mock: c.es_mock }))],
+    contexto: {
+      pais,
+      moneda: getMoneda(pais),
+      tipo_actividad: tipoActividad,
+      con_puv: Boolean(puv),
+      con_mercado: Boolean(p.ctx),
+      con_brief: Boolean(p.briefCtx),
+      cliente_ideal: p.icpVentas ? 'ventas' : input.clienteIdeal?.trim() ? 'formulario' : null,
+      con_reporte_ads: Boolean(input.reporteAds),
+    },
+  });
+
+  return { estrategias, copies, calendario: calendario.calendario, meta_ia, voz, presupuesto };
+}
+
 /**
  * Composición del análisis de Marketing:
  *   posicionamiento (3 estrategias, 1 recomendada) → copies → calendario.
@@ -145,21 +266,14 @@ export async function orquestarMarketing(
   try {
     const producto = analisis.producto;
     const nombre = producto?.nombre || 'Producto';
-    const categoria = producto?.categoria || 'general';
-    const descripcion = producto?.descripcion ?? null;
-    const tipoActividad = /servici/i.test(categoria) ? ('servicio' as const) : ('producto' as const);
-
     const usuario = analisis.usuario;
     const gate = getPlanGate(usuario?.plan, 'marketing');
-    const voz = normalizarVoz(payload.vozMarca);
-    const presupuesto = payload.presupuestoMensual ?? 3000;
 
     const ctx = await cargarContextoMercado(usuarioId, productoId, payload.analisisMercadoId);
     const briefCtx = await cargarBriefContexto(usuarioId, productoId, payload.briefAnalisisId);
     // El ICP de Ventas es la fuente canónica del cliente ideal: si existe, gana
     // sobre el texto libre que el usuario haya escrito en este formulario.
-    const ventasIcpResumen = await cargarContextoVentasICP(usuarioId, productoId, payload.ventasAnalisisId);
-    const clienteIdealEfectivo = ventasIcpResumen ?? payload.clienteIdeal;
+    const icpVentas = await cargarContextoVentasICP(usuarioId, productoId, payload.ventasAnalisisId);
 
     // ── Reporte de Ads / Estadísticas Pasadas ──────────────────────────────────
     const reporteAds = (payload.reporteAds ?? analisis.reporte_ads_data) as ReporteAdsProcesado | undefined;
@@ -167,64 +281,19 @@ export async function orquestarMarketing(
       analisis.reporte_ads_data = reporteAds as never;
     }
 
-    // ── Estrategias de agencia (4 pilares: Seguidores, Reconocimiento, Ventas, Ventas+) ──
-    const estrategias = generarEstrategias(
-      nombre,
-      categoria,
-      tipoActividad,
-      Number(producto?.precio) || 0,
-      presupuesto,
+    const r = await generarResultadoMarketing({
+      producto: { ...(producto ?? {}), nombre },
+      input: { ...payload, reporteAds },
+      conCopies: gate.completo || gate.permite('marketing.copies'),
       ctx,
-      undefined,
-      payload.plataformas?.[0],
-      undefined,
-      reporteAds,
-      payload.canalCierre,
-      payload.nivelTraccion,
-      payload.margenEstimado,
-      producto?.pais
-    );
-    analisis.estrategias_data = estrategias as never;
-
-    // ── Copies (100% Pro) ────────────────────────────────────────────────────
-    if (gate.completo || gate.permite('marketing.copies')) {
-      const recomendada = estrategias.find((e) => e.recomendada) ?? estrategias[0];
-      analisis.copies_data = (await generarCopies(
-        nombre,
-        categoria,
-        descripcion,
-        [recomendada],
-        voz,
-        tipoActividad,
-        clienteIdealEfectivo,
-        briefCtx,
-        payload.metaCampana,
-        payload.plataformas
-      )) as never;
-    }
-
-    // ── Calendario editorial ─────────────────────────────────────────────────
-    const recomendada = estrategias.find((e) => e.recomendada) ?? estrategias[0];
-    const calendario = await generarCalendario(
-      nombre,
-      categoria,
-      descripcion,
-      recomendada.tipo,
-      ctx,
-      voz,
-      tipoActividad,
-      clienteIdealEfectivo,
       briefCtx,
-      payload.metaCampana,
-      payload.plataformas,
-      payload.capacidadContenido,
-      producto?.pais,
-      undefined,        // puv: no se usa desde el orquestador
-      RECORTE_COMPLETO, // el recorte por plan se aplica más abajo, no al generar
-      reporteAds
-    );
+      icpVentas,
+    });
 
-    const calendarioData = calendario as unknown as Record<string, unknown> & {
+    analisis.estrategias_data = r.estrategias as never;
+    if (r.copies) analisis.copies_data = r.copies as never;
+
+    const calendarioData = r.calendario as unknown as Record<string, unknown> & {
       semanas?: unknown[];
     };
 
@@ -240,12 +309,13 @@ export async function orquestarMarketing(
     calendarioData.secciones_bloqueadas = [...gate.bloqueadas];
 
     analisis.calendario_data = calendarioData as never;
-    analisis.voz_marca = voz;
+    analisis.meta_ia = r.meta_ia;
+    analisis.voz_marca = r.voz;
     // `presupuesto_mensual` es `integer`: un presupuesto con centavos (8500.50,
     // que el formulario deja escribir) reventaba este guardado con «invalid
     // input syntax for type integer» y el análisis acababa en error después de
     // haber pagado todas las llamadas a la IA.
-    analisis.presupuesto_mensual = Math.round(presupuesto);
+    analisis.presupuesto_mensual = Math.round(r.presupuesto);
     analisis.meta_campana = payload.metaCampana ?? '';
 
     analisis.resultado_estimado = huboFallbackIA();

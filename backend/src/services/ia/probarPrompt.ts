@@ -10,6 +10,8 @@ import { CASOS_FINANZAS } from './casosPruebaFinanzas';
 import { probarCasoFinanzas } from '../finanzas/pruebaFinanzas';
 import { CASOS_VENTAS } from './casosPruebaVentas';
 import { probarCasoVentas } from '../ventas/pruebaVentas';
+import { CASOS_MARKETING } from './casosPruebaMarketing';
+import { probarCasoMarketing } from '../marketing/pruebaMarketing';
 
 /**
  * «Probar» del panel de prompts: corre la parte de IA de un módulo sobre un
@@ -29,6 +31,7 @@ const CASOS: Record<ModuloPrompt, { id: string; titulo: string; pais: string }[]
   mercado: CASOS_MERCADO,
   finanzas: CASOS_FINANZAS,
   ventas: CASOS_VENTAS,
+  marketing: CASOS_MARKETING,
 };
 
 export function casosDeModulo(modulo: ModuloPrompt): CasoResumen[] {
@@ -49,7 +52,7 @@ export async function probarVersion(
   const info = infoClave(version.clave);
   if (!info) throw new ErrorPrueba(400, 'Clave de prompt desconocida');
 
-  // Mercado, Finanzas y Ventas no tienen fichas por país: se ancla su modo y se prueba en el país del caso.
+  // Los módulos sin fichas por país (todos menos Legal): se ancla su modo y se prueba en el país del caso.
   const probarModo = async <C extends CasoResumen>(casos: C[], correr: (caso: C) => Promise<unknown>) => {
     const caso = casos.find((c) => c.id === casoId);
     if (!caso) throw new ErrorPrueba(404, 'Caso de prueba no encontrado');
@@ -65,6 +68,7 @@ export async function probarVersion(
   if (info.modulo === 'mercado') return probarModo(CASOS_MERCADO, probarCasoMercado);
   if (info.modulo === 'finanzas') return probarModo(CASOS_FINANZAS, probarCasoFinanzas);
   if (info.modulo === 'ventas') return probarModo(CASOS_VENTAS, probarCasoVentas);
+  if (info.modulo === 'marketing') return probarModo(CASOS_MARKETING, probarCasoMarketing);
 
   const caso = CASOS_LEGAL.find((c) => c.id === casoId);
   if (!caso) throw new ErrorPrueba(404, 'Caso de prueba no encontrado');

@@ -296,9 +296,14 @@ export default function TendenciasSection({ tendencias, pais, giro }: Tendencias
                   <span className="font-semibold text-white/40 uppercase tracking-wider">
                     Score de Viralidad
                   </span>
-                  <div className="flex items-center gap-2 text-white/50 font-mono">
-                    {t.views && <span>{t.views} views</span>}
-                    {t.engagement && <span>· {t.engagement} eng.</span>}
+                  {/* Cifras que estima la IA, no datos medidos de la plataforma: se dicen así. */}
+                  <div
+                    className="flex items-center gap-2 text-white/50 font-mono"
+                    title="Estimación de la IA, no un dato medido de la plataforma"
+                  >
+                    {(t.views || t.engagement) && <span className="font-sans text-white/30">Estimado:</span>}
+                    {t.views && <span>≈{t.views} vistas</span>}
+                    {t.engagement && <span>· ≈{t.engagement} interacción</span>}
                   </div>
                 </div>
                 <ViralityBar score={t.viralidad} />

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DollarSign, Shuffle, Target, AlertTriangle } from 'lucide-react';
 import { PlatformBadge } from './MarketingSocialIcons';
+import { monedaDePais } from '@/lib/perfilNegocio';
 
 // ─── Tipos mínimos ────────────────────────────────────────────────────────────
 // Se declaran locales (y estructurales) porque page.tsx no exporta los suyos:
@@ -37,6 +38,10 @@ export interface EstrategiaPlan {
 interface Props {
   semanas: SemanaPlan[];
   estrategia: EstrategiaPlan;
+  /** País del producto: moneda de las cifras y si aplican los rangos de medios físicos. */
+  pais?: string | null;
+  /** CPC de la simulación (el de referencia del país o el del reporte de anuncios). */
+  cpcReferencia?: number | null;
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -139,7 +144,9 @@ interface MedioFisico {
 /**
  * Rangos de referencia en pesos mexicanos para medios fuera de línea. Es
  * contenido editorial fijo (no sale del análisis): sirve para dimensionar el
- * presupuesto, no como cotización. Siempre hay que pedir precio local.
+ * presupuesto, no como cotización. Fuera de México no hay tabla propia, así que
+ * se muestran los medios sin precio (pasar estos montos a otra moneda daría
+ * cifras inventadas).
  */
 const MEDIOS_FISICOS: MedioFisico[] = [
   {
@@ -156,14 +163,14 @@ const MEDIOS_FISICOS: MedioFisico[] = [
   },
   {
     nombre: 'Perifoneo', unidad: 'por hora', min: 300, max: 700,
-    tip: 'Funciona en colonias y tianguis. Grabar el spot una vez y repetirlo sale más barato que pagar locutor en vivo.',
+    tip: 'Funciona en barrios y mercados. Grabar el spot una vez y repetirlo sale más barato que pagar locutor en vivo.',
   },
   {
-    nombre: 'Parabús / mupi', unidad: 'por mes', min: 4000, max: 12000,
+    nombre: 'Parabús / mupi / paradero', unidad: 'por mes', min: 4000, max: 12000,
     tip: 'Alta repetición sobre la misma gente. Solo vale si tu cliente pasa por ahí todos los días.',
   },
   {
-    nombre: 'Espectacular en avenida', unidad: 'por mes', min: 8000, max: 35000,
+    nombre: 'Espectacular / valla en avenida', unidad: 'por mes', min: 8000, max: 35000,
     tip: 'Es marca, no venta directa. Con presupuesto chico casi siempre rinde más repartirlo en lonas y pauta.',
   },
   {
@@ -171,7 +178,7 @@ const MEDIOS_FISICOS: MedioFisico[] = [
     tip: 'El mejor costo por impresión del listado: se paga una vez y anuncia todos los días durante años.',
   },
   {
-    nombre: 'Playeras / uniformes', unidad: 'por pieza', min: 120, max: 300,
+    nombre: 'Playeras / camisetas / uniformes', unidad: 'por pieza', min: 120, max: 300,
     tip: 'Uniformar al equipo sube la percepción de precio y da prueba social gratis en cada servicio.',
   },
   {
@@ -235,10 +242,12 @@ const PROMOS: PromoIdea[] = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatMXN(n: number): string {
-  if (!Number.isFinite(n)) return '$0';
-  return `$${Math.round(n).toLocaleString('es-MX')}`;
+function formatDinero(n: number, moneda: string): string {
+  return `${Number.isFinite(n) ? Math.round(n).toLocaleString('es-MX') : '0'} ${moneda}`;
 }
+
+/** Clics al día por debajo de los cuales una red casi no aprende ni entrega. */
+const CLICS_DIARIOS_MINIMOS = 25;
 
 function hexToRgba(hex: string, alpha: number): string {
   const limpio = hex.replace('#', '');
@@ -312,7 +321,14 @@ interface Celda {
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-export default function PlanInversionSection({ semanas, estrategia }: Props) {
+export default function PlanInversionSection({ semanas, estrategia, pais, cpcReferencia }: Props) {
+  const moneda = monedaDePais(pais) || 'MXN';
+  const fmt = (n: number) => formatDinero(n, moneda);
+  // Los análisis antiguos no traen país: eran de México.
+  const esMexico = !pais || pais === 'MX';
+  // El mínimo diario se mide en clics, no en un monto fijo de pesos mexicanos.
+  const minimoDiario =
+    cpcReferencia && cpcReferencia > 0 ? cpcReferencia * CLICS_DIARIOS_MINIMOS : esMexico ? 60 : null;
   const presupuestoBase = useMemo(() => {
     const b = Math.round(estrategia.presupuesto_mensual_sugerido ?? 0);
     return b > 0 ? b : 5000;
@@ -432,21 +448,22 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
   const precio = Number.isFinite(estrategia.precio_sugerido) ? estrategia.precio_sugerido : 0;
 
   const textoPlan = useMemo(() => {
+    const f = (n: number) => formatDinero(n, moneda);
     const lineas: string[] = [
       `PLAN DE INVERSIÓN — Estrategia ${estrategia.nombre}`,
-      `Presupuesto mensual: ${formatMXN(presupuesto)} · Mezcla: ${mezcla.label}`,
+      `Presupuesto mensual: ${f(presupuesto)} · Mezcla: ${mezcla.label}`,
       '',
-      `Pauta en redes: ${formatMXN(montoDigital)}`,
-      ...repartoDigital.map((r) => `  · ${r.plataforma}: ${formatMXN(r.monto)} (${formatMXN(r.diario)}/día)`),
+      `Pauta en redes: ${f(montoDigital)}`,
+      ...repartoDigital.map((r) => `  · ${r.plataforma}: ${f(r.monto)} (${f(r.diario)}/día)`),
       '',
-      `Publicidad física: ${formatMXN(montoFisica)}`,
-      `Producción de contenido: ${formatMXN(montoProduccion)}`,
+      `Publicidad física: ${f(montoFisica)}`,
+      `Producción de contenido: ${f(montoProduccion)}`,
     ];
     if (heat.mejorBanda && heat.mejorDia) {
       lineas.push('', `Mejor franja del calendario: ${heat.mejorBanda.label} (${heat.mejorBanda.rango} h)`, `Día con más carga: ${heat.mejorDia.largo}`);
     }
     return lineas.join('\n');
-  }, [estrategia.nombre, presupuesto, mezcla.label, montoDigital, montoFisica, montoProduccion, repartoDigital, heat.mejorBanda, heat.mejorDia]);
+  }, [estrategia.nombre, presupuesto, mezcla.label, montoDigital, montoFisica, montoProduccion, repartoDigital, heat.mejorBanda, heat.mejorDia, moneda]);
 
   const copiarPlan = () => {
     navigator.clipboard.writeText(textoPlan).then(
@@ -644,7 +661,7 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
               <span>Cómo repartir el presupuesto</span>
             </h3>
             <p className="text-[12px] text-white/40 mt-0.5">
-              Punto de partida: {formatMXN(presupuestoBase)} al mes, el presupuesto sugerido para la estrategia {estrategia.nombre}. Mueve el control para ver tu caso.
+              Punto de partida: {fmt(presupuestoBase)} al mes, el presupuesto sugerido para la estrategia {estrategia.nombre}. Mueve el control para ver tu caso.
             </p>
           </div>
 
@@ -655,8 +672,8 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
                   Presupuesto mensual
                 </label>
                 <output htmlFor="presupuesto-marketing" className="text-2xl font-black font-mono text-white leading-none">
-                  {formatMXN(presupuesto)}
-                  <span className="text-[11px] text-white/30 font-bold ml-1">MXN</span>
+                  {Math.round(presupuesto).toLocaleString('es-MX')}
+                  <span className="text-[11px] text-white/30 font-bold ml-1">{moneda}</span>
                 </output>
               </div>
               <input
@@ -670,8 +687,8 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
                 className="w-full accent-[#8B5CF6] cursor-pointer"
               />
               <div className="flex justify-between text-[10px] font-mono text-white/25 mt-1">
-                <span>{formatMXN(sliderMin)}</span>
-                <span>{formatMXN(sliderMax)}</span>
+                <span>{fmt(sliderMin)}</span>
+                <span>{fmt(sliderMax)}</span>
               </div>
             </div>
 
@@ -752,8 +769,8 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
                   <span className="text-[10px] font-black text-white/40 font-mono">{Math.round(c.pct * 100)}%</span>
                 </div>
                 <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-1">{c.label}</p>
-                <p className={`text-xl font-black font-mono ${c.text} leading-none`}>{formatMXN(c.monto)}</p>
-                <p className="text-[11px] text-white/35 mt-1.5 font-mono">{formatMXN(c.monto / 30)} al día</p>
+                <p className={`text-xl font-black font-mono ${c.text} leading-none`}>{fmt(c.monto)}</p>
+                <p className="text-[11px] text-white/35 mt-1.5 font-mono">{fmt(c.monto / 30)} al día</p>
               </div>
             ))}
           </div>
@@ -766,14 +783,14 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
             </p>
             {repartoDigital.map((r) => {
               const meta = metaDe(r.plataforma);
-              const bajo = r.diario < 60;
+              const bajo = minimoDiario != null && r.diario < minimoDiario;
               return (
                 <div key={r.plataforma} className="space-y-1.5">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <PlatformBadge plataforma={r.plataforma} size="sm" />
                     <span className="text-[13px] font-black font-mono" style={{ color: meta.color }}>
-                      {formatMXN(r.monto)}
-                      <span className="text-white/30 text-[11px] ml-1.5 font-normal">({formatMXN(r.diario)}/día)</span>
+                      {fmt(r.monto)}
+                      <span className="text-white/30 text-[11px] ml-1.5 font-normal">({fmt(r.diario)}/día)</span>
                     </span>
                   </div>
                   <div className="w-full bg-black/40 rounded-full h-1.5 overflow-hidden">
@@ -785,7 +802,7 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
                   {bajo && (
                     <p className="text-[11px] text-amber-300/80 flex items-center gap-1.5">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span>Menos de {formatMXN(60)} diarios rinden muy poco: concentra el gasto en una sola red hasta que puedas subirlo.</span>
+                      <span>Menos de {fmt(minimoDiario ?? 0)} diarios (unos {CLICS_DIARIOS_MINIMOS} clics) rinden muy poco: concentra el gasto en una sola red hasta que puedas subirlo.</span>
                     </p>
                   )}
                 </div>
@@ -816,20 +833,22 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
           <div>
             <h3 className="text-[15px] font-black text-white flex items-center gap-2">Publicidad fuera de internet</h3>
             <p className="text-[12px] text-white/40 mt-0.5">
-              Con {formatMXN(montoFisica)} al mes en este bloque, esto es lo que alcanza. Los rangos son de referencia en México: pide siempre cotización local.
+              {esMexico
+                ? <>Con {fmt(montoFisica)} al mes en este bloque, esto es lo que alcanza. Los rangos son de referencia en México: pide siempre cotización local.</>
+                : <>Tienes {fmt(montoFisica)} al mes para este bloque. No tenemos precios de referencia de tu país: pide al menos dos cotizaciones locales de cada medio antes de decidir.</>}
             </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {MEDIOS_FISICOS.map((m, idx) => {
-              const piezas = m.min > 0 ? Math.floor(montoFisica / m.min) : 0;
+              const piezas = esMexico && m.min > 0 ? Math.floor(montoFisica / m.min) : 0;
               return (
                 <div key={m.nombre} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 flex flex-col gap-2 hover:border-amber-500/30 transition-colors">
                   <div className="flex items-start justify-between gap-2">
                     <span className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-amber-400 text-xs font-bold font-mono">
                       {idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
                     </span>
-                    {piezas >= 1 ? (
+                    {!esMexico ? null : piezas >= 1 ? (
                       <span className="text-[10px] font-black text-emerald-300 bg-emerald-500/12 border border-emerald-500/25 px-2 py-1 rounded-lg whitespace-nowrap">
                         alcanza para {piezas}
                       </span>
@@ -840,10 +859,14 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
                     )}
                   </div>
                   <p className="text-[13.5px] font-black text-white leading-tight">{m.nombre}</p>
-                  <p className="text-[12px] font-mono font-bold text-amber-400">
-                    {formatMXN(m.min)} – {formatMXN(m.max)}
-                    <span className="text-white/30 font-sans font-normal ml-1.5">{m.unidad}</span>
-                  </p>
+                  {esMexico ? (
+                    <p className="text-[12px] font-mono font-bold text-amber-400">
+                      {fmt(m.min)} – {fmt(m.max)}
+                      <span className="text-white/30 font-sans font-normal ml-1.5">{m.unidad}</span>
+                    </p>
+                  ) : (
+                    <p className="text-[12px] text-white/35">Se cotiza {m.unidad}</p>
+                  )}
                   <p className="text-[12px] text-white/50 leading-relaxed border-t border-white/5 pt-2 mt-auto">{m.tip}</p>
                 </div>
               );
@@ -873,7 +896,7 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
           <div>
             <h3 className="text-[15px] font-black text-white flex items-center gap-2">Ideas de promoción con su costo real</h3>
             <p className="text-[12px] text-white/40 mt-0.5">
-              Calculado sobre tu precio sugerido de {formatMXN(precio)}
+              Calculado sobre tu precio sugerido de {fmt(precio)}
               {margen !== null ? ` y un margen de ${Math.round(margen)}%.` : '. Sin dato de margen no se puede validar si la oferta se sostiene.'}
             </p>
           </div>
@@ -914,11 +937,11 @@ export default function PlanInversionSection({ semanas, estrategia }: Props) {
                   <div className="grid grid-cols-3 gap-2">
                     <div className="rounded-xl bg-black/30 border border-white/5 p-2.5">
                       <p className="text-[9px] font-black text-white/35 uppercase tracking-widest mb-0.5">Precio/unidad</p>
-                      <p className="text-[13px] font-black font-mono text-white leading-none">{formatMXN(precioEfectivo)}</p>
+                      <p className="text-[13px] font-black font-mono text-white leading-none">{fmt(precioEfectivo)}</p>
                     </div>
                     <div className="rounded-xl bg-black/30 border border-white/5 p-2.5">
                       <p className="text-[9px] font-black text-white/35 uppercase tracking-widest mb-0.5">Ticket ({p.unidades}u)</p>
-                      <p className="text-[13px] font-black font-mono text-cyan-400 leading-none">{formatMXN(ticket)}</p>
+                      <p className="text-[13px] font-black font-mono text-cyan-400 leading-none">{fmt(ticket)}</p>
                     </div>
                     <div className="rounded-xl bg-black/30 border border-white/5 p-2.5">
                       <p className="text-[9px] font-black text-white/35 uppercase tracking-widest mb-0.5">Margen final</p>

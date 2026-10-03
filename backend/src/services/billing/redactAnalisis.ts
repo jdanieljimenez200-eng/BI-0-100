@@ -201,6 +201,10 @@ function redactMarketing(fila: Fila, bloq: Set<string>): void {
 
   if (bloq.has('marketing.copies')) fila.copies_data = null;
   if (bloq.has('marketing.reporte_ads')) fila.reporte_ads_data = null;
+  // Las secciones extra del admin salen de la misma llamada que el calendario.
+  if (bloq.has('marketing.calendario') && esObjeto(fila.meta_ia)) {
+    fila.meta_ia = { ...fila.meta_ia, secciones_extra: [] };
+  }
 
   const cal = fila.calendario_data;
   if (!esObjeto(cal)) return;

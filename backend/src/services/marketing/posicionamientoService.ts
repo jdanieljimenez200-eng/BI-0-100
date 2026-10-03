@@ -12,6 +12,7 @@ import {
   SecuenciaSeguimientoVentasPlus,
 } from './types';
 import { cpcDeReferencia } from './benchmarksPais';
+import { getMoneda } from '../../utils/latam';
 
 const CATEGORY_AFFINITY: Record<string, { premium: number; volumen: number; especializado: number }> = {
   'Tecnología y gadgets':        { premium: 80, volumen: 50, especializado: 70 },
@@ -280,6 +281,10 @@ export function generarEstrategias(
   const ingresoProyectado = ventasCerradas * ticketConBump;
   const roasEstimado = Number((ingresoProyectado / basePresupuesto).toFixed(2));
   const cacMaximoTolerable = Math.round(ticketConBump * margenRatio);
+  // En la moneda del país del negocio: antes «$… MXN» para los 18 países.
+  const dinero = (n: number) => `${Math.round(n).toLocaleString('es-MX')} ${getMoneda(pais || 'MX')}`;
+  // El extra vale lo que sube el ticket (25 %), no 490 o 290 MXN fijos.
+  const precioBump = ticketConBump - Math.round(basePrecio);
   const puntoEquilibrioUnidades = Math.ceil(basePresupuesto / Math.max(1, (ticketConBump * margenRatio)));
 
   const unitEconomics: UnitEconomicsVentasPlus = {
@@ -313,7 +318,7 @@ export function generarEstrategias(
     },
     paso3_presentacion: {
       objetivo: 'Presentación personalizada de la solución sin enviar PDFs largos que nadie lee.',
-      audio_o_texto: `Justo para eso creamos ${nombre}. Te entrega resultado visible desde los primeros días, con garantía por escrito. El paquete completo normalmente está en $${Math.round(ticketConBump * 1.3).toLocaleString()}, pero con el beneficio activo de esta semana te queda en $${ticketConBump.toLocaleString()} MXN.`,
+      audio_o_texto: `Justo para eso creamos ${nombre}. Te entrega resultado visible desde los primeros días, con garantía por escrito. El paquete completo queda en ${dinero(ticketConBump)}. [Si tienes una promoción real, dila con su fecha de fin; un «precio normal» inventado es publicidad engañosa.]`,
     },
     paso4_cierre_objeciones: {
       objecion_precio: 'Te entiendo totalmente. Si dejamos de lado el precio por un momento, ¿es esta la solución exacta que necesitas para resolver tu problema?',
@@ -323,15 +328,15 @@ export function generarEstrategias(
   };
 
   const secuenciaSeguimiento: SecuenciaSeguimientoVentasPlus = {
-    dia1_caso_exito: `Hola 👋 Me quedé pensando en lo que platicamos sobre ${nombre}. Te comparto rápido el caso de un cliente que tenía exactamente tu misma duda y en 15 días logró el resultado. ¿Pudiste revisar el mensaje anterior?`,
-    dia3_beneficio_clave: `Hola 👋 Un detalle clave que olvidé mencionarte: con ${nombre} cuentas con soporte directo y garantía de satisfacción. Solo nos quedan 2 lugares disponibles con la condición de este mes. ¿Te reservo uno?`,
+    dia1_caso_exito: `Hola 👋 Me quedé pensando en lo que platicamos sobre ${nombre}. Te comparto rápido el caso de [un cliente real tuyo que tenía la misma duda] y lo que logró. ¿Pudiste revisar el mensaje anterior?`,
+    dia3_beneficio_clave: `Hola 👋 Un detalle clave que olvidé mencionarte: con ${nombre} cuentas con soporte directo y garantía de satisfacción. [Si de verdad tienes cupo limitado, dilo con el número real.] ¿Te reservo un lugar con la condición de este mes?`,
     dia5_despedida_urgencia: `Hola 👋 Como no supe de ti supongo que tus prioridades cambiaron o ya lo resolviste por otro lado, lo cual está excelente 🙌. Solo te escribo para liberar el cupo reservado. Si decides retomarlo después avísame. ¡Mucho éxito!`,
   };
 
   const garantia = `Garantía de Satisfacción 30 Días Cero Riesgo: Si utilizas ${nombre} y no experimentas el resultado prometido, te reembolsamos el 100% de tu dinero sin preguntas incómodas.`;
   const orderBump = esServicio
-    ? 'Auditoría Express 1-a-1 + Plantilla de Implementación Rápida por $490 MXN adicionales (90% margen)'
-    : 'Kit de Mantenimiento / Garantía Extendida de Reposición Inmediata por $290 MXN adicionales (85% margen)';
+    ? `Auditoría Express 1-a-1 + Plantilla de Implementación Rápida por ${dinero(precioBump)} adicionales`
+    : `Kit de Mantenimiento / Garantía Extendida de Reposición Inmediata por ${dinero(precioBump)} adicionales`;
 
   // ── Construcción de los 4 Pilares de Agencia ──────────────────────────────
   const estrategias: EstrategiaMarketing[] = [
@@ -468,8 +473,8 @@ export function generarEstrategias(
       plan_accion_paso_a_paso: [
         '1. Implementar la Grand Slam Offer con la garantía incondicional y el Order Bump de ticket alto.',
         '2. Entrenar a quien atienda WhatsApp/DM en el script de 4 pasos (Filtro -> Diagnóstico -> Solución -> Manejo de objeciones).',
-        '3. Programar la secuencia de seguimiento de 5 días para recuperar el 80% de ventas que no cierran en el primer mensaje.',
-        '4. Monitorear los Unit Economics: mantener el CAC por debajo de $' + cacMaximoTolerable.toLocaleString() + ' MXN para asegurar rentabilidad.',
+        '3. Programar la secuencia de seguimiento de 5 días para quien no compra en el primer mensaje.',
+        `4. Monitorear los Unit Economics: mantener el CAC por debajo de ${dinero(cacMaximoTolerable)} para asegurar rentabilidad.`,
       ],
     },
   ];

@@ -20,6 +20,9 @@ import {
   ReporteAdsError,
   ReporteAdsOutputSchema,
 } from '../services/marketing/reporteAdsService';
+import { PerfilNegocioSchema } from '../services/ia/perfilNegocio';
+import { guardarPerfilNegocio } from '../services/ia/guardarPerfil';
+import { ACTIVOS_MARKETING } from '../services/marketing/types';
 
 
 const router = Router();
@@ -76,6 +79,12 @@ const AnalizarMarketingSchema = z
     ventasAnalisisId: z.string().uuid().optional(),
     reporte_ads: ReporteAdsOutputSchema.optional(),
     reporteAds: ReporteAdsOutputSchema.optional(),
+    // «Afina tu análisis» de Marketing (opcional): datos de ESTE análisis.
+    ya_probado: z.string().trim().max(400).nullable().optional(),
+    activos: z.array(z.enum(ACTIVOS_MARKETING)).max(ACTIVOS_MARKETING.length).nullable().optional(),
+    zona_clientes: z.string().trim().max(120).nullable().optional(),
+    // Perfil del negocio compartido con los demás módulos.
+    perfil_negocio: PerfilNegocioSchema.optional(),
   })
   .refine((d) => Boolean(d.producto_id ?? d.productoId), {
     message: 'producto_id es requerido',
@@ -130,6 +139,9 @@ router.post(
       nivelTraccion: bodySrc.nivelTraccion ?? bodySrc.nivel_traccion ?? undefined,
       margenEstimado: bodySrc.margenEstimado ?? bodySrc.margen_estimado ?? undefined,
       reporteAds: bodySrc.reporteAds ?? bodySrc.reporte_ads ?? undefined,
+      yaProbado: bodySrc.ya_probado || undefined,
+      activos: Array.isArray(bodySrc.activos) && bodySrc.activos.length ? bodySrc.activos : undefined,
+      zonaClientes: bodySrc.zona_clientes || undefined,
     };
     const usuarioId = req.userId;
 
@@ -145,6 +157,8 @@ router.post(
     if (!producto) {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
+    // El perfil es del negocio: va al producto y lo reutilizan los demás módulos.
+    await guardarPerfilNegocio(producto, bodySrc.perfil_negocio);
 
     // Create analysis record
     const analisisRepo = AppDataSource.getRepository(AnalisisMarketing);

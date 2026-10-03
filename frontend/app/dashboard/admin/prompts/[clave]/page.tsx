@@ -112,6 +112,35 @@ const largo = (v: unknown) => (Array.isArray(v) ? v.length : 0);
  */
 function vistaDePrueba(resultado: unknown): VistaComun {
   const r = (resultado ?? {}) as Record<string, unknown>;
+  // Marketing: estrategias, copies y calendario.
+  if (r.meta_ia && typeof r.meta_ia === 'object' && Array.isArray(r.estrategias)) {
+    const meta = r.meta_ia as {
+      transparencia?: Transparencia;
+      secciones_extra?: SeccionExtra[];
+      secciones_ocultas?: string[];
+      meta?: { origen?: VistaComun['origen'] };
+    };
+    const estrategias = r.estrategias as { nombre?: string; recomendada?: boolean }[];
+    const recomendada = estrategias.find((e) => e.recomendada) ?? estrategias[0];
+    const cal = (r.calendario ?? null) as { semanas?: { dias?: { publicaciones?: unknown[] }[] }[]; tendencias?: unknown[] } | null;
+    const publicaciones = (cal?.semanas ?? []).reduce(
+      (acc, s) => acc + (s.dias ?? []).reduce((a, d) => a + largo(d.publicaciones), 0),
+      0
+    );
+    return {
+      origen: meta.meta?.origen,
+      puntaje: null,
+      resumen: recomendada?.nombre ? `Estrategia recomendada: ${recomendada.nombre}` : null,
+      conteos: [
+        ['Estrategias', estrategias.length],
+        ['Copies', (meta.secciones_ocultas ?? []).includes('marketing.copies') ? 'oculta' : largo(r.copies)],
+        ['Publicaciones del calendario', publicaciones],
+        ['Tendencias', largo(cal?.tendencias)],
+      ],
+      transparencia: meta.transparencia,
+      secciones_extra: meta.secciones_extra,
+    };
+  }
   // Ventas: tips, historia del día y perfil de cliente.
   if (r.meta_ia && typeof r.meta_ia === 'object' && Array.isArray(r.tips)) {
     const meta = r.meta_ia as {

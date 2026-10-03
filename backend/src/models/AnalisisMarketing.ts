@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { Producto } from './Producto';
 import { Usuario } from './Usuario';
+import type { MetaIaAnalisis } from '../services/ia/metaAnalisis';
 
 @Entity('analisis_marketing')
 @Index(['usuario_id', 'producto_id'])
@@ -55,6 +56,13 @@ export class AnalisisMarketing {
 
   @Column({ nullable: true, type: 'jsonb' })
   reporte_ads_data?: object | null;
+
+  /**
+   * marketing@2: confianza, supuestos y contexto que faltó, secciones extra u
+   * ocultas del admin y versión de prompt usada (`services/ia/metaAnalisis.ts`).
+   */
+  @Column({ nullable: true, type: 'jsonb' })
+  meta_ia!: MetaIaAnalisis | null;
 
   // Estado del proceso
   @Column({ default: 'procesando' })
