@@ -713,7 +713,7 @@ export function mockReporteAds(
  * editable de Marketing (`services/ia/prompts/marketing.modo.ts`).
  */
 export const CONTRATO_REPORTE_ADS = `CONTRATO DE SALIDA — DIAGNÓSTICO DE ANUNCIOS
-TAREA: auditar el histórico de anuncios del negocio: fugas de presupuesto, creatividades y campañas que merecen escala, y recomendaciones priorizadas que el dueño pueda aplicar de inmediato (presupuesto, formato, audiencia, gancho).
+TAREA: auditar el histórico de anuncios del negocio: fugas de presupuesto, creatividades y campañas que merecen escala, y recomendaciones priorizadas que el dueño pueda aplicar de inmediato (presupuesto, formato, audiencia, gancho). Este encargo solo entrega el diagnóstico: si arriba hay secciones adicionales del equipo, aquí no se responden.
 
 REGLAS ESTRICTAS:
 1. Responde EXCLUSIVAMENTE con JSON válido conforme al formato del mensaje. Sin texto adicional ni bloques markdown.

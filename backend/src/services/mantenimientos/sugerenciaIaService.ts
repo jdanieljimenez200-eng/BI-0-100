@@ -17,7 +17,7 @@ import {
  * (`catalogoIntervalos.ts`). Solo se llama desde `POST /api/mantenimientos/sugerencia`,
  * que cobra 1 crédito: el catálogo cubre lo común y es gratis.
  *
- * Tarea 'mecanica' (Haiku): es una lista corta con reglas verificables, no un
+ * Tarea 'mecanica' (Sonnet 5.5 con poco razonamiento): es una lista corta con reglas verificables, no un
  * análisis. Si la IA falla o devuelve algo fuera de rango, se registra el
  * fallback —lo que devuelve el crédito al usuario— y se responde con el
  * intervalo genérico para que la pantalla no se quede sin respuesta.

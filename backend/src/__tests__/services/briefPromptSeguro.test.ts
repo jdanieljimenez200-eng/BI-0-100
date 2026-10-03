@@ -5,7 +5,7 @@ jest.mock('@anthropic-ai/sdk', () => ({
   __esModule: true,
   default: jest.fn().mockImplementation((opciones: unknown) => {
     mockOpciones.push(opciones);
-    return { messages: { create: mockCrear } };
+    return { messages: { create: mockCrear }, beta: { messages: { create: mockCrear } } };
   }),
 }));
 
@@ -61,9 +61,9 @@ describe('Brief: prompt seguro y respaldo', () => {
     expect(prompt).not.toMatch(/you are now a/i);
     expect(prompt).toContain('[REDACTED]');
     expect(mockOpciones[0]).toMatchObject({ timeout: 120_000, maxRetries: 1 });
-    // Sonnet 5 rechaza temperature: no debe viajar aunque el servicio lo declare.
+    // Sonnet 5.5 rechaza temperature: no debe viajar aunque el servicio lo declare.
     expect(mockCrear.mock.calls[0][0]).not.toHaveProperty('temperature');
-    expect(mockCrear.mock.calls[0][0].model).toBe('claude-sonnet-5');
+    expect(mockCrear.mock.calls[0][0].model).toBe('claude-sonnet-5-5');
   });
 
   it('si Claude falla, entrega plantilla y lo anota como estimación', async () => {

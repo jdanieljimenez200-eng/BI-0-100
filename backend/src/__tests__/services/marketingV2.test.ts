@@ -69,7 +69,12 @@ describe('copies', () => {
     const [seccion, tarea, params] = mockCrear.mock.calls[0];
     expect(seccion).toBe('marketing.copies');
     expect(tarea).toBe('mecanica');
-    expect(params.system).not.toMatch(/mexicano/i);
+    // Desde Sonnet 5.5 los copies llevan el modo de Marketing y su contrato al final.
+    expect(params.system[0].text).toBe(MARKETING_MODO);
+    const contrato = params.system[params.system.length - 1].text as string;
+    expect(contrato).toContain('CONTRATO DE SALIDA — COPIES PUBLICITARIOS');
+    expect(contrato).not.toMatch(/una métrica/);
+    expect(JSON.stringify(params.system)).not.toMatch(/mexicano|Balance Claro/i);
     const prompt = params.messages[0].content as string;
     expect(prompt).toContain(`<estrategia tipo="${recomendada.tipo}">`);
     expect(prompt).toContain('<precio_desde moneda="COP">');

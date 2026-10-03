@@ -20,7 +20,7 @@ interface EvaluacionGuion {
   puntos_debiles: string[];
   version_mejorada: string;
   fecha_evaluacion: string;
-  /** Solo presente cuando se subió/analizó un vídeo (Claude Fable). */
+  /** Solo presente cuando se subió/analizó un vídeo (análisis visual con IA). */
   metricas_visuales?: MetricaGuion[];
 }
 
@@ -365,7 +365,7 @@ export default function ScriptScorerPanel({ analisisId, bloqueado, tieneVideoPit
               </div>
             )}
 
-            {/* Subida directa de vídeo — análisis visual con Claude Fable */}
+            {/* Subida directa de vídeo — análisis visual con IA */}
             <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 space-y-3">
               <div>
                 <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-cyan-300 mb-1">
@@ -440,7 +440,7 @@ export default function ScriptScorerPanel({ analisisId, bloqueado, tieneVideoPit
                     {resultado.metricas.map((m, i) => <MetricaRow key={i} m={m} />)}
                   </div>
 
-                  {/* Análisis visual (solo si se evaluó un vídeo con Fable) */}
+                  {/* Análisis visual (solo si se evaluó un vídeo) */}
                   {resultado.metricas_visuales && resultado.metricas_visuales.length > 0 && (
                     <div className="space-y-2">
                       <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-cyan-300">

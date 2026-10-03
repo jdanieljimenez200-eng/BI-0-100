@@ -41,6 +41,26 @@ suite: es el análisis que más cuesta y el que más valor percibido tiene.
 **Cuenta gratuita** (análisis recortados, sin Legal, una sola vez): **~$0.17** por
 cuenta nueva. Es el costo de adquisición en IA.
 
+### 1b. Actualización 2026-10 · modelos 5.5
+
+Sonnet 5 → **Sonnet 5.5** (mismo precio, $2 / $10) y Opus 5 → **Opus 5.5**
+($4 / $20, antes $5 / $25; lectura de caché a 0.05×). Las tareas mecánicas dejan
+Haiku 4.5 por Sonnet 5.5 con effort `low`, y los copies y los mensajes de Ventas
+ahora llevan el modo de su módulo (~2 500 tokens, cacheados desde 512 tokens).
+Re-estimación con los mismos supuestos:
+
+| Concepto | Antes | Ahora |
+|---|---|---|
+| Legal (dictamen) | $0.218 | **~$0.174** (−20 %) |
+| Marketing (copies de la estrategia recomendada + calendario) | $0.124 | **~$0.136** (copies ~$0.005 → ~$0.017) |
+| Follow-ups, palabras clave de ads (0 créditos) | $0.008 | **~$0.015** |
+| Resumen de alertas | $0.005 | **~$0.010** |
+| **Suite completa** | $0.53 | **~$0.50** |
+
+Marketing ya rozaba el tope de 2 créditos (≈ $0.12) y ahora lo pasa un ~13 %, por
+debajo del umbral del 30 % para tocar créditos. Revisarlo con el panel de costos
+en cuanto haya tráfico real.
+
 ## 2. Créditos de IA
 
 "Ilimitado" deja la puerta abierta a que una sola cuenta (o una cuenta robada)

@@ -60,7 +60,7 @@ const contarAnalisisLegal = (usuarioId: string, productoId?: string): Promise<nu
 router.post(
   '/analizar',
   ...acceso,
-  // Legal usa el modelo más caro (Opus 5): solo planes con legal_analisis.
+  // Legal usa el modelo más caro (Opus 5.5): solo planes con legal_analisis.
   requirePlanFeature('legal_analisis', 'El análisis Legal-Fiscal'),
   requireAnalisisLock('legal'),
   requireCanRunAnalisis(contarAnalisisLegal),

@@ -339,7 +339,7 @@ function ToolMantenimientosWidget() {
       </div>
 
       <div className="flex items-center justify-between text-[11px] sm:text-[12px] text-slate-400 pt-2.5 border-t border-white/[0.04] font-sans">
-        <span>Catálogo + IA Haiku</span>
+        <span>Catálogo + IA</span>
         <span className="text-amber-300 font-medium">Cero paros imprevistos</span>
       </div>
     </div>
@@ -526,10 +526,10 @@ const TOOLS_DATA: ToolItem[] = [
     color: "#FBBF24",
     tag: "Semáforo IA",
     shortDesc: "Semáforo preventivo para maquinaria, vehículos e instalaciones con catálogo de frecuencias de uso y sugerencias con IA.",
-    fullDesc: "Evita pérdidas por paros operativos imprevistos. Monitorea el estado de hornos, cafeteras, vehículos e infraestructura con un semáforo predictivo apoyado por IA Haiku que anticipa revisiones según uso real.",
+    fullDesc: "Evita pérdidas por paros operativos imprevistos. Monitorea el estado de hornos, cafeteras, vehículos e infraestructura con un semáforo predictivo apoyado por IA que anticipa revisiones según uso real.",
     benefits: [
       "Semáforo predictivo de maquinaria y equipos en tiempo real",
-      "Fichas técnicas y calendarios sugeridos con IA Haiku",
+      "Fichas técnicas y calendarios sugeridos con IA",
       "Registro de costos de mantenimiento e historial por máquina",
       "Alertas antes de fallas críticas para cero tiempos muertos",
     ],

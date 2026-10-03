@@ -37,9 +37,9 @@ import { textoPerfil } from '../ia/perfilNegocio';
  *
  * Las llamadas de estrategia componen su `system` con el modo de Ventas
  * (`ventas.modo`, editable en el panel) y un contrato de salida que solo vive
- * aquí. Las tareas mecánicas en Haiku (seguimientos, palabras clave) llevan un
- * `system` corto: Haiku solo cachea a partir de 4096 tokens y el modo entero
- * encarecería cada llamada sin mejorar una lista.
+ * aquí. Las tareas mecánicas (seguimientos, palabras clave) también llevan el
+ * modo: desde 2026-10 van en Sonnet 5.5, que cachea desde 512 tokens (en Haiku,
+ * que solo cacheaba desde 4096, llevaban un `system` corto propio).
  */
 
 const MAX_TOKENS = 3000;
@@ -175,14 +175,21 @@ const CONTRATO_COMPARATIVA = contrato(
 }`
 );
 
-/** System de una llamada de estrategia: modo editable + contrato del código. */
+const CONTRATO_FOLLOWUPS = contrato(
+  'MENSAJES DE SEGUIMIENTO',
+  'escribir mensajes de seguimiento (WhatsApp/DM) que el vendedor pueda copiar y pegar tal cual, sin sonar a plantilla robótica. Este encargo solo entrega los mensajes: si arriba hay secciones adicionales del equipo, aquí no se responden.',
+  `{"mensajes": [{"momento": str, "mensaje": "listo para copiar y pegar, corto (2-4 líneas), sin sonar desesperado"}]}`
+);
+
+const CONTRATO_PALABRAS_CLAVE = contrato(
+  'PALABRAS CLAVE PARA ANUNCIOS',
+  'traducir el perfil de cliente ideal ya construido en palabras clave (Google Ads) e intereses (Meta Ads) listos para pegar en una campaña, como los buscaría el cliente en su país. Este encargo solo entrega las dos listas: si arriba hay secciones adicionales del equipo, aquí no se responden.',
+  `{"keywords_busqueda": [8-12 str], "intereses_meta": [8-12 str]}`
+);
+
+/** System de una llamada de Ventas: modo editable + contrato del código. */
 function sistemaVentas(c: string | ((extra: SeccionExtraDef[]) => string)): Promise<SistemaCompuesto> {
   return componerSistema({ modo: 'ventas.modo', contrato: c });
-}
-
-/** System corto para las tareas mecánicas en Haiku (sin el modo, ver arriba). */
-function sistemaMecanico(rol: string): string {
-  return `${rol}\n${REGLAS_SALIDA}`;
 }
 
 // ─── Contexto del negocio (mensaje del usuario) ──────────────────────────────
@@ -343,7 +350,7 @@ async function llamarClaude(
 
 /**
  * Igual que `llamarClaude` pero con contenido multimodal (frames + texto).
- * Sonnet 5 ya tiene visión: no hace falta un modelo aparte más caro.
+ * Sonnet 5.5 ya tiene visión: no hace falta un modelo aparte más caro.
  */
 async function llamarClaudeConImagenes(
   system: string | TextBlockParam[],
@@ -634,9 +641,7 @@ export async function generarFollowUps(
 
   try {
     const tono = tonoMarca ? sanitizeForLLM(tonoMarca, { maxLen: 200 }) : 'directo y cercano, sin presión';
-    const system = sistemaMecanico(
-      'Escribes mensajes de seguimiento (WhatsApp/DM) que un vendedor de una pyme latinoamericana puede copiar y pegar tal cual, sin sonar a plantilla robótica.'
-    );
+    const sistema = await sistemaVentas(CONTRATO_FOLLOWUPS);
     const prompt = `${ctxProducto(input)}
 
 Tono de marca a usar: ${tono}
@@ -645,7 +650,7 @@ Genera 3 mensajes de seguimiento para un prospecto que ya mostró interés pero 
 
 Formato JSON: {"mensajes":[{"momento","mensaje"}]}
 - mensaje: listo para copiar y pegar, corto (2-4 líneas), sin sonar desesperado.`;
-    const parsed = FollowUpsOutputSchema.parse(await llamarClaude(system, prompt, 'ventas.followups', 'mecanica'));
+    const parsed = FollowUpsOutputSchema.parse(await llamarClaude(sistema.system, prompt, 'ventas.followups', 'mecanica'));
     return parsed.mensajes;
   } catch (err) {
     avisoFallo('Seguimientos', err);
@@ -691,9 +696,7 @@ export async function generarPalabrasClaveAds(
   if (!hayClaveAnthropic()) return generarPalabrasClaveAdsMock(perfil);
 
   try {
-    const system = sistemaMecanico(
-      'Traduces un perfil de cliente ideal ya construido en palabras clave (Google Ads) e intereses (Meta Ads) listos para pegar en una campaña, como los buscaría el cliente en su país.'
-    );
+    const sistema = await sistemaVentas(CONTRATO_PALABRAS_CLAVE);
     const prompt = `${ctxProducto(input)}
 
 Perfil de cliente ideal ya construido:
@@ -707,7 +710,7 @@ Genera dos listas:
 2. intereses_meta: 8-12 términos de segmentación por interés para Meta/Instagram Ads (conceptos, comportamientos o marcas afines — NO frases de búsqueda).
 
 Formato JSON: {"keywords_busqueda":[...],"intereses_meta":[...]}`;
-    const parsed = PalabrasClaveAdsSchema.parse(await llamarClaude(system, prompt, 'ventas.palabras_clave', 'mecanica'));
+    const parsed = PalabrasClaveAdsSchema.parse(await llamarClaude(sistema.system, prompt, 'ventas.palabras_clave', 'mecanica'));
     return parsed;
   } catch (err) {
     avisoFallo('Palabras clave', err);

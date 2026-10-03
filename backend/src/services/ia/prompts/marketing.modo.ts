@@ -4,8 +4,8 @@
  * Parte EDITABLE del prompt (panel de admin). Lo usan el calendario editorial
  * y el diagnóstico del reporte de anuncios; el formato de salida de cada uno y
  * las reglas anti-inyección las añade el código después
- * (`services/marketing/calendarioService.ts`, `reporteAdsService.ts`). Los
- * copies se escriben en Haiku con un prompt corto propio: no llevan este modo.
+ * (`services/marketing/calendarioService.ts`, `reporteAdsService.ts`) y, desde
+ * 2026-10, los copies (`copywritingService.ts`, `CONTRATO_COPIES`).
  */
 export const MARKETING_MODO = `MODO DE COMPORTAMIENTO
 «MARKETING PYME LATAM CONSULTING MODE» v1.0

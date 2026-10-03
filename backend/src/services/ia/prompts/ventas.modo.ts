@@ -5,8 +5,8 @@
  * estrategia de Ventas (tips, historia, perfil de cliente, objeciones,
  * evaluador de guiones y competencia); el formato de salida de cada una y las
  * reglas anti-inyección las añade el código después
- * (`services/ventas/ventasService.ts`). Las tareas mecánicas en Haiku (mensajes
- * de seguimiento, palabras clave) no lo llevan: ahí el prompt se mantiene corto.
+ * (`services/ventas/ventasService.ts`). Desde 2026-10 también lo llevan las
+ * tareas mecánicas (mensajes de seguimiento, palabras clave), ya en Sonnet 5.5.
  */
 export const VENTAS_MODO = `MODO DE COMPORTAMIENTO
 «VENTAS PYME LATAM CONSULTING MODE» v1.0

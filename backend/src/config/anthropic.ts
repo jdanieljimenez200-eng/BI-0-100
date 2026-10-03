@@ -24,7 +24,7 @@ export type TareaIA = 'mecanica' | 'estrategia' | 'extensa' | 'critica';
 
 interface ConfigTarea {
   modelo: string;
-  /** Razonamiento adaptativo. `null` = modelo sin effort (Haiku 4.5). */
+  /** Razonamiento adaptativo. `null` = modelo sin effort (Haiku 4.5). En la familia 5.5 siempre está activo. */
   effort: 'low' | 'medium' | 'high' | null;
   /** Tiempo máximo por intento. Con razonamiento activo las respuestas tardan más. */
   timeoutMs: number;
@@ -34,34 +34,57 @@ interface ConfigTarea {
 
 /**
  * - mecanica: salidas cortas con reglas verificables (copies, listas, resúmenes).
+ *   Antes en Haiku 4.5; desde 2026-10 en Sonnet 5.5 con poco razonamiento: los
+ *   copies y mensajes los publica el cliente tal cual y la redacción pesa más que
+ *   el ahorro.
  * - estrategia: análisis y redacción con criterio (DAFO, brief, ventas, riesgos).
  * - extensa: la misma familia que estrategia, para salidas muy largas (calendario).
  * - critica: donde un error sale caro al cliente (dictamen legal).
+ *
+ * En la familia 5.5 el `effort` se recalibró: «medium» no piensa lo mismo que en
+ * Sonnet 5. Antes de subirlo, compara con «Probar» del panel de prompts.
  */
 export const TAREAS: Record<TareaIA, ConfigTarea> = {
-  mecanica: { modelo: 'claude-haiku-4-5', effort: null, timeoutMs: 45_000, holguraTokens: 1 },
-  estrategia: { modelo: 'claude-sonnet-5', effort: 'medium', timeoutMs: 120_000, holguraTokens: 2 },
-  extensa: { modelo: 'claude-sonnet-5', effort: 'medium', timeoutMs: 180_000, holguraTokens: 1.6 },
-  critica: { modelo: 'claude-opus-5', effort: 'medium', timeoutMs: 180_000, holguraTokens: 2 },
+  mecanica: { modelo: 'claude-sonnet-5-5', effort: 'low', timeoutMs: 60_000, holguraTokens: 2 },
+  estrategia: { modelo: 'claude-sonnet-5-5', effort: 'medium', timeoutMs: 120_000, holguraTokens: 2 },
+  extensa: { modelo: 'claude-sonnet-5-5', effort: 'medium', timeoutMs: 180_000, holguraTokens: 1.6 },
+  critica: { modelo: 'claude-opus-5-5', effort: 'medium', timeoutMs: 180_000, holguraTokens: 2 },
 };
 
-/** Modelos que rechazan `temperature` con un 400 (familia 4.7+ y Sonnet 5). */
-const SIN_SAMPLING = new Set(['claude-sonnet-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-fable-5-1']);
+/**
+ * Únicos modelos que aceptan `temperature`/`top_p`/`top_k`. Desde la familia 4.7
+ * cada modelo nuevo responde 400 a un valor distinto del de fábrica, así que la
+ * lista es de los que SÍ los aceptan: un modelo nuevo no puede tumbar todas las
+ * llamadas por olvidar añadirlo.
+ */
+const ACEPTA_SAMPLING = new Set(['claude-haiku-4-5']);
 /** Modelos que pueden declinar por clasificador de seguridad: se reintenta en el servidor. */
-const CON_FALLBACK = new Set(['claude-opus-5', 'claude-fable-5-1']);
+const CON_FALLBACK = new Set(['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1']);
 
 // ─── Precios (USD por millón de tokens) ───────────────────────────────────────
 
-export const PRECIOS_USD_POR_MILLON: Record<string, { input: number; output: number }> = {
+export interface PrecioModelo {
+  input: number;
+  output: number;
+  /** Lectura de caché como fracción del input. Por defecto 0.1; los modelos nuevos la abaratan. */
+  cacheLectura?: number;
+}
+
+// Revisión: 2026-10 (platform.claude.com/docs/en/about-claude/pricing). Los
+// modelos que ya no se usan se quedan: siguen en `uso_ia` y pueden responder
+// como respaldo del servidor.
+export const PRECIOS_USD_POR_MILLON: Record<string, PrecioModelo> = {
   'claude-haiku-4-5': { input: 1, output: 5 },
+  'claude-sonnet-5-5': { input: 2, output: 10 },
   'claude-sonnet-5': { input: 2, output: 10 },
   'claude-sonnet-4-6': { input: 3, output: 15 },
+  'claude-opus-5-5': { input: 4, output: 20, cacheLectura: 0.05 },
   'claude-opus-5': { input: 5, output: 25 },
   'claude-opus-4-8': { input: 5, output: 25 },
-  'claude-fable-5-1': { input: 10, output: 50 },
+  'claude-fable-5-1': { input: 10, output: 50, cacheLectura: 0.025 },
 };
 
-/** Escritura de caché (5 min) = 1.25× input; lectura = 0.1× input. */
+/** Escritura de caché (5 min) = 1.25× input; lectura = 0.1× input salvo que el modelo diga otra cosa. */
 const FACTOR_CACHE_ESCRITURA = 1.25;
 const FACTOR_CACHE_LECTURA = 0.1;
 
@@ -81,7 +104,7 @@ export interface UsoTokens {
  */
 const modelosSinPrecioAvisados = new Set<string>();
 
-export function precioDeModelo(modelo: string): { input: number; output: number } | null {
+export function precioDeModelo(modelo: string): PrecioModelo | null {
   const exacto = PRECIOS_USD_POR_MILLON[modelo];
   if (exacto) return exacto;
   const base = Object.keys(PRECIOS_USD_POR_MILLON)
@@ -105,7 +128,7 @@ export function costoUsd(modelo: string, uso: UsoTokens): number {
   const total =
     uso.input_tokens * precio.input +
     escritura * precio.input * FACTOR_CACHE_ESCRITURA +
-    lectura * precio.input * FACTOR_CACHE_LECTURA +
+    lectura * precio.input * (precio.cacheLectura ?? FACTOR_CACHE_LECTURA) +
     uso.output_tokens * precio.output;
   return Math.round((total / 1_000_000) * 1_000_000) / 1_000_000;
 }
@@ -163,7 +186,7 @@ export async function crearMensaje(seccion: string, tarea: TareaIA, params: Para
     max_tokens: Math.ceil(params.max_tokens * cfg.holguraTokens),
   };
 
-  if (SIN_SAMPLING.has(cfg.modelo)) {
+  if (!ACEPTA_SAMPLING.has(cfg.modelo)) {
     delete cuerpo.temperature;
     delete cuerpo.top_p;
     delete cuerpo.top_k;

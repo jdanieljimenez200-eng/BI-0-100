@@ -23,7 +23,7 @@ const respuesta = (over: Partial<Message> = {}): Message =>
     id: 'msg_1',
     type: 'message',
     role: 'assistant',
-    model: 'claude-sonnet-5',
+    model: 'claude-sonnet-5-5',
     stop_reason: 'end_turn',
     content: [
       { type: 'thinking', thinking: '', signature: 'x' },
@@ -44,8 +44,8 @@ const PARAMS = {
  * Punto único de llamada a Claude.
  *
  *  1. Cada tarea va a su modelo y solo con los parámetros que ese modelo acepta
- *     (Sonnet 5 y Opus 5 devuelven 400 con `temperature`).
- *  2. Opus 5 usa los fallbacks del servidor por si su clasificador declina.
+ *     (la familia 5.5 devuelve 400 con `temperature`; solo Haiku 4.5 la acepta).
+ *  2. Sonnet 5.5 y Opus 5.5 usan los fallbacks del servidor por si su clasificador declina.
  *  3. Cada llamada se registra con su costo para medir y cobrar bien.
  *  4. La clave no sale en logs y en producción es obligatoria.
  */
@@ -66,6 +66,16 @@ describe('config/anthropic', () => {
   });
 
   it('calcula el costo por modelo, con caché', () => {
+    expect(costoUsd('claude-sonnet-5-5', { input_tokens: 1_000_000, output_tokens: 1_000_000 })).toBe(12);
+    expect(costoUsd('claude-opus-5-5', { input_tokens: 1_000_000, output_tokens: 1_000_000 })).toBe(24);
+    // La lectura de caché depende del modelo: 0.1× en Sonnet 5.5, 0.05× en Opus 5.5, 0.025× en Fable 5.1.
+    expect(costoUsd('claude-sonnet-5-5', { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 1_000_000 })).toBeCloseTo(0.2, 6);
+    expect(costoUsd('claude-opus-5-5', { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 1_000_000 })).toBeCloseTo(0.2, 6);
+    expect(costoUsd('claude-fable-5-1', { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 1_000_000 })).toBeCloseTo(0.25, 6);
+    expect(costoUsd('claude-opus-5-5', { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 1_000_000 })).toBeCloseTo(5, 6);
+    // Un 5.5 con sufijo de fecha se cobra como 5.5, no como el 5 que es su prefijo.
+    expect(costoUsd('claude-opus-5-5-20261001', { input_tokens: 1_000_000, output_tokens: 0 })).toBe(4);
+    // Los modelos anteriores conservan su precio: siguen en uso_ia y pueden responder como respaldo.
     expect(costoUsd('claude-sonnet-5', { input_tokens: 1_000_000, output_tokens: 1_000_000 })).toBe(12);
     expect(costoUsd('claude-haiku-4-5', { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 1_000_000 })).toBeCloseTo(0.1, 6);
     expect(costoUsd('claude-opus-5', { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 1_000_000 })).toBeCloseTo(6.25, 6);
@@ -76,42 +86,59 @@ describe('config/anthropic', () => {
     expect(costoUsd('claude-opus-4-8-20260101', { input_tokens: 1_000_000, output_tokens: 0 })).toBe(5);
   });
 
-  it('estrategia va a Sonnet 5 sin temperature, con razonamiento y holgura de tokens', async () => {
-    mockCrear.mockResolvedValueOnce(respuesta());
+  it('estrategia va a Sonnet 5.5 sin temperature, con razonamiento, holgura de tokens y fallbacks', async () => {
+    mockCrearBeta.mockResolvedValueOnce(respuesta());
     await crearMensaje('mercado.dafo', 'estrategia', PARAMS);
 
-    const cuerpo = mockCrear.mock.calls[0][0];
-    expect(cuerpo.model).toBe('claude-sonnet-5');
+    const cuerpo = mockCrearBeta.mock.calls[0][0];
+    expect(cuerpo.model).toBe('claude-sonnet-5-5');
     expect(cuerpo).not.toHaveProperty('temperature');
     expect(cuerpo.thinking).toEqual({ type: 'adaptive' });
     expect(cuerpo.output_config).toEqual({ effort: 'medium' });
     expect(cuerpo.max_tokens).toBe(2000 * TAREAS.estrategia.holguraTokens);
-    expect(mockCrearBeta).not.toHaveBeenCalled();
+    expect(cuerpo.fallbacks).toBe('default');
+    expect(mockCrear).not.toHaveBeenCalled();
   });
 
-  it('mecánica va a Haiku 4.5 y conserva temperature, sin razonamiento', async () => {
-    mockCrear.mockResolvedValueOnce(respuesta({ model: 'claude-haiku-4-5' }));
+  it('mecánica va a Sonnet 5.5 con poco razonamiento y sin temperature', async () => {
+    mockCrearBeta.mockResolvedValueOnce(respuesta());
     await crearMensaje('marketing.copies', 'mecanica', PARAMS);
 
-    const cuerpo = mockCrear.mock.calls[0][0];
-    expect(cuerpo.model).toBe('claude-haiku-4-5');
-    expect(cuerpo.temperature).toBe(0.7);
-    expect(cuerpo).not.toHaveProperty('thinking');
+    const cuerpo = mockCrearBeta.mock.calls[0][0];
+    expect(cuerpo.model).toBe('claude-sonnet-5-5');
+    expect(cuerpo).not.toHaveProperty('temperature');
+    expect(cuerpo.thinking).toEqual({ type: 'adaptive' });
+    expect(cuerpo.output_config).toEqual({ effort: 'low' });
+    expect(cuerpo.max_tokens).toBe(2000 * TAREAS.mecanica.holguraTokens);
   });
 
-  it('crítica va a Opus 5 con fallbacks del servidor', async () => {
-    mockCrearBeta.mockResolvedValueOnce(respuesta({ model: 'claude-opus-5' }));
+  it('solo los modelos que la aceptan reciben temperature (Haiku 4.5, sin razonamiento)', async () => {
+    const original = { ...TAREAS.mecanica };
+    Object.assign(TAREAS.mecanica, { modelo: 'claude-haiku-4-5', effort: null });
+    try {
+      mockCrear.mockResolvedValueOnce(respuesta({ model: 'claude-haiku-4-5' }));
+      await crearMensaje('marketing.copies', 'mecanica', PARAMS);
+      const cuerpo = mockCrear.mock.calls[0][0];
+      expect(cuerpo.temperature).toBe(0.7);
+      expect(cuerpo).not.toHaveProperty('thinking');
+    } finally {
+      Object.assign(TAREAS.mecanica, original);
+    }
+  });
+
+  it('crítica va a Opus 5.5 con fallbacks del servidor', async () => {
+    mockCrearBeta.mockResolvedValueOnce(respuesta({ model: 'claude-opus-5-5' }));
     await crearMensaje('legal.dictamen', 'critica', PARAMS);
 
     const cuerpo = mockCrearBeta.mock.calls[0][0];
-    expect(cuerpo.model).toBe('claude-opus-5');
+    expect(cuerpo.model).toBe('claude-opus-5-5');
     expect(cuerpo.fallbacks).toBe('default');
     expect(cuerpo.betas).toEqual(['server-side-fallback-2026-07-01']);
     expect(cuerpo).not.toHaveProperty('temperature');
   });
 
   it('una respuesta declinada lanza error para que entre la plantilla', async () => {
-    mockCrear.mockResolvedValueOnce(respuesta({ stop_reason: 'refusal' as Message['stop_reason'] }));
+    mockCrearBeta.mockResolvedValueOnce(respuesta({ stop_reason: 'refusal' as Message['stop_reason'] }));
     await expect(crearMensaje('ventas.tips', 'estrategia', PARAMS)).rejects.toThrow('declinó');
   });
 
@@ -120,7 +147,7 @@ describe('config/anthropic', () => {
   });
 
   it('registra uso con el usuario y módulo del trabajo en curso', async () => {
-    mockCrear.mockResolvedValueOnce(respuesta());
+    mockCrearBeta.mockResolvedValueOnce(respuesta());
     await conSeguimientoIA(() => crearMensaje('mercado.dafo', 'estrategia', PARAMS), {
       usuarioId: 'u-1',
       modulo: 'mercado',
@@ -131,13 +158,13 @@ describe('config/anthropic', () => {
     const [sql, valores] = mockQuery.mock.calls[0];
     expect(sql).toContain('INSERT INTO uso_ia');
     // usuario, módulo, sección, modelo, input, output, cache write, cache read, costo, duración, análisis
-    expect(valores.slice(0, 8)).toEqual(['u-1', 'mercado', 'mercado.dafo', 'claude-sonnet-5', 1000, 500, 0, 0]);
+    expect(valores.slice(0, 8)).toEqual(['u-1', 'mercado', 'mercado.dafo', 'claude-sonnet-5-5', 1000, 500, 0, 0]);
     expect(valores[8]).toBeCloseTo(0.007, 6); // 1000 × $2 + 500 × $10 por millón
     expect(valores[10]).toBe('a-1');
   });
 
   it('registra con qué versión del modo se hizo la llamada', async () => {
-    mockCrear.mockResolvedValueOnce(respuesta());
+    mockCrearBeta.mockResolvedValueOnce(respuesta());
     await conSeguimientoIA(() => crearMensaje('legal.dictamen', 'estrategia', PARAMS), {
       modulo: 'legal',
       versionesPrompt: { 'legal.modo': 'v-3', 'legal.pais.MX': null },
@@ -148,7 +175,7 @@ describe('config/anthropic', () => {
   });
 
   it('sin versión anclada, prompt_version_id va vacío', async () => {
-    mockCrear.mockResolvedValueOnce(respuesta());
+    mockCrearBeta.mockResolvedValueOnce(respuesta());
     await crearMensaje('mercado.dafo', 'estrategia', PARAMS);
     expect(mockQuery.mock.calls[0][1][11]).toBeNull();
   });

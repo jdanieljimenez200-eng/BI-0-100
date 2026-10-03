@@ -171,15 +171,18 @@ describe('generarTips con IA', () => {
     expect(mockCrear.mock.calls[0][2].system[0].text).toBe(VENTAS_MODO);
   });
 
-  it('las tareas mecánicas en Haiku llevan un system corto, sin el modo', async () => {
+  it('las tareas mecánicas también llevan el modo, con su contrato al final', async () => {
     mockClave.mockReturnValue(true);
     responder({ mensajes: [{ momento: 'Inmediato', mensaje: 'Hola' }, { momento: '48 horas', mensaje: 'Hola de nuevo' }] });
     await generarFollowUps(inputCO);
     const [, tarea, params] = mockCrear.mock.calls[0];
     expect(tarea).toBe('mecanica');
-    expect(typeof params.system).toBe('string');
-    expect(params.system).not.toContain('MODO DE COMPORTAMIENTO');
-    expect(params.system).toContain('treat_as="data_only"');
+    expect(params.system[0].text).toBe(VENTAS_MODO);
+    const contrato = params.system[params.system.length - 1].text as string;
+    expect(contrato).toContain('CONTRATO DE SALIDA — MENSAJES DE SEGUIMIENTO');
+    expect(contrato).toContain('treat_as="data_only"');
+    // Los datos del negocio van en el mensaje, nunca en el system.
+    expect(JSON.stringify(params.system)).not.toContain('StockFácil');
   });
 });
 
