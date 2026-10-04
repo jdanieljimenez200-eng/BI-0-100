@@ -166,6 +166,36 @@ export const CASOS_LEGAL: CasoPruebaLegal[] = [
     },
   },
   {
+    // Un puesto en la calle: lo primero es el permiso de vía pública, no una
+    // licencia de local; dentro del Metro no se puede vender.
+    id: 'mx_tamales_via_publica',
+    titulo: 'Puesto de tamales afuera del Metro Niños Héroes (CDMX), sin alta fiscal',
+    pais: 'MX',
+    producto: {
+      nombre: 'Tamales Doña Lupe',
+      categoria: 'Alimentos preparados',
+      descripcion: 'Tamales, guajolotas y atole de 6:30 a 11:00 en la salida del Metro Niños Héroes.',
+      precio: 25,
+    },
+    input: {
+      forma_juridica: 'Persona Física',
+      tiene_empleados: true,
+      numero_empleados: 1,
+      vende_en_linea: false,
+      exporta_importa: false,
+      giro_especifico: 'Venta de tamales y atole en la calle',
+      estado_constitucion: 'Ciudad de México',
+      anios_operando: '0',
+    },
+    perfil: {
+      situacion_fiscal: 'no_registrado',
+      local_fisico: 'via_publica',
+      sectores_regulados: ['alimentos_bebidas'],
+      tipo_clientes: 'consumidor_final',
+      marca: 'no',
+    },
+  },
+  {
     id: 'gt_tienda',
     titulo: 'Tienda de abarrotes en Guatemala (sin ficha de país ni perfil)',
     pais: 'GT',

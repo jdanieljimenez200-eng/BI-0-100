@@ -65,7 +65,7 @@ export async function generarResultadoFinanzas(p: {
 
   // Stage B: breakeven (síncrono, usa datos de Stage A) → resumen
   const breakeven = calcularBreakeven(input, proyeccion.meses);
-  const resumen = generarResumen(input, proyeccion, breakeven);
+  const resumen = generarResumen(input, proyeccion, breakeven, { volumenComprobado: p.origenDatos === 'contabilidad' });
   const sensibilidad = calcularSensibilidad(input);
 
   // Riesgos financieros del negocio, con base en los números ya calculados

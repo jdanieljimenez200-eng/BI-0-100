@@ -177,13 +177,19 @@ export async function generarResultadoMarketing(p: {
     presupuesto,
     p.ctx,
     puv,
-    input.plataformas?.[0],
+    // Todas las plataformas que usa (antes solo la primera, y el resto se
+    // rellenaba con canales de tabla que el negocio no usa).
+    input.plataformas?.join(', '),
     undefined,
     input.reporteAds,
     input.canalCierre,
     input.nivelTraccion,
     input.margenEstimado,
-    pais
+    pais,
+    {
+      clientesEmpresa: perfil.tipo_clientes === 'empresas' || perfil.tipo_clientes === 'gobierno' || perfil.tipo_clientes === 'mixto',
+      clienteIdeal: clienteIdealEfectivo,
+    }
   );
   const recomendada = estrategias.find((e) => e.recomendada) ?? estrategias[0];
 

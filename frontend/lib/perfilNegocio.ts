@@ -27,7 +27,7 @@ export interface PerfilNegocio {
   situacion_fiscal?: 'registrado' | 'no_registrado' | 'no_se' | null;
   regimen_actual?: string | null;
   ingresos_anuales?: number | null;
-  local_fisico?: 'no' | 'en_casa' | 'local_rentado' | 'local_propio' | null;
+  local_fisico?: 'no' | 'en_casa' | 'local_rentado' | 'local_propio' | 'via_publica' | null;
   sectores_regulados?: SectorRegulado[] | null;
   datos_sensibles?: boolean | null;
   tipo_clientes?: 'consumidor_final' | 'empresas' | 'gobierno' | 'mixto' | null;
@@ -51,6 +51,7 @@ export const OPCIONES = {
     { value: 'en_casa', label: 'Desde mi casa' },
     { value: 'local_rentado', label: 'Local rentado' },
     { value: 'local_propio', label: 'Local propio' },
+    { value: 'via_publica', label: 'Puesto en la calle (fijo, semifijo o ambulante)' },
   ],
   tipo_clientes: [
     { value: 'consumidor_final', label: 'Personas (consumidor final)' },

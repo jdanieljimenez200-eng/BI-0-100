@@ -25,6 +25,30 @@ export interface CasoPruebaFinanzas {
 
 export const CASOS_FINANZAS: CasoPruebaFinanzas[] = [
   {
+    // Una idea con equipo barato: el resumen no puede presumir un «ROI de 2 600 %»;
+    // lo que hay que comprobar es si llega a las ventas del punto de equilibrio.
+    id: 'mx_tamales_via_publica',
+    titulo: 'Puesto de tamales afuera del Metro Niños Héroes (CDMX), todavía sin vender',
+    pais: 'MX',
+    producto: { nombre: 'Tamales Doña Lupe', categoria: 'Alimentos preparados', tipo_actividad: 'producto', estatus_proyecto: 'nueva_idea' },
+    input: {
+      precio_venta: 45,
+      costo_variable_unitario: 17,
+      costos_fijos_mensuales: 14000,
+      unidades_mes_inicial: 2600,
+      tasa_crecimiento_mensual: 2,
+      inversion_inicial: 25000,
+      precio_incluye_impuesto: false,
+      comision_venta_pct: 0,
+      dias_cobro: 0,
+      dias_pago: 0,
+      sueldo_dueno_mensual: 12000,
+      pago_deuda_mensual: 0,
+    },
+    origen_datos: 'declarado',
+    perfil: { tipo_clientes: 'consumidor_final', local_fisico: 'via_publica', sectores_regulados: ['alimentos_bebidas'] },
+  },
+  {
     id: 'mx_taqueria_apps',
     titulo: 'Taquería en Monterrey que vende por apps de reparto',
     pais: 'MX',

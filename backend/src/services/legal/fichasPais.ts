@@ -70,6 +70,7 @@ export const PAISES: Record<string, PaisMeta> = {
       'Seguridad del establecimiento: Protección Civil municipal o estatal',
       'Uso de suelo: dirección de desarrollo urbano del municipio',
       'Venta de alcohol: licencia específica municipal o estatal',
+      'Comercio en vía pública (puestos fijos, semifijos o ambulantes): permiso o registro de la alcaldía (CDMX) o del municipio y pago por el uso de la vía pública; dentro de las instalaciones del Metro de la CDMX no se permite vender. Las cuotas que piden organizaciones o líderes no sustituyen el permiso.',
     ],
     moneda: 'MXN',
     portal_principal: 'https://www.gob.mx/tramites',

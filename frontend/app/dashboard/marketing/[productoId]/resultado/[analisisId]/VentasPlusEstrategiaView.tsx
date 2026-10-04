@@ -262,7 +262,7 @@ export default function VentasPlusEstrategiaView({
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
                 <span className="text-xs font-bold font-mono uppercase tracking-wider text-emerald-400">
-                  Garantía Irresistible (Riesgo Cero)
+                  Garantía sugerida
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-white/90 leading-relaxed font-normal">
@@ -270,7 +270,7 @@ export default function VentasPlusEstrategiaView({
               </p>
               <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between">
                 <span className="text-[10px] font-mono text-emerald-400/70 uppercase">
-                  Reduce fricción de compra
+                  Solo si puedes cumplirla
                 </span>
                 <button
                   type="button"
@@ -288,7 +288,7 @@ export default function VentasPlusEstrategiaView({
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-amber-300" />
                 <span className="text-xs font-bold font-mono uppercase tracking-wider text-amber-300">
-                  Order Bump / Acelerador de Ticket
+                  Extra para subir el ticket
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-white/90 leading-relaxed font-normal">
@@ -296,7 +296,7 @@ export default function VentasPlusEstrategiaView({
               </p>
               <div className="pt-2 border-t border-amber-400/20 flex items-center justify-between">
                 <span className="text-[10px] font-mono text-amber-400/70 uppercase">
-                  Incrementa el AOV (Ticket Promedio)
+                  Llena el hueco con lo que ya vendes
                 </span>
                 <button
                   type="button"

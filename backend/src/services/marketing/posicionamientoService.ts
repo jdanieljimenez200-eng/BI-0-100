@@ -51,17 +51,35 @@ function parseCanalesUsuario(canalVenta?: string | null): string[] {
     .slice(0, 5);
 }
 
-// Antepone los canales reales del usuario y completa con los de la tabla fija de la
-// estrategia, deduplicando sin distinción de mayúsculas. Tope 5.
-function combinarCanales(reales: string[], tabla: string[]): string[] {
+/** Canales que solo tienen sentido si el negocio le vende a empresas. */
+const CANALES_B2B = new Set(['linkedin', 'linkedin ads']);
+
+/**
+ * Canales de una estrategia: primero los que el negocio ya usa y, de la tabla de
+ * la estrategia, solo lo que haga falta para tener con qué empezar (uno si ya
+ * usa dos o más; hasta completar tres si usa menos). Antes se rellenaba hasta 5
+ * y a un puesto de tamales o a un taller le salían LinkedIn y Google Ads aunque
+ * solo usaran Instagram y Facebook. LinkedIn solo se sugiere si vende a empresas.
+ */
+function combinarCanales(reales: string[], tabla: string[], clientesEmpresa = false): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const canal of [...reales, ...tabla]) {
+  const agregar = (canal: string) => {
     const key = canal.toLowerCase();
-    if (seen.has(key)) continue;
+    if (seen.has(key)) return false;
     seen.add(key);
     out.push(canal);
+    return true;
+  };
+  for (const canal of reales) {
     if (out.length === 5) break;
+    agregar(canal);
+  }
+  const tope = Math.min(5, out.length >= 2 ? out.length + 1 : 3);
+  for (const canal of tabla) {
+    if (out.length >= tope) break;
+    if (!clientesEmpresa && CANALES_B2B.has(canal.toLowerCase())) continue;
+    agregar(canal);
   }
   return out;
 }
@@ -236,13 +254,23 @@ export function generarEstrategias(
   canalCierre?: CanalCierre,
   nivelTraccion?: NivelTraccion,
   margenEstimado?: RangoMargen,
-  pais?: string | null
+  pais?: string | null,
+  opciones: {
+    /** Le vende a empresas o gobierno: solo entonces se sugiere LinkedIn. */
+    clientesEmpresa?: boolean;
+    /** Cliente ideal declarado (o el de Ventas): es el público de la estrategia, no un arquetipo. */
+    clienteIdeal?: string;
+  } = {}
 ): EstrategiaMarketing[] {
   const scores = calcularPuntajesFit(categoria, precio, ctx, reporteAds);
   const esServicio = tipo === 'servicio';
   const basePrecio = precio > 0 ? precio : 1500;
   const basePresupuesto = presupuesto > 0 ? presupuesto : 3000;
   const canalesUsuario = parseCanalesUsuario(canalVenta);
+  const empresa = Boolean(opciones.clientesEmpresa);
+  const clienteIdeal = opciones.clienteIdeal?.trim().slice(0, 200) || null;
+  /** Público de la estrategia: el cliente que declaró el dueño o, si no lo dijo, una descripción que lo pide. */
+  const publico = (arquetipo: string) => clienteIdeal ?? `${arquetipo} (describe a tu cliente ideal para afinarlo)`;
 
   // ── Cálculo Matemático de Unit Economics para Ventas+ ──────────────────────
   let margenRatio = 0.45;
@@ -329,14 +357,19 @@ export function generarEstrategias(
 
   const secuenciaSeguimiento: SecuenciaSeguimientoVentasPlus = {
     dia1_caso_exito: `Hola 👋 Me quedé pensando en lo que platicamos sobre ${nombre}. Te comparto rápido el caso de [un cliente real tuyo que tenía la misma duda] y lo que logró. ¿Pudiste revisar el mensaje anterior?`,
-    dia3_beneficio_clave: `Hola 👋 Un detalle clave que olvidé mencionarte: con ${nombre} cuentas con soporte directo y garantía de satisfacción. [Si de verdad tienes cupo limitado, dilo con el número real.] ¿Te reservo un lugar con la condición de este mes?`,
+    dia3_beneficio_clave: `Hola 👋 Un detalle clave que olvidé mencionarte sobre ${nombre}: [tu garantía o beneficio real, si lo tienes]. [Si de verdad tienes cupo limitado, dilo con el número real.] ¿Te aparto uno?`,
     dia5_despedida_urgencia: `Hola 👋 Como no supe de ti supongo que tus prioridades cambiaron o ya lo resolviste por otro lado, lo cual está excelente 🙌. Solo te escribo para liberar el cupo reservado. Si decides retomarlo después avísame. ¡Mucho éxito!`,
   };
 
-  const garantia = `Garantía de Satisfacción 30 Días Cero Riesgo: Si utilizas ${nombre} y no experimentas el resultado prometido, te reembolsamos el 100% de tu dinero sin preguntas incómodas.`;
+  // Ofertas que el dueño tiene que poder cumplir: se proponen como hueco para
+  // llenar, no como promesa. Antes salía «reembolso del 100 % en 30 días» y una
+  // «Auditoría Express 1-a-1» igual para un taller mecánico que para tamales.
+  const garantia = esServicio
+    ? `[Solo si puedes cumplirla] Si el servicio de ${nombre} no queda como lo acordamos, lo corregimos sin costo.`
+    : `[Solo si puedes cumplirla] Si tu compra de ${nombre} llega mal o no es lo que pediste, te la reponemos sin costo.`;
   const orderBump = esServicio
-    ? `Auditoría Express 1-a-1 + Plantilla de Implementación Rápida por ${dinero(precioBump)} adicionales`
-    : `Kit de Mantenimiento / Garantía Extendida de Reposición Inmediata por ${dinero(precioBump)} adicionales`;
+    ? `[Un servicio rápido que complemente el principal] por ${dinero(precioBump)} adicionales`
+    : `[Un complemento de tu catálogo que se lleve junto: bebida, accesorio o porción extra] por ${dinero(precioBump)} adicionales`;
 
   // ── Construcción de los 4 Pilares de Agencia ──────────────────────────────
   const estrategias: EstrategiaMarketing[] = [
@@ -350,9 +383,9 @@ export function generarEstrategias(
       precio_sugerido: Math.round(basePrecio * 0.9),
       precio_rango: { min: Math.round(basePrecio * 0.8), max: basePrecio },
       margen_rango: margenTexto,
-      publico_objetivo: `Audiencia amplia interesada en ${categoria.toLowerCase()}, activa en TikTok e Instagram`,
+      publico_objetivo: publico(`Personas interesadas en ${categoria.toLowerCase()} que aún no te conocen`),
       edad_rango: '18-45',
-      canales_principales: combinarCanales(canalesUsuario, ESTRATEGIA_CANALES.SEGUIDORES),
+      canales_principales: combinarCanales(canalesUsuario, ESTRATEGIA_CANALES.SEGUIDORES, empresa),
       ventaja_competitiva: 'Ganchos visuales irresistibles + bio optimizada para convertir visitas en seguidores',
       nivel_inversion: 'BAJO',
       presupuesto_mensual_sugerido: Math.round(basePresupuesto * 0.3),
@@ -383,9 +416,9 @@ export function generarEstrategias(
       precio_sugerido: Math.round(basePrecio * 1.3),
       precio_rango: { min: basePrecio, max: Math.round(basePrecio * 1.5) },
       margen_rango: margenTexto,
-      publico_objetivo: `Compradores que valoran calidad, reputación y garantías en ${categoria.toLowerCase()}`,
+      publico_objetivo: publico(`Compradores de ${categoria.toLowerCase()} que eligen por confianza y reputación`),
       edad_rango: '28-55',
-      canales_principales: combinarCanales(canalesUsuario, ESTRATEGIA_CANALES.RECONOCIMIENTO),
+      canales_principales: combinarCanales(canalesUsuario, ESTRATEGIA_CANALES.RECONOCIMIENTO, empresa),
       ventaja_competitiva: 'Narrativa de autoridad de marca + testimonios y casos de éxito reales',
       nivel_inversion: 'MEDIO',
       presupuesto_mensual_sugerido: Math.round(basePresupuesto * 0.4),
@@ -416,9 +449,9 @@ export function generarEstrategias(
       precio_sugerido: basePrecio,
       precio_rango: { min: Math.round(basePrecio * 0.9), max: Math.round(basePrecio * 1.15) },
       margen_rango: margenTexto,
-      publico_objetivo: `Prospectos con dolor agudo o alta intención de compra en ${categoria.toLowerCase()}`,
+      publico_objetivo: publico(`Personas que ya buscan ${categoria.toLowerCase()} y están por comprar`),
       edad_rango: '24-50',
-      canales_principales: combinarCanales(canalesUsuario, ESTRATEGIA_CANALES.VENTAS),
+      canales_principales: combinarCanales(canalesUsuario, ESTRATEGIA_CANALES.VENTAS, empresa),
       ventaja_competitiva: 'Oferta atractiva con urgencia real + canal de contacto ágil',
       nivel_inversion: 'MEDIO',
       presupuesto_mensual_sugerido: basePresupuesto,
@@ -449,10 +482,10 @@ export function generarEstrategias(
       precio_sugerido: ticketConBump,
       precio_rango: { min: basePrecio, max: Math.round(ticketConBump * 1.25) },
       margen_rango: margenTexto,
-      publico_objetivo: `Compradores calificados listos para invertir en la mejor solución de ${categoria.toLowerCase()}`,
+      publico_objetivo: publico(`Personas que ya te contactaron o te buscan para comprar ${categoria.toLowerCase()}`),
       edad_rango: '25-55',
-      canales_principales: combinarCanales(canalesUsuario, ESTRATEGIA_CANALES.VENTAS_PLUS),
-      ventaja_competitiva: 'Reversión total de riesgo con garantía audaz + scripts quirúrgicos para WhatsApp y follow-up',
+      canales_principales: combinarCanales(canalesUsuario, ESTRATEGIA_CANALES.VENTAS_PLUS, empresa),
+      ventaja_competitiva: 'Oferta clara con una garantía que puedas cumplir + guiones de WhatsApp y seguimiento',
       nivel_inversion: 'ALTO',
       presupuesto_mensual_sugerido: basePresupuesto,
       tiempo_resultados: '15-30 días',

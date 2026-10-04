@@ -2,10 +2,21 @@ import { FinanzasInput, ProyeccionAnual, BreakevenData, ResumenFinanzas } from '
 import { getTaxConfig } from '../../utils/taxConfig';
 import { formatoDinero } from './economiaUnitaria';
 
+/**
+ * Resumen en palabras del cálculo. Cada cifra que aparece aquí sale de lo que
+ * dijo el usuario o de la proyección: nada de «lo habitual en el sector» ni de
+ * porcentajes de manual. Y como las ventas casi siempre son una suposición
+ * (sobre todo en una idea), el mensaje se condiciona a ellas y pone en primer
+ * plano el punto de equilibrio, que es lo que de verdad hay que comprobar.
+ */
 export function generarResumen(
   input: FinanzasInput,
   proyeccion: ProyeccionAnual,
   breakeven: BreakevenData,
+  contexto: {
+    /** Las ventas salen de la contabilidad real del negocio, no de lo que escribió el usuario. */
+    volumenComprobado?: boolean;
+  } = {},
 ): ResumenFinanzas {
   const { unidades_mes_inicial } = input;
   const { totales } = proyeccion;
@@ -32,6 +43,25 @@ export function generarResumen(
   const utilidad_promedio_mensual = Math.round(totales.utilidad_neta_total / 12);
   const cobertura = proyeccion.cobertura_deuda;
 
+  const equilibrio = breakeven.unidades_breakeven_mes;
+  const ventas = Math.round(unidades_mes_inicial);
+  const conVentas = contexto.volumenComprobado
+    ? `Con tus ventas reales (${ventas} al mes)`
+    : `Con las ventas que declaraste (${ventas} al mes)`;
+  const fmtUnidades = (n: number) => Math.round(n).toLocaleString('es-MX');
+  const recuperacion = (() => {
+    const meses = breakeven.meses_para_recuperar_inversion;
+    if (breakeven.payback_no_disponible || meses === null || meses === undefined || inversion_inicial <= 0) return '';
+    return meses <= 1 ? ' y recupera lo invertido en menos de un mes' : ` y recupera lo invertido en ${meses} meses`;
+  })();
+  // Qué pasaría con el equilibrio si el precio sube 10 % y se venden las mismas
+  // unidades (supuesto explícito). Sale del cálculo, no de una regla de manual.
+  const equilibrioConPrecio10 = (() => {
+    const comision = Math.max(0, Number(input.comision_venta_pct) || 0) / 100;
+    const margenNuevo = eco.margen_unitario + eco.precio_neto * 0.1 * (1 - comision);
+    return margenNuevo > 0 ? Math.ceil(costos_fijos_mensuales / margenNuevo) : null;
+  })();
+
   // Viabilidad
   let viabilidad: ResumenFinanzas['viabilidad'];
   let color_viabilidad: string;
@@ -47,8 +77,11 @@ export function generarResumen(
   } else if (!breakeven.punto_equilibrio_alcanzado || totales.utilidad_neta_total < 0) {
     viabilidad = 'baja';
     color_viabilidad = 'red';
+    // Lo que haría falta, calculado: vender más o bajar los fijos hasta lo que cubre el margen.
+    const fijosQueCubre = Math.max(0, eco.margen_unitario * ventas);
     mensaje_viabilidad =
-      `El negocio no cubre sus costos fijos con las unidades proyectadas. La utilidad neta anual es negativa (${dinero(Math.abs(totales.utilidad_neta_total))} de pérdida). Prioridad: reducir costos fijos en ≥30% o incrementar precio de venta antes de lanzar.`;
+      `${conVentas} el negocio no cubre sus costos fijos: el año cerraría con ${dinero(Math.abs(totales.utilidad_neta_total))} de pérdida. ` +
+      `Para no perder necesitas vender ${fmtUnidades(equilibrio)} al mes, o bajar los costos fijos de ${dinero(costos_fijos_mensuales)} a ${dinero(fijosQueCubre)}.`;
   } else if (cobertura !== null && cobertura < 1) {
     viabilidad = 'baja';
     color_viabilidad = 'red';
@@ -58,12 +91,17 @@ export function generarResumen(
     viabilidad = 'media';
     color_viabilidad = 'yellow';
     mensaje_viabilidad =
-      `El negocio es viable pero el retorno es moderado (${etiquetaRoi} ${roi_anual}% anual, equilibrio en mes ${breakeven.mes_equilibrio ?? '>6'}). Optimizar estructura de costos o incrementar precio entre un 10-15% podría mejorar el ROI por encima del 30% sin perder mercado.`;
+      `${conVentas} el negocio cubre sus costos, pero con poco margen de error (${etiquetaRoi} ${roi_anual}% anual, equilibrio en el mes ${breakeven.mes_equilibrio ?? 'más allá del 6'}). ` +
+      `Necesitas ${fmtUnidades(equilibrio)} ventas al mes para no perder.` +
+      (equilibrioConPrecio10 !== null
+        ? ` Si subieras el precio 10 % y vendieras lo mismo, bastarían ${fmtUnidades(equilibrioConPrecio10)}.`
+        : '');
   } else {
     viabilidad = 'alta';
     color_viabilidad = 'green';
     mensaje_viabilidad =
-      `Sólido: ${etiquetaRoi} anual proyectado del ${roi_anual}% con punto de equilibrio en mes ${breakeven.mes_equilibrio ?? 1}. La estructura financiera permite bootstrapping sin financiamiento externo y con margen para reinvertir en crecimiento.`;
+      `${conVentas} el negocio deja unos ${dinero(utilidad_promedio_mensual)} al mes antes de impuestos${recuperacion}. ` +
+      `La cifra que lo sostiene todo es el punto de equilibrio: ${fmtUnidades(equilibrio)} ventas al mes; por debajo, pierdes.`;
   }
 
   // Recomendaciones y alertas
@@ -74,7 +112,7 @@ export function generarResumen(
   const porcentaje_margen = eco.precio_neto > 0 ? (margen_unitario / eco.precio_neto) * 100 : 0;
 
   if (porcentaje_margen < 30) {
-    alertas.push(`Margen de contribución crítico: ${Math.round(porcentaje_margen)}% (umbral mínimo recomendado: 30%). Con este margen, necesitarás ${margen_unitario > 0 ? Math.ceil(costos_fijos_mensuales / margen_unitario) : '—'} unidades/mes solo para cubrir costos fijos. Acciones: reduce costo variable o sube precio.`);
+    alertas.push(`Margen de contribución bajo: de cada venta te queda el ${Math.round(porcentaje_margen)}%. Necesitarás ${margen_unitario > 0 ? fmtUnidades(Math.ceil(costos_fijos_mensuales / margen_unitario)) : '—'} unidades al mes solo para cubrir costos fijos, y cualquier alza de insumos se come la ganancia. Acciones: reduce costo variable o sube precio.`);
   }
   if (eco.comision_unitaria > 0 && margen_unitario > 0 && eco.comision_unitaria >= margen_unitario * 0.5) {
     alertas.push(
@@ -105,18 +143,25 @@ export function generarResumen(
     );
   }
 
-  if (roi_anual > 50) {
-    recomendaciones.push(`${etiquetaRoi === 'ROI' ? 'ROI' : 'Retorno sobre costos fijos'} proyectado del ${roi_anual}% anual: alto rendimiento. Modelo apto para reinvertir utilidades y acelerar crecimiento. Considera destinar el 20-30% de utilidades mensuales a adquisición de clientes.`);
+  if (!contexto.volumenComprobado && totales.utilidad_neta_total > 0) {
+    recomendaciones.push(
+      `Antes de invertir más, comprueba durante unas semanas que de verdad llegas a ${fmtUnidades(equilibrio)} ventas al mes: todo este resultado depende de las ventas que declaraste.`,
+    );
   }
   if (breakeven.mes_equilibrio && breakeven.mes_equilibrio <= 3) {
-    recomendaciones.push(`Punto de equilibrio en mes ${breakeven.mes_equilibrio}: excelente para bootstrapping. Tendrás flujo positivo antes de que agotes la reserva inicial, lo que reduce el riesgo de descapitalización.`);
+    recomendaciones.push(
+      `Si las ventas se cumplen, llegas al punto de equilibrio en el mes ${breakeven.mes_equilibrio}` +
+        (proyeccion.caja_necesaria > 0 ? ` y el arranque no pide más caja que ${dinero(proyeccion.caja_necesaria)}.` : '.'),
+    );
   }
   if (totales.margen_neto_promedio > 20) {
     recomendaciones.push(
-      `Margen neto promedio del ${Math.round(totales.margen_neto_promedio)}%: por encima de lo habitual en la mayoría de negocios de consumo (10-15%). Hay espacio para invertir en marketing sin sacrificar viabilidad.`,
+      `Margen neto promedio del ${Math.round(totales.margen_neto_promedio)}%: deja espacio para invertir en promoción sin bajar del punto de equilibrio, siempre que las ventas se cumplan.`,
     );
   }
-  recomendaciones.push('Compara tus números reales contra esta proyección mensualmente. Una desviación de ±15% en ingresos o costos requiere ajuste inmediato del modelo.');
+  recomendaciones.push(
+    `Compara cada mes tus ventas reales con esta proyección: si quedan por debajo de ${fmtUnidades(equilibrio)} al mes, el negocio pierde dinero y hay que ajustar precio, costos o volumen.`,
+  );
 
   return {
     viabilidad,

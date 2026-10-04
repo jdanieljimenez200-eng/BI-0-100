@@ -64,7 +64,8 @@ describe('posicionamientoService.generarEstrategias', () => {
     expect(ventasPlus.script_cierre).toBeDefined();
     expect(ventasPlus.script_cierre?.paso1_filtro.pregunta).toContain('Pan');
     expect(ventasPlus.secuencia_seguimiento).toBeDefined();
-    expect(ventasPlus.garantia_irresistible).toContain('Garantía de Satisfacción 30 Días');
+    // Una garantía que el dueño no dio no se promete: queda como hueco que él decide llenar.
+    expect(ventasPlus.garantia_irresistible).toMatch(/^\[Solo si puedes cumplirla\]/);
     expect(ventasPlus.order_bump_sugerido).toBeTruthy();
   });
 

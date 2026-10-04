@@ -24,6 +24,33 @@ export interface CasoPruebaMarketing {
 
 export const CASOS_MARKETING: CasoPruebaMarketing[] = [
   {
+    // Puesto en la calle que solo usa Instagram y Facebook: el plan no debe
+    // sugerir LinkedIn ni Google Ads, ni ofrecer garantías que el dueño no dio.
+    id: 'mx_tamales_via_publica',
+    titulo: 'Puesto de tamales afuera del Metro Niños Héroes (CDMX)',
+    pais: 'MX',
+    producto: {
+      nombre: 'Tamales Doña Lupe',
+      categoria: 'Alimentos preparados',
+      descripcion: 'Tamales, guajolotas y atole de 6:30 a 11:00 en la salida del Metro Niños Héroes.',
+      precio: 25,
+      tipo_actividad: 'producto',
+    },
+    input: {
+      vozMarca: 'Empático',
+      presupuestoMensual: 800,
+      metaCampana: 'Lanzamiento',
+      plataformas: ['Instagram', 'Facebook'],
+      capacidadContenido: '1-2/semana',
+      canalCierre: 'tienda_fisica',
+      nivelTraccion: 'desde_cero',
+      activos: ['fotos_propias', 'local_visible'],
+      zonaClientes: 'Colonia Doctores, salida del Metro Niños Héroes',
+      clienteIdeal: 'Oficinistas y gente que va a los juzgados de la colonia Doctores y desayuna de camino',
+    },
+    perfil: { tipo_clientes: 'consumidor_final', local_fisico: 'via_publica' },
+  },
+  {
     id: 'mx_reposteria_lanzamiento',
     titulo: 'Lanzamiento de repostería por pedido en Querétaro',
     pais: 'MX',

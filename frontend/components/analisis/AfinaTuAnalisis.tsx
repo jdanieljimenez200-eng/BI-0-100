@@ -39,7 +39,7 @@ const PORQUE_DEFECTO: Record<Campo, string> = {
   situacion_fiscal: 'Si falta el alta, regularizarla va antes que cualquier otro trámite.',
   regimen_actual: 'Define qué declaraciones y comprobantes te tocan.',
   ingresos_anuales: 'Los regímenes simplificados tienen topes; pasarlos cambia tus obligaciones.',
-  local_fisico: 'Un local suele exigir licencia de funcionamiento, uso de suelo y revisión de seguridad.',
+  local_fisico: 'Un local suele exigir licencia de funcionamiento, uso de suelo y revisión de seguridad; un puesto en la calle, permiso de la autoridad local para usar el espacio.',
   sectores_regulados: 'Los sectores regulados necesitan permisos adicionales (sanitarios, licencias especiales).',
   datos_sensibles: 'Salud, datos biométricos o financieros tienen reglas de protección más estrictas.',
   tipo_clientes: 'Vender a empresas o a gobierno exige comprobantes fiscales y, a veces, registro como proveedor.',

@@ -34,7 +34,7 @@ export const PerfilNegocioSchema = z
     regimen_actual: z.string().trim().max(120).nullable().optional(),
     /** Ingresos anuales estimados, en la moneda de la cuenta. */
     ingresos_anuales: dinero('ingresos_anuales').nullable().optional(),
-    local_fisico: z.enum(['no', 'en_casa', 'local_rentado', 'local_propio']).nullable().optional(),
+    local_fisico: z.enum(['no', 'en_casa', 'local_rentado', 'local_propio', 'via_publica']).nullable().optional(),
     sectores_regulados: z.array(z.enum(SECTORES_REGULADOS)).max(SECTORES_REGULADOS.length).nullable().optional(),
     datos_sensibles: z.boolean().nullable().optional(),
     tipo_clientes: z.enum(['consumidor_final', 'empresas', 'gobierno', 'mixto']).nullable().optional(),
@@ -98,6 +98,7 @@ const ETIQUETAS: Record<string, Record<string, string>> = {
     en_casa: 'opera desde su casa',
     local_rentado: 'local rentado',
     local_propio: 'local propio',
+    via_publica: 'puesto en vía pública (fijo, semifijo o ambulante)',
   },
   tipo_clientes: {
     consumidor_final: 'consumidor final',
