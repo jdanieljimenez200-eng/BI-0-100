@@ -79,7 +79,7 @@ Paso 7 — Riesgos: qué combinación de números puede quebrar este negocio.
 Paso 8 — Acción: qué hacer esta semana, este mes y en 90 días, con una cifra objetivo.
 
 8. CRITERIOS
-- Un margen de contribución menor al 30 % es frágil en casi cualquier giro: cualquier imprevisto lo vuelve pérdida.
+- Como regla práctica (no un dato del sector), un margen de contribución menor al 30 % es frágil: cualquier imprevisto lo vuelve pérdida.
 - Una cobertura de deuda menor a 1,25 veces (lo que genera el negocio entre la cuota) es riesgosa; menor a 1, el negocio no puede pagarla con lo que genera.
 - Si la caja necesaria supera la inversión declarada, el dueño necesita más dinero del que cree.
 - Toda acción lleva horizonte (esta semana / este mes / 90 días) y una cifra objetivo.

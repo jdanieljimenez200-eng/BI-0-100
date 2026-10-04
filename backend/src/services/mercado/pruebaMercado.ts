@@ -82,6 +82,7 @@ export async function probarCasoMercado(caso: CasoPruebaMercado) {
     ocultas,
     seccionesIA,
     tipoActividad,
+    cifrasConocidas: [caso.input, ctx],
   });
 
   return { viabilidad, dafo, reporte_bi: reporteBi?.reporte ?? null, meta_ia };

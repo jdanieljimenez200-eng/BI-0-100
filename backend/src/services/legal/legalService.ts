@@ -15,6 +15,7 @@ import type {
 } from './types';
 import { crearMensaje, hayClaveAnthropic, textoDe } from '../../config/anthropic';
 import { registrarFallbackIA } from '../../utils/seguimientoIA';
+import { marcarCifrasSinRespaldo, numerosDe, numerosDelSistema, textosDe } from '../ia/verificadorCifras';
 import { resolverPais, textoSinFicha, type PaisMeta } from './fichasPais';
 import { componerSistema, type SistemaCompuesto } from '../ia/componerSistema';
 import {
@@ -367,7 +368,8 @@ function metaDe(
   origen: MetaAnalisisIA['origen'],
   perfil: PerfilNegocio,
   paisConFicha: boolean,
-  sistema?: SistemaCompuesto
+  sistema?: SistemaCompuesto,
+  cifrasSinRespaldo: string[] = []
 ): MetaAnalisisIA {
   const sinResponder = camposSinResponder(perfil);
   return {
@@ -378,9 +380,16 @@ function metaDe(
       pais_con_ficha: paisConFicha,
       perfil_respondido: Object.keys(perfil).filter((c) => !sinResponder.includes(c as keyof PerfilNegocio)),
       perfil_sin_responder: sinResponder,
+      cifras_sin_respaldo: cifrasSinRespaldo,
     },
   };
 }
+
+/** En Legal una cifra sin respaldo (plazo, tasa, multa) no es una aproximación: se confirma antes de actuar. */
+const MENSAJE_CIFRAS_LEGALES = {
+  prefijo: 'Cifras legales que la IA citó y que no vienen de la ficha del país ni de tus datos (plazos, tasas, montos)',
+  sufijo: 'Confírmalas con la autoridad o con un profesional antes de actuar.',
+};
 
 function ensamblar(
   salida: LegalLLMOutput,
@@ -407,6 +416,15 @@ function ensamblar(
     motivoTope: paisConFicha ? undefined : `No hay una ficha revisada para ${meta.nombre}: confirma cada punto con un profesional local.`,
   });
 
+  // Verificador de cifras: lo que la ficha del país (y el modo) dicen, y los
+  // datos del dueño, respaldan una cifra; el resto se marca para confirmarla.
+  const cifras = marcarCifrasSinRespaldo(
+    transparencia,
+    textosDe(salida),
+    [...numerosDelSistema(sistema), ...numerosDe(input, perfil)],
+    MENSAJE_CIFRAS_LEGALES
+  );
+
   return {
     giro_detectado: salida.giro_detectado.trim(),
     pais_analizado: `${meta.nombre} (${iso})`,
@@ -431,7 +449,7 @@ function ensamblar(
     transparencia,
     secciones_extra,
     secciones_ocultas: [...ocultas],
-    meta: metaDe('ia', perfil, paisConFicha, sistema),
+    meta: metaDe('ia', perfil, paisConFicha, sistema, cifras),
   };
 }
 

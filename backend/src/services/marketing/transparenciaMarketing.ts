@@ -1,3 +1,4 @@
+import { marcarCifrasSinRespaldo, numerosDe, numerosDelSistema, textosDe } from '../ia/verificadorCifras';
 import type { MarketingAnalisisInput } from './types';
 import type { ResultadoCalendario } from './calendarioService';
 import {
@@ -113,6 +114,8 @@ export function construirMetaIaMarketing(p: {
   /** Partes escritas por la IA o su plantilla (calendario y copies). */
   seccionesIA: { es_mock?: boolean }[];
   contexto: Record<string, unknown>;
+  /** Números del caso (estrategias calculadas, precio) contra los que se revisan las cifras de la IA. */
+  cifrasConocidas?: unknown[];
 }): MetaIaAnalisis {
   const base = transparenciaBaseMarketing(p.datos);
   const deIA = p.calendario.contrato
@@ -121,8 +124,18 @@ export function construirMetaIaMarketing(p: {
         confianzaMaxima: base.nivel_confianza,
       })
     : null;
+  // Verificador de cifras sobre las publicaciones del calendario (precios,
+  // descuentos, plazos). Las tendencias ya se rotulan «Estimado» en pantalla.
+  const transparencia = combinarTransparencia(base, deIA?.transparencia);
+  const cifras = p.calendario.es_mock
+    ? []
+    : marcarCifrasSinRespaldo(
+        transparencia,
+        [...textosDe(p.calendario.calendario.semanas), ...textosDe(deIA?.secciones_extra ?? [])],
+        [...numerosDe(p.datos.input, p.contexto, ...(p.cifrasConocidas ?? [])), ...numerosDelSistema(p.calendario.sistema)]
+      );
   return {
-    transparencia: combinarTransparencia(base, deIA?.transparencia),
+    transparencia,
     secciones_extra: deIA?.secciones_extra ?? [],
     secciones_ocultas: [...p.ocultas],
     meta: {
@@ -131,7 +144,7 @@ export function construirMetaIaMarketing(p: {
       versiones_prompt: p.calendario.sistema?.versiones ?? {
         [p.modo.clave]: { id: p.modo.id, version: p.modo.version, origen: p.modo.origen },
       },
-      contexto_usado: p.contexto,
+      contexto_usado: { ...p.contexto, cifras_sin_respaldo: cifras },
     },
   };
 }

@@ -1,3 +1,4 @@
+import { marcarCifrasSinRespaldo, numerosDe, numerosDelSistema, textosDe } from '../ia/verificadorCifras';
 import type { VentasAnalisisInput } from './types';
 import type { ResultadoTips } from './ventasService';
 import {
@@ -113,8 +114,18 @@ export function construirMetaIaVentas(p: {
         confianzaMaxima: base.nivel_confianza,
       })
     : null;
+  // Verificador de cifras: lo que la IA calculó por su cuenta en los tips se
+  // dice como estimación suya (la plantilla no se revisa: la escribe el código).
+  const transparencia = combinarTransparencia(base, deIA?.transparencia);
+  const cifras = p.tips.es_mock
+    ? []
+    : marcarCifrasSinRespaldo(
+        transparencia,
+        [...textosDe(p.tips.tips), ...textosDe(deIA?.secciones_extra ?? [])],
+        [...numerosDe(p.input), ...numerosDelSistema(p.tips.sistema)]
+      );
   return {
-    transparencia: combinarTransparencia(base, deIA?.transparencia),
+    transparencia,
     secciones_extra: deIA?.secciones_extra ?? [],
     secciones_ocultas: [...p.ocultas],
     meta: {
@@ -135,6 +146,7 @@ export function construirMetaIaVentas(p: {
           quien_decide: p.input.quien_decide ?? null,
           objeciones: Boolean(p.input.objeciones_frecuentes?.trim()),
         },
+        cifras_sin_respaldo: cifras,
       },
     },
   };

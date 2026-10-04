@@ -1,3 +1,4 @@
+import { marcarCifrasSinRespaldo, numerosDe, numerosDelSistema, textosDe } from '../ia/verificadorCifras';
 import type { CompetenciaResult, TendenciasResult, ViabilidadResult } from './types';
 import { camposSinResponder, type PerfilNegocio } from '../ia/perfilNegocio';
 import type { EstatusProyecto } from '../../utils/estatusProyecto';
@@ -113,6 +114,8 @@ export function construirMetaIaMercado(p: {
   ocultas: ReadonlySet<string>;
   seccionesIA: { es_mock?: boolean }[];
   tipoActividad: string;
+  /** Más datos del caso (formulario y números del negocio) contra los que se revisan las cifras de la IA. */
+  cifrasConocidas?: unknown[];
 }): MetaIaAnalisis {
   const base = transparenciaBaseMercado(p.datos);
   const deIA = p.reporteBi?.contrato
@@ -123,8 +126,26 @@ export function construirMetaIaMercado(p: {
     : null;
   const perfil = p.datos.perfil;
   const sinResponder = camposSinResponder(perfil);
+  // Verificador de cifras sobre el reporte BI de la IA (la plantilla no se revisa).
+  const transparencia = combinarTransparencia(base, deIA?.transparencia);
+  const reporte = p.reporteBi?.reporte;
+  const cifras =
+    reporte && !reporte.es_mock
+      ? marcarCifrasSinRespaldo(
+          transparencia,
+          [...textosDe(reporte), ...textosDe(deIA?.secciones_extra ?? [])],
+          [
+            ...numerosDe(p.datos, ...(p.cifrasConocidas ?? [])),
+            ...numerosDelSistema(p.reporteBi?.sistema),
+            // La comparación de precio con el mercado (la hace el reporte): +19 %.
+            ...(p.datos.precioUsuario && p.datos.competencia.precio_mercado_promedio > 0
+              ? [((p.datos.precioUsuario - p.datos.competencia.precio_mercado_promedio) / p.datos.competencia.precio_mercado_promedio) * 100].flatMap((d) => [d, Math.abs(d)])
+              : []),
+          ]
+        )
+      : [];
   return {
-    transparencia: combinarTransparencia(base, deIA?.transparencia),
+    transparencia,
     secciones_extra: deIA?.secciones_extra ?? [],
     secciones_ocultas: [...p.ocultas],
     meta: {
@@ -139,6 +160,7 @@ export function construirMetaIaMercado(p: {
         cobertura_datos: p.datos.viabilidad.cobertura_datos,
         perfil_respondido: Object.keys(perfil).filter((c) => !sinResponder.includes(c as keyof PerfilNegocio)),
         perfil_sin_responder: sinResponder,
+        cifras_sin_respaldo: cifras,
       },
     },
   };

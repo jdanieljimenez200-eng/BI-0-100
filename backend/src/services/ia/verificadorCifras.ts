@@ -21,8 +21,8 @@ export interface Cifra {
 
 // Enteros con separador de miles (1,234 · 12.500) o sin él, decimales opcionales
 // (1.5 · 1,5 · 1.250,50) y un «%» opcional. No toma números pegados a letras
-// (CFDI4, NOM-251) ni partes de otro número.
-const NUMERO = /(?<![\p{L}\d.,]|\p{L}-)(\d{1,3}(?:[.,]\d{3})+|\d+)(?:[.,](\d{1,2}))?(?![\p{L}\d])(\s?%)?/gu;
+// (CFDI4, NOM-251), horas (19:00) ni partes de otro número.
+const NUMERO = /(?<![\p{L}\d.,:]|\p{L}-)(\d{1,3}(?:[.,]\d{3})+|\d+)(?:[.,](\d{1,2}))?(?![\p{L}\d:])(\s?%)?/gu;
 
 export function extraerCifras(texto: string): Cifra[] {
   const cifras: Cifra[] = [];
@@ -67,6 +67,14 @@ export function numerosDe(...fuentes: unknown[]): number[] {
   return out;
 }
 
+/**
+ * Los números del `system` de la llamada (modo, ficha de país, contrato): si el
+ * contrato pide «en 90 días» o la ficha dice «16 %», la IA los puede repetir.
+ */
+export function numerosDelSistema(sistema?: { system: { text: string }[] } | null): number[] {
+  return (sistema?.system ?? []).flatMap((b) => extraerCifras(b.text).map((c) => c.valor));
+}
+
 /** Una cifra coincide con una conocida si difiere menos del 2 % (o de medio punto en cifras chicas). */
 function coincide(valor: number, conocida: number): boolean {
   return Math.abs(valor - conocida) <= Math.max(0.5, Math.abs(conocida) * 0.02);
@@ -90,10 +98,65 @@ export function cifrasSinRespaldo(textos: (string | null | undefined)[], conocid
   return sueltas;
 }
 
+/** Todos los textos de un objeto (la salida de la IA), sin enlaces ni identificadores. */
+export function textosDe(valor: unknown, excluir: ReadonlySet<string> = CLAVES_NO_TEXTO): string[] {
+  const out: string[] = [];
+  const visitar = (v: unknown, profundidad: number) => {
+    if (profundidad > 8 || v === null || v === undefined) return;
+    if (typeof v === 'string') {
+      out.push(v);
+      return;
+    }
+    if (Array.isArray(v)) {
+      for (const x of v) visitar(x, profundidad + 1);
+      return;
+    }
+    if (typeof v === 'object') {
+      for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+        if (!excluir.has(k)) visitar(x, profundidad + 1);
+      }
+    }
+  };
+  visitar(valor, 0);
+  return out;
+}
+
+/** Campos que no son prosa: enlaces, identificadores, fechas y colores. */
+const CLAVES_NO_TEXTO = new Set(['url', 'url_tramite', 'slug', 'id', 'fecha', 'fecha_generacion', 'fecha_evaluacion', 'color', 'hex']);
+
+export interface MensajeCifras {
+  /** Cómo se presentan (antes de la lista). */
+  prefijo: string;
+  /** Qué hacer con ellas (después de la lista). */
+  sufijo: string;
+}
+
+const MENSAJE_GENERAL: MensajeCifras = {
+  prefijo: 'Cifras que la IA calculó o estimó por su cuenta (no salen de tus datos ni del cálculo de la app)',
+  sufijo: 'Tómalas como aproximación.',
+};
+
 /** El supuesto que va a la transparencia cuando la IA usó cifras propias. */
-export function supuestoCifras(sueltas: Cifra[], max = 5): string | null {
+export function supuestoCifras(sueltas: Cifra[], max = 5, mensaje: MensajeCifras = MENSAJE_GENERAL): string | null {
   if (!sueltas.length) return null;
   const lista = sueltas.slice(0, max).map((c) => c.texto).join(', ');
   const resto = sueltas.length > max ? ` y ${sueltas.length - max} más` : '';
-  return `Cifras que la IA calculó o estimó por su cuenta (no salen de tus datos ni del cálculo de la app): ${lista}${resto}. Tómalas como aproximación.`;
+  return `${mensaje.prefijo}: ${lista}${resto}. ${mensaje.sufijo}`;
+}
+
+/**
+ * Revisa los textos de la IA y, si encuentra cifras sin respaldo, pone el aviso
+ * al principio de los supuestos de la transparencia. Devuelve las cifras para
+ * guardarlas en `meta.contexto_usado.cifras_sin_respaldo`.
+ */
+export function marcarCifrasSinRespaldo(
+  transparencia: { supuestos: string[] },
+  textos: (string | null | undefined)[],
+  conocidas: number[],
+  mensaje: MensajeCifras = MENSAJE_GENERAL
+): string[] {
+  const sueltas = cifrasSinRespaldo(textos, conocidas);
+  const nota = supuestoCifras(sueltas, 5, mensaje);
+  if (nota) transparencia.supuestos = [nota, ...transparencia.supuestos].slice(0, 9);
+  return sueltas.map((c) => c.texto);
 }

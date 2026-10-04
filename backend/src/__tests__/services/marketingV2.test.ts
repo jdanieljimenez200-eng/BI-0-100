@@ -6,7 +6,7 @@ import { copyMock, generarCopies } from '../../services/marketing/copywritingSer
 import { generarEstrategias } from '../../services/marketing/posicionamientoService';
 import { generarCalendario } from '../../services/marketing/calendarioService';
 import { interpretarConIA, parsearArchivoReporte } from '../../services/marketing/reporteAdsService';
-import { CONTRATO_MARKETING, transparenciaBaseMarketing } from '../../services/marketing/transparenciaMarketing';
+import { CONTRATO_MARKETING, construirMetaIaMarketing, transparenciaBaseMarketing } from '../../services/marketing/transparenciaMarketing';
 import { probarCasoMarketing } from '../../services/marketing/pruebaMarketing';
 import { CASOS_MARKETING } from '../../services/ia/casosPruebaMarketing';
 import { _reiniciarCachePrompts } from '../../services/ia/registroPrompts';
@@ -303,5 +303,27 @@ describe('probarCasoMarketing', () => {
     expect(r.meta_ia.meta).toMatchObject({ origen: 'ia', versiones_prompt: { 'marketing.modo': { id: 'v-prueba', version: 4 } } });
     // El caso trae ICP de Ventas, lo ya probado y activos, pero no Mercado ni reporte: medio como máximo.
     expect(r.meta_ia.transparencia.nivel_confianza).toBe('medio');
+  });
+});
+
+describe('Marketing: verificador de cifras', () => {
+  it('un descuento que la IA puso en una publicación sin que nadie lo diera se marca', () => {
+    const modo = { clave: 'marketing.modo', id: null, version: 0, origen: 'repositorio' as const, contenido: MARKETING_MODO, secciones_extra: [], secciones_ocultas: [] };
+    const calendario = {
+      semanas: [{ numero: 1, dias: [{ dia: 'lunes', publicaciones: [{ plataforma: 'Instagram', hora: '19:00', copy: 'Hoy 35% de descuento en tu pedido de 450 MXN.' }] }] }],
+      tendencias: [],
+    };
+    const m = construirMetaIaMarketing({
+      datos: { input: inputBase, conMercado: false, clienteIdeal: null, conBrief: false, calendarioDePlantilla: false },
+      calendario: { calendario: calendario as never, contrato: null, sistema: null, es_mock: false },
+      modo,
+      ocultas: new Set(),
+      seccionesIA: [],
+      contexto: { pais: 'MX' },
+      cifrasConocidas: [{ precio: 450 }],
+    });
+    // 450 es el precio (dato); 19:00 es una hora; el 35 % no lo dio nadie.
+    expect(m.meta.contexto_usado).toMatchObject({ cifras_sin_respaldo: ['35%'] });
+    expect(m.transparencia.supuestos[0]).toMatch(/35%/);
   });
 });

@@ -370,6 +370,33 @@ describe('construirMetaIaMercado', () => {
     sistema: { system: [], versiones: { 'mercado.modo': { id: 'v1', version: 4, origen: 'publicado' } }, seccionesExtra: seccionesAdmin, seccionesOcultas: [], ausentes: [] } as never,
   });
 
+  it('las cifras del reporte que no salen de los datos se dicen como estimación de la IA', () => {
+    const reporte = {
+      resumen_ejecutivo: 'El 73 % de los negocios así cierra antes de 2 años.',
+      grafica_tendencias: 'Estable',
+      score_viabilidad: 50,
+      mapa_competencia: 'Hay competencia cercana.',
+      alertas_ia: [],
+      analisis_mercado: { validacion_precio: 'x', gap_oportunidad: 'x', analisis_dafo_dinamico: 'x', cruce_inversion_tam: 'x', proximos_pasos: ['En 90 días: repite el análisis.'] },
+      es_mock: false,
+    };
+    // «90 días» lo pide el contrato: es una cifra con respaldo.
+    const sistema = { system: [{ type: 'text', text: 'proximos_pasos con horizonte (esta semana / este mes / en 90 días)' }] };
+    const m = construirMetaIaMercado({
+      datos: datos(),
+      reporteBi: { reporte, contrato: null, sistema } as never,
+      modo,
+      ocultas: new Set(),
+      seccionesIA: [],
+      tipoActividad: 'Producto',
+    });
+    expect(m.transparencia.supuestos[0]).toMatch(/^Cifras que la IA calculó o estimó por su cuenta.*73 %/);
+    expect(m.meta.contexto_usado).toMatchObject({ cifras_sin_respaldo: ['73 %'] });
+    // La plantilla la escribe el código: no se revisa.
+    const plantilla = construirMetaIaMercado({ datos: datos(), reporteBi: conIA('medio'), modo, ocultas: new Set(), seccionesIA: [], tipoActividad: 'Producto' });
+    expect(plantilla.meta.contexto_usado).toMatchObject({ cifras_sin_respaldo: [] });
+  });
+
   it('la IA puede bajar la confianza, nunca subirla por encima de los datos', () => {
     const baja = datos({ viabilidad: viabilidad({ confianza: 'baja' }) });
     const subir = construirMetaIaMercado({ datos: baja, reporteBi: conIA('alto'), modo, ocultas: new Set(), seccionesIA: [], tipoActividad: 'Producto' });

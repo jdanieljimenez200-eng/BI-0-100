@@ -13,7 +13,7 @@ import { origenDe, type MetaIaAnalisis } from '../ia/metaAnalisis';
 import type { VersionResuelta } from '../ia/registroPrompts';
 import type { ResultadoRiesgos } from './riesgosService';
 import { formatoDinero, vendePerecederos } from './economiaUnitaria';
-import { cifrasSinRespaldo, numerosDe, supuestoCifras } from '../ia/verificadorCifras';
+import { marcarCifrasSinRespaldo, numerosDe, numerosDelSistema } from '../ia/verificadorCifras';
 
 /**
  * Forma del resultado de Finanzas.
@@ -160,7 +160,8 @@ export function construirMetaIaFinanzas(p: {
   const transparencia = combinarTransparencia(base, deIA?.transparencia);
   const sueltas =
     p.riesgos && !p.riesgos.es_mock
-      ? cifrasSinRespaldo(
+      ? marcarCifrasSinRespaldo(
+          transparencia,
           [
             p.riesgos.riesgos.patron_comun,
             ...p.riesgos.riesgos.riesgos.flatMap((r) => [r.titulo, r.descripcion, r.como_evitarlo, ...r.senales_alerta]),
@@ -168,6 +169,7 @@ export function construirMetaIaFinanzas(p: {
           ],
           [
             ...numerosDe(input, proyeccion, p.datos.breakeven),
+            ...numerosDelSistema(p.riesgos.sistema),
             proyeccion.totales.utilidad_neta_total / 12,
             proyeccion.totales.ingresos_totales / 12,
             (Number(input.tasa_impuesto_consumo) || 0) * 100,
@@ -175,8 +177,6 @@ export function construirMetaIaFinanzas(p: {
           ]
         )
       : [];
-  const notaCifras = supuestoCifras(sueltas);
-  if (notaCifras) transparencia.supuestos = [notaCifras, ...transparencia.supuestos].slice(0, 9);
 
   return {
     transparencia,
@@ -199,7 +199,7 @@ export function construirMetaIaFinanzas(p: {
         margen_por_venta: eco.margen_unitario,
         costos_fijos_con_sueldo: eco.costos_fijos_efectivos,
         caja_necesaria: formatoDinero(proyeccion.caja_necesaria, input.pais),
-        cifras_sin_respaldo: sueltas.map((c) => c.texto),
+        cifras_sin_respaldo: sueltas,
         perfil_respondido: Object.keys(p.datos.perfil).filter((c) => !sinResponder.includes(c as keyof PerfilNegocio)),
       },
     },

@@ -14,7 +14,7 @@ import {
   generarTipsMock,
 } from '../../services/ventas/ventasService';
 import { embudoDePayload, inputDeVentas } from '../../services/ventas/ventasOrchestrator';
-import { CONTRATO_VENTAS, transparenciaBaseVentas } from '../../services/ventas/transparenciaVentas';
+import { CONTRATO_VENTAS, construirMetaIaVentas, transparenciaBaseVentas } from '../../services/ventas/transparenciaVentas';
 import { probarCasoVentas } from '../../services/ventas/pruebaVentas';
 import { CASOS_VENTAS } from '../../services/ia/casosPruebaVentas';
 import { _reiniciarCachePrompts } from '../../services/ia/registroPrompts';
@@ -357,5 +357,23 @@ describe('Ventas: si la IA falla no se cobra ni se inventa', () => {
     expect(texto).not.toMatch(/La mayoría|Regla del 70\/30|25-42|30-50 años|radio 5-10 km/);
     // La cuenta del descuento es correcta: con 40 % de margen, un 30 % todavía deja utilidad.
     expect(texto).not.toMatch(/uno del 30% te deja vendiendo para perder/);
+  });
+});
+
+describe('Ventas: verificador de cifras', () => {
+  it('lo que la IA calculó en los tips sin respaldo se dice como estimación suya', () => {
+    const modo = { clave: 'ventas.modo', id: null, version: 0, origen: 'repositorio' as const, contenido: VENTAS_MODO, secciones_extra: [], secciones_ocultas: [] };
+    const tip = (descripcion: string) => ({ titulo: 'Seguimiento', descripcion, ejemplo_practico: 'Escribe al día siguiente.', error_comun: 'Esperar demasiado.' });
+    const m = construirMetaIaVentas({
+      input: inputCO,
+      tips: { tips: [tip(`Con tu ticket de ${inputCO.ticket_promedio.toLocaleString('es-MX')} COP, el 64 % de tus prospectos responde al segundo mensaje.`)], contrato: null, sistema: null, es_mock: false },
+      modo,
+      ocultas: new Set(),
+      seccionesIA: [],
+      conHistoria: false,
+    });
+    expect(m.transparencia.supuestos[0]).toMatch(/64 %/);
+    expect(m.transparencia.supuestos[0]).not.toMatch(/390,000/);
+    expect(m.meta.contexto_usado).toMatchObject({ cifras_sin_respaldo: ['64 %'] });
   });
 });

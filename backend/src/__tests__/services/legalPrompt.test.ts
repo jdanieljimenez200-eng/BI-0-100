@@ -116,6 +116,16 @@ describe('Legal: prompt compuesto y contrato', () => {
     expect(r.meta?.contexto_usado.perfil_respondido).toContain('regimen_actual');
   });
 
+  it('una multa o un plazo que no viene de la ficha ni de los datos se marca para confirmarlo', async () => {
+    responder({
+      ...salidaV1,
+      alertas: [{ nivel: 'rojo', titulo: 'Sin licencia', descripcion: 'Multa de hasta 87,500 por operar sin licencia.', accion_recomendada: 'Tramítala esta semana.' }],
+    });
+    const r = await generarAnalisisLegal(productoDeCaso(caso('co_ecommerce')), inputDe('co_ecommerce'));
+    expect(r.transparencia?.supuestos[0]).toMatch(/^Cifras legales que la IA citó.*87,500.*Confírmalas con la autoridad/);
+    expect(r.meta?.contexto_usado.cifras_sin_respaldo).toContain('87,500');
+  });
+
   it('una salida de legal@1 (sin los campos nuevos) sigue validando', () => {
     const salida = LegalOutputSchema.parse(salidaV1);
     expect(salida.supuestos).toEqual([]);

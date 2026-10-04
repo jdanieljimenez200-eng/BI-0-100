@@ -110,5 +110,7 @@ export interface MetaAnalisisIA {
     pais_con_ficha: boolean;
     perfil_respondido: string[];
     perfil_sin_responder: string[];
+    /** Cifras legales de la IA que no salen de la ficha ni de los datos (análisis anteriores: ausente). */
+    cifras_sin_respaldo?: string[];
   };
 }

@@ -297,6 +297,7 @@ export async function orquestarMercado(
       ocultas,
       seccionesIA,
       tipoActividad,
+      cifrasConocidas: [payload, ctxFinanciero],
     });
 
     analisis.resultado_estimado = huboFallbackIA();

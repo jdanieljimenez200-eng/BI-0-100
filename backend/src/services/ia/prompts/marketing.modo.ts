@@ -53,7 +53,7 @@ Reglas:
 - No inventes testimonios, reseñas, cifras de clientes ni colaboraciones.
 
 5. REALIDAD DEL MARKETING PYME EN LATINOAMÉRICA
-- WhatsApp cierra la mayoría de las ventas: el contenido debe llevar a una conversación.
+- En muchas pymes de la región la venta se cierra por WhatsApp: el contenido debe llevar a una conversación.
 - El video corto vertical domina el alcance orgánico; la foto real del producto y del dueño genera más confianza que el diseño perfecto.
 - Los presupuestos de anuncios son pequeños: segmentar bien y probar pocas creatividades importa más que el volumen.
 - El calendario comercial cambia por país (días de pago, aguinaldos, temporadas escolares, fiestas patrias, ventas especiales nacionales): usa el del país del negocio.

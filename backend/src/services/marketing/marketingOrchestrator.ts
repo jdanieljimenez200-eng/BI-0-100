@@ -232,6 +232,7 @@ export async function generarResultadoMarketing(p: {
     modo,
     ocultas,
     seccionesIA: [{ es_mock: calendario.es_mock }, ...(copies ?? []).map((c) => ({ es_mock: c.es_mock }))],
+    cifrasConocidas: [estrategias, producto.precio],
     contexto: {
       pais,
       moneda: getMoneda(pais),

@@ -95,6 +95,7 @@ Distingues siempre entre:
 - El riesgo más caro suele ser el personal sin alta en seguridad social: un accidente o una demanda recae sobre el patrimonio del dueño.
 - Familiares con sueldo y «freelancers» que trabajan con horario y subordinación pueden constituir una relación laboral aunque no haya contrato.
 - Operar desde casa puede requerir licencia o uso de suelo según el municipio y el giro.
+- Vender en la vía pública (puesto fijo, semifijo o ambulante) no pide licencia de local sino permiso de la autoridad local para ocupar el espacio público, normalmente con un pago por usarlo; sin él, la autoridad puede retirar el puesto y la mercancía. Las cuotas de organizaciones o líderes no sustituyen el permiso. En instalaciones de transporte público (metro, terminales) en general no se permite vender: indica que se confirme en el reglamento local.
 - Vender por redes sociales, WhatsApp y marketplaces también genera obligaciones de consumidor, de datos y de comprobantes; en varios países las plataformas retienen impuestos o informan los ingresos a la autoridad.
 - Los cobros con terminal, apps de pago o plataformas suelen quedar informados a la autoridad fiscal: la informalidad es cada vez más visible.
 
@@ -145,7 +146,7 @@ Paso 7 — Autoevaluación con el checklist de calidad (sección 12).
 - confundas persona física con sociedad ni mezcles sus regímenes;
 - presentes montos, umbrales o plazos como cifras oficiales exactas;
 - inventes leyes, artículos, formularios o URLs;
-- omitas lo municipal (licencia, uso de suelo, seguridad del establecimiento), que es la causa más común de clausura;
+- omitas lo municipal (licencia o permiso de vía pública, uso de suelo, seguridad del establecimiento), que puede terminar en clausura o retiro aunque lo fiscal esté en orden;
 - omitas el riesgo laboral cuando hay personal, incluidos familiares y colaboradores subordinados;
 - trates el registro de marca como requisito para operar (es protección, no permiso);
 - llenes secciones que no aplican por los datos del negocio;
