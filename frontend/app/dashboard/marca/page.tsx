@@ -10,9 +10,11 @@ import {
   type Step, type LogoAnalysisResult, type BriefResultado, type AnalisisBriefPoll,
   type AnalisisBriefStatus,
   PERCEPCIONES, EMOCIONES, ESTILOS, TIPOS_LOGO, TONOS, POSICIONAMIENTOS, DIFERENCIACIONES,
-  API_BASE, FORM_EMPTY, SCORE_TIPS,
+  API_BASE, FORM_EMPTY, SCORE_TIPS, USOS_MARCA,
   card, cardBg, fieldCls,
 } from '@/components/marca/types';
+import TransparenciaIA from '@/components/analisis/TransparenciaIA';
+import SeccionesExtra from '@/components/analisis/SeccionesExtra';
 
 import {
   ChipToggle, RadioCard, PaletaCard, BlockHeader, ScoreBar,
@@ -150,6 +152,11 @@ export default function KitMarcaPage() {
         tono_comunicacion: resolveField(form.tono_comunicacion, 'Cercano y cálido'),
         posicionamiento: form.posicionamiento,
         nivel_diferenciacion: form.nivel_diferenciacion,
+        // «Afina tu análisis»: vacío = no declarado (el brief lo dice).
+        marcas_admiradas: form.marcas_admiradas.trim() || null,
+        marcas_evitar: form.marcas_evitar.trim() || null,
+        elementos_conservar: form.elementos_conservar.trim() || null,
+        usos_marca: form.usos_marca.length ? form.usos_marca : null,
       });
       setAnalisisBrief({ id: data.analisis_id, estado_analisis: 'procesando', resultado_data: null, error_mensaje: null, fecha_completado: null });
       setStep('polling');
@@ -676,6 +683,54 @@ export default function KitMarcaPage() {
               </div>
             </div>
 
+            {/* Block 07: Afina tu análisis (opcional) */}
+            <div className={card} style={cardBg}>
+              <BlockHeader n="07" title="Afina tu análisis" sub="Opcional: lo que más cambia el brief y casi nadie dice." />
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[11px] font-medium text-white/40 uppercase tracking-widest mb-2">Marcas que te gustan</label>
+                  <input type="text" maxLength={200} value={form.marcas_admiradas}
+                    onChange={e=>setForm({...form,marcas_admiradas:e.target.value})}
+                    placeholder="ej. la panadería de la esquina con letrero pintado a mano"
+                    className={fieldCls} />
+                  <p className="mt-1.5 text-[11px] text-white/25">Son referencia de estilo: el brief nunca propone copiarlas.</p>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-white/40 uppercase tracking-widest mb-2">Marcas a las que no te quieres parecer</label>
+                  <input type="text" maxLength={200} value={form.marcas_evitar}
+                    onChange={e=>setForm({...form,marcas_evitar:e.target.value})}
+                    placeholder="ej. las cadenas grandes"
+                    className={fieldCls} />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-white/40 uppercase tracking-widest mb-2">Lo que ya tienes y quieres conservar</label>
+                  <input type="text" maxLength={300} value={form.elementos_conservar}
+                    onChange={e=>setForm({...form,elementos_conservar:e.target.value})}
+                    placeholder="ej. el nombre, el color rojo del letrero, la frase que ya usas"
+                    className={fieldCls} />
+                  <p className="mt-1.5 text-[11px] text-white/25">Si tus clientes ya te reconocen por algo, el brief lo respeta.</p>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-white/40 uppercase tracking-widest mb-2">¿Dónde vas a usar la marca?</label>
+                  <div className="flex flex-wrap gap-2">
+                    {USOS_MARCA.map(({ value, label }) => {
+                      const activo = form.usos_marca.includes(value);
+                      return (
+                        <button key={value} type="button" aria-pressed={activo}
+                          onClick={() => setForm({ ...form, usos_marca: activo ? form.usos_marca.filter((u) => u !== value) : [...form.usos_marca, value] })}
+                          className={['rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
+                            activo ? 'bg-[#8B5CF6]/15 border-[#8B5CF6]/40 text-white' : 'bg-white/[0.03] border-white/10 text-white/50 hover:border-white/20 hover:text-white/80',
+                          ].join(' ')}>
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-white/25">Cada uso le pide algo distinto al logo y a los colores.</p>
+                </div>
+              </div>
+            </div>
+
             {error && (
               <p className="rounded-xl border border-[#E74C3C]/20 bg-[#E74C3C]/5 px-4 py-3 text-sm text-[#E74C3C]">{error}</p>
             )}
@@ -733,7 +788,7 @@ export default function KitMarcaPage() {
                   </div>
                   <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-medium text-emerald-400">Completado</span>
                   {resultado.es_mock && (
-                    <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-[10px] font-medium text-amber-400">Demo</span>
+                    <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-[10px] font-medium text-amber-400">Plantilla (sin IA)</span>
                   )}
                 </div>
               </div>
@@ -809,26 +864,45 @@ export default function KitMarcaPage() {
                 <ScoreBar label="Claridad"       value={resultado.score_marca.claridad} tip={SCORE_TIPS.claridad} />
                 <ScoreBar label="Impacto visual" value={resultado.score_marca.impacto_visual} tip={SCORE_TIPS.impacto_visual} />
               </div>
+              {/* De dónde sale el puntaje: mide la coherencia del brief, no el éxito de la marca. */}
+              {resultado.score_marca.razon && (
+                <p className="mt-4 border-t border-white/[0.05] pt-3 text-[11px] leading-relaxed text-white/40">
+                  {resultado.score_marca.origen === 'reglas' ? 'Calculado por reglas con lo que declaraste. ' : ''}
+                  {resultado.score_marca.razon}
+                </p>
+              )}
             </div>
 
-            {/* Diagnóstico */}
-            <div className={card} style={cardBg}>
-              <span className="block text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Diagnóstico Estratégico</span>
-              <p className="text-sm text-white/65 leading-relaxed">{resultado.diagnostico_estrategico}</p>
-            </div>
+            {/* Diagnóstico (el admin lo puede ocultar: llega vacío) */}
+            {resultado.diagnostico_estrategico && (
+              <div className={card} style={cardBg}>
+                <span className="block text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Diagnóstico Estratégico</span>
+                <p className="text-sm text-white/65 leading-relaxed">{resultado.diagnostico_estrategico}</p>
+              </div>
+            )}
 
-            {/* Instrucciones diseñador */}
-            <div className={card} style={cardBg}>
-              <span className="block text-[10px] font-bold uppercase tracking-widest text-white/25 mb-3">Instrucciones para el Diseñador</span>
-              <ol className="space-y-2.5">
-                {resultado.instrucciones_disenador.map((inst,i) => (
-                  <li key={i} className="flex gap-3">
-                    <span className="font-mono text-xs font-bold text-[#8B5CF6]/50 flex-shrink-0 mt-0.5">{String(i+1).padStart(2,'0')}</span>
-                    <span className="text-sm text-white/60 leading-relaxed">{inst}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
+            {/* Instrucciones diseñador (también ocultable) */}
+            {resultado.instrucciones_disenador.length > 0 && (
+              <div className={card} style={cardBg}>
+                <span className="block text-[10px] font-bold uppercase tracking-widest text-white/25 mb-3">Instrucciones para el Diseñador</span>
+                <ol className="space-y-2.5">
+                  {resultado.instrucciones_disenador.map((inst,i) => (
+                    <li key={i} className="flex gap-3">
+                      <span className="font-mono text-xs font-bold text-[#8B5CF6]/50 flex-shrink-0 mt-0.5">{String(i+1).padStart(2,'0')}</span>
+                      <span className="text-sm text-white/60 leading-relaxed">{inst}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {/* Qué tan confiable es y qué dato lo mejoraría (brief@2). */}
+            {analisisBrief?.meta_ia?.transparencia && (
+              <TransparenciaIA transparencia={analisisBrief.meta_ia.transparencia} />
+            )}
+            {(analisisBrief?.meta_ia?.secciones_extra?.length ?? 0) > 0 && (
+              <SeccionesExtra secciones={analisisBrief?.meta_ia?.secciones_extra} />
+            )}
 
             {/* Resumen tweet */}
             <div className="rounded-2xl border border-white/[0.06] px-5 py-4" style={cardBg}>

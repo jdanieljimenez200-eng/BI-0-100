@@ -112,6 +112,37 @@ const largo = (v: unknown) => (Array.isArray(v) ? v.length : 0);
  */
 function vistaDePrueba(resultado: unknown): VistaComun {
   const r = (resultado ?? {}) as Record<string, unknown>;
+  // Brief: identidad y puntaje explicado.
+  const brief = (r.resultado ?? null) as {
+    brief_identidad?: { slogan_principal?: string; slogans_alternativos?: unknown[] };
+    score_marca?: { total?: number; origen?: string };
+    instrucciones_disenador?: unknown[];
+    diagnostico_estrategico?: string;
+  } | null;
+  if (r.meta_ia && typeof r.meta_ia === 'object' && brief?.brief_identidad) {
+    const meta = r.meta_ia as {
+      transparencia?: Transparencia;
+      secciones_extra?: SeccionExtra[];
+      secciones_ocultas?: string[];
+      meta?: { origen?: VistaComun['origen'] };
+    };
+    const ocultas = meta.secciones_ocultas ?? [];
+    return {
+      origen: meta.meta?.origen,
+      puntaje:
+        typeof brief.score_marca?.total === 'number'
+          ? { etiqueta: `Puntaje de marca (${brief.score_marca.origen === 'reglas' ? 'por reglas' : 'IA'}, /10)`, valor: brief.score_marca.total }
+          : null,
+      resumen: brief.brief_identidad.slogan_principal ? `Slogan: ${brief.brief_identidad.slogan_principal}` : null,
+      conteos: [
+        ['Slogans alternativos', largo(brief.brief_identidad.slogans_alternativos)],
+        ['Diagnóstico', ocultas.includes('brief.diagnostico_estrategico') ? 'oculta' : brief.diagnostico_estrategico ? 1 : 0],
+        ['Instrucciones al diseñador', ocultas.includes('brief.instrucciones_disenador') ? 'oculta' : largo(brief.instrucciones_disenador)],
+      ],
+      transparencia: meta.transparencia,
+      secciones_extra: meta.secciones_extra,
+    };
+  }
   // Marketing: estrategias, copies y calendario.
   if (r.meta_ia && typeof r.meta_ia === 'object' && Array.isArray(r.estrategias)) {
     const meta = r.meta_ia as {

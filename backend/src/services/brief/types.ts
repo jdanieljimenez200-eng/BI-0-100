@@ -1,5 +1,9 @@
 // ─── Input ───────────────────────────────────────────────────────────────────
 
+/** Dónde va a vivir la marca: cambia lo que hay que pedirle al diseñador. */
+export const USOS_MARCA = ['empaque', 'local_letrero', 'uniformes', 'redes_sociales', 'vehiculo', 'sitio_web', 'impresos'] as const;
+export type UsoMarca = (typeof USOS_MARCA)[number];
+
 export interface BriefAnalisisInput {
   productoId: string;
   usuarioId: string;
@@ -20,6 +24,11 @@ export interface BriefAnalisisInput {
   posicionamiento: string;         // 'Líder de precio (más barato)','Calidad premium (mejor calidad)','Especialista (nicho específico)','Innovador (primero en su tipo)','Confiable (el de siempre)'
   // Bloque 6: Diferenciación
   nivel_diferenciacion: string;    // 'Bajo (similar a competencia)','Medio (algunas diferencias)','Alto (claramente distinto)','Único (sin comparación directa)'
+  // «Afina tu análisis» (brief@2): opcionales; sin ellos el brief lo dice como supuesto.
+  marcas_admiradas?: string | null;   // referencia de estilo, nunca para copiar
+  marcas_evitar?: string | null;
+  elementos_conservar?: string | null; // nombre, logo, colores o frases que ya reconocen sus clientes
+  usos_marca?: UsoMarca[] | null;
 }
 
 // ─── Paletas predefinidas ─────────────────────────────────────────────────────
@@ -43,8 +52,13 @@ export interface ScoreMarca {
   coherencia: number;       // /10
   diferenciacion: number;   // /10
   claridad: number;         // /10
-  impacto_visual: number;   // /10
+  /** /10; `null` si no se pudo evaluar (plantilla sin IA: no hay quien mire lo visual). */
+  impacto_visual: number | null;
   total: number;            // /10
+  /** De dónde sale: la IA con criterios del contrato, o reglas sobre lo declarado (sin IA). Ausente en brief@1. */
+  origen?: 'ia' | 'reglas';
+  /** Por qué esos puntajes, en 1-3 oraciones. */
+  razon?: string;
 }
 
 export interface BriefIdentidad {

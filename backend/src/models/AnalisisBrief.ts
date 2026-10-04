@@ -1,3 +1,4 @@
+import type { MetaIaAnalisis } from '../services/ia/metaAnalisis';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -75,6 +76,10 @@ export class AnalisisBrief {
   // ─── Resultado completo de la IA ───────────────────────────────────────────
   @Column({ nullable: true, type: 'jsonb' })
   resultado_data!: BriefResultado | null;
+
+  /** brief@2: confianza, supuestos, datos que faltan, secciones extra u ocultas y versión de prompt. */
+  @Column({ nullable: true, type: 'jsonb' })
+  meta_ia!: MetaIaAnalisis | null;
 
   // ─── Estado del proceso ────────────────────────────────────────────────────
   @Column({ default: 'procesando' })

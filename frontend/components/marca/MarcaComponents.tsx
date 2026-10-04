@@ -135,7 +135,17 @@ export function BlockHeader({ n, title, sub }: { n: string; title: string; sub: 
 
 // ─── ScoreBar with actionable tip ─────────────────────────────────────────────
 
-export function ScoreBar({ label, value, tip }: { label: string; value: number; tip?: string }) {
+export function ScoreBar({ label, value, tip }: { label: string; value: number | null; tip?: string }) {
+  // Sin IA lo visual no se evalúa: se dice en vez de inventar un número.
+  if (value === null) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="w-28 flex-shrink-0 text-xs text-white/50">{label}</span>
+        <span className="flex-1 text-[11px] text-white/30">Sin evaluar (necesita la IA)</span>
+        <span className="font-mono text-xs font-bold w-6 text-right text-white/30">—</span>
+      </div>
+    );
+  }
   const pct = (value / 10) * 100;
   const color = value >= 8 ? '#10B981' : value >= 6 ? '#8B5CF6' : value >= 4 ? '#F59E0B' : '#E74C3C';
   return (

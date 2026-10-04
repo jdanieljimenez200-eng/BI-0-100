@@ -54,7 +54,8 @@ describe('anclaje de versiones de prompt en el worker', () => {
   });
 
   it('un módulo sin prompts versionados no ancla nada', async () => {
-    const job = trabajo({ moduleName: 'brief', productoId: 'p1' });
+    // Los seis módulos ya tienen modo: el caso es un módulo futuro sin prompts.
+    const job = trabajo({ moduleName: 'modulo_sin_modo', productoId: 'p1' });
     expect(await anclarVersionesPrompt(job)).toBeUndefined();
     expect(job.updateData).not.toHaveBeenCalled();
   });

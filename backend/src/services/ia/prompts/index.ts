@@ -5,6 +5,7 @@ import { MERCADO_MODO } from './mercado.modo';
 import { FINANZAS_MODO } from './finanzas.modo';
 import { VENTAS_MODO } from './ventas.modo';
 import { MARKETING_MODO } from './marketing.modo';
+import { BRIEF_MODO } from './brief.modo';
 
 /**
  * Catálogo de lo que el admin puede editar y sus textos por defecto.
@@ -15,7 +16,7 @@ import { MARKETING_MODO } from './marketing.modo';
  * modos; hasta entonces sigue con su prompt de siempre, en su servicio.
  */
 
-export type ModuloPrompt = 'legal' | 'mercado' | 'finanzas' | 'ventas' | 'marketing';
+export type ModuloPrompt = 'legal' | 'mercado' | 'finanzas' | 'ventas' | 'marketing' | 'brief';
 
 export interface ClavePrompt {
   clave: string;
@@ -30,6 +31,7 @@ const MODOS: Record<string, { modulo: ModuloPrompt; titulo: string; texto: strin
   'finanzas.modo': { modulo: 'finanzas', titulo: 'Finanzas — modo de comportamiento', texto: FINANZAS_MODO },
   'ventas.modo': { modulo: 'ventas', titulo: 'Ventas — modo de comportamiento', texto: VENTAS_MODO },
   'marketing.modo': { modulo: 'marketing', titulo: 'Marketing — modo de comportamiento', texto: MARKETING_MODO },
+  'brief.modo': { modulo: 'brief', titulo: 'Brief de marca — modo de comportamiento', texto: BRIEF_MODO },
 };
 
 const RE_FICHA_LEGAL = /^legal\.pais\.([A-Z]{2})$/;
@@ -87,5 +89,6 @@ export function clavesDeModulo(modulo: string, pais?: string | null): string[] {
   if (modulo === 'finanzas') return ['finanzas.modo'];
   if (modulo === 'ventas') return ['ventas.modo'];
   if (modulo === 'marketing') return ['marketing.modo'];
+  if (modulo === 'brief') return ['brief.modo'];
   return [];
 }

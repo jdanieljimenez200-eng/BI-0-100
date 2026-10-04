@@ -69,7 +69,7 @@ describe('Brief: prompt seguro y respaldo', () => {
   it('si Claude falla, entrega plantilla y lo anota como estimación', async () => {
     mockCrear.mockRejectedValueOnce(new Error('overloaded'));
     const { resultado, estimado } = await conSeguimientoIA(async () => ({
-      resultado: await generarBrief(producto, input),
+      resultado: (await generarBrief(producto, input)).resultado,
       estimado: huboFallbackIA(),
     }));
     expect(resultado.es_mock).toBe(true);

@@ -15,7 +15,15 @@ export interface BriefResultado {
     concepto_logo: string; descripcion_isotipo: string; estilo_grafico: string;
   };
   diagnostico_estrategico: string;
-  score_marca: { coherencia: number; diferenciacion: number; claridad: number; impacto_visual: number; total: number };
+  score_marca: {
+    coherencia: number; diferenciacion: number; claridad: number;
+    /** `null`: sin IA no se evalúa lo visual (brief@2). */
+    impacto_visual: number | null;
+    total: number;
+    /** De dónde sale el puntaje: la IA o reglas sobre lo declarado (ausente en briefs anteriores). */
+    origen?: 'ia' | 'reglas';
+    razon?: string;
+  };
   instrucciones_disenador: string[];
   resumen_tweet: string;
   es_mock: boolean;
@@ -48,6 +56,12 @@ export interface AnalisisBriefPoll {
   id: string;
   estado_analisis: 'procesando' | 'completado' | 'error';
   resultado_data: BriefResultado | null;
+  /** brief@2: confianza, supuestos, datos que faltan y secciones extra del admin. */
+  meta_ia?: {
+    transparencia?: import('@/components/analisis/TransparenciaIA').Transparencia | null;
+    secciones_extra?: import('@/components/analisis/SeccionesExtra').SeccionExtra[];
+    secciones_ocultas?: string[];
+  } | null;
   error_mensaje: string | null;
   fecha_completado: string | null;
 }
@@ -89,7 +103,21 @@ export interface FormState {
   percepcion_custom: string; emocion_custom: string;
   anti_valores_custom: string; estilo_visual_custom: string;
   tipo_logo_custom: string; tono_comunicacion_custom: string;
+  // «Afina tu análisis» (opcional).
+  marcas_admiradas: string; marcas_evitar: string;
+  elementos_conservar: string; usos_marca: string[];
 }
+
+/** Dónde va a vivir la marca (USOS_MARCA en el backend). */
+export const USOS_MARCA = [
+  { value: 'empaque', label: 'Empaque o etiquetas' },
+  { value: 'local_letrero', label: 'Letrero o fachada' },
+  { value: 'uniformes', label: 'Uniformes' },
+  { value: 'redes_sociales', label: 'Redes y WhatsApp' },
+  { value: 'vehiculo', label: 'Vehículo rotulado' },
+  { value: 'sitio_web', label: 'Sitio o tienda en línea' },
+  { value: 'impresos', label: 'Tarjetas, volantes, menús' },
+];
 
 export type Step = 'select' | 'form' | 'polling' | 'result';
 
@@ -125,6 +153,7 @@ export const FORM_EMPTY: FormState = {
   tono_comunicacion:'', posicionamiento:'', nivel_diferenciacion:'',
   percepcion_custom:'', emocion_custom:'', anti_valores_custom:'',
   estilo_visual_custom:'', tipo_logo_custom:'', tono_comunicacion_custom:'',
+  marcas_admiradas:'', marcas_evitar:'', elementos_conservar:'', usos_marca:[],
 };
 
 // ─── WCAG contrast helpers ────────────────────────────────────────────────────

@@ -58,6 +58,14 @@ export const SECCIONES_NATIVAS: Record<ModuloPrompt, SeccionNativa[]> = {
     { clave: 'marketing.calendario', titulo: 'Calendario editorial y tendencias', ocultable: false },
     { clave: 'marketing.copies', titulo: 'Copies de anuncios', ocultable: true },
   ],
+  // La identidad, lo visual y el puntaje son el brief; el diagnóstico y las
+  // instrucciones para el diseñador se pueden quitar.
+  brief: [
+    { clave: 'brief.identidad', titulo: 'Identidad (ADN, voz y slogans)', ocultable: false },
+    { clave: 'brief.identidad_visual', titulo: 'Identidad visual', ocultable: false },
+    { clave: 'brief.diagnostico_estrategico', titulo: 'Diagnóstico estratégico', ocultable: true },
+    { clave: 'brief.instrucciones_disenador', titulo: 'Instrucciones para el diseñador', ocultable: true },
+  ],
 };
 
 export function seccionesOcultables(modulo: ModuloPrompt): string[] {

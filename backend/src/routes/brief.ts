@@ -12,6 +12,12 @@ import { validateBody, exigirUuid } from '../middleware/validate';
 import { logger } from '../utils/logger';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
+import { USOS_MARCA } from '../services/brief/types';
+import { PerfilNegocioSchema } from '../services/ia/perfilNegocio';
+import { guardarPerfilNegocio } from '../services/ia/guardarPerfil';
+
+/** Texto libre opcional: los formularios mandan `campo || null`. */
+const textoOpcional = (max: number) => z.string().trim().max(max).nullable().optional();
 
 const router = Router();
 exigirUuid(router, 'id', 'productoId');
@@ -49,6 +55,12 @@ const AnalizarBriefSchema = z
       'Alto (claramente distinto)',
       'Único (sin comparación directa)',
     ]),
+    // «Afina tu análisis» (brief@2): opcionales; sin ellos el brief lo dice como supuesto.
+    marcas_admiradas: textoOpcional(200),
+    marcas_evitar: textoOpcional(200),
+    elementos_conservar: textoOpcional(300),
+    usos_marca: z.array(z.enum(USOS_MARCA)).max(USOS_MARCA.length).nullable().optional(),
+    perfil_negocio: PerfilNegocioSchema.optional(),
   })
   .refine((d) => Boolean(d.producto_id ?? d.productoId), {
     message: 'producto_id es requerido',
@@ -83,8 +95,10 @@ router.post(
     const bodySrc = { ...(req.body ?? {}) };
     // El frontend env�a producto_id (snake); el contrato interno usa productoId.
     const productoId = bodySrc.productoId ?? bodySrc.producto_id;
+    const perfilNuevo = bodySrc.perfil_negocio;
     delete bodySrc.productoId;
     delete bodySrc.producto_id;
+    delete bodySrc.perfil_negocio;
     const payload = bodySrc;
     const usuarioId = req.userId;
 
@@ -95,6 +109,8 @@ router.post(
     if (!producto) {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
+    // El perfil del negocio («Afina tu análisis») se guarda en el producto y lo reusan los demás módulos.
+    await guardarPerfilNegocio(producto, perfilNuevo);
 
     // Create analysis record
     const analisisRepo = AppDataSource.getRepository(AnalisisBrief);

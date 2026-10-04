@@ -6,8 +6,34 @@ import { swallowWithLog } from '../../utils/fireAndForget';
 import { generarBrief } from './briefService';
 import { BriefAnalisisInput } from './types';
 import { emitAnalysisUpdate } from '../../events/sse';
-import { huboFallbackIA } from '../../utils/seguimientoIA';
+import { contextoIA, huboFallbackIA } from '../../utils/seguimientoIA';
 import { logger } from '../../utils/logger';
+import { resolverPrompt } from '../ia/registroPrompts';
+import { construirMetaIaBrief, type ProductoBrief } from './transparenciaBrief';
+
+/**
+ * Brief completo: identidad, puntaje y transparencia, con las secciones que el
+ * admin ocultó en la versión anclada. Lo comparten el worker y «Probar» del
+ * panel de prompts.
+ */
+export async function generarResultadoBrief(p: {
+  producto: ProductoBrief & { perfil_negocio?: unknown };
+  input: BriefAnalisisInput;
+}) {
+  const modo = await resolverPrompt('brief.modo', contextoIA()?.versionesPrompt?.['brief.modo']);
+  const ocultas = new Set(modo.secciones_ocultas);
+  const r = await generarBrief(p.producto, p.input, ocultas);
+  const meta_ia = construirMetaIaBrief({
+    input: p.input,
+    producto: p.producto,
+    resultado: r.resultado,
+    contrato: r.contrato,
+    sistema: r.sistema,
+    modo,
+    ocultas,
+  });
+  return { resultado: r.resultado, meta_ia };
+}
 
 // ─── Ejecutar análisis completo ──────────────────────────────────────────────
 
@@ -19,10 +45,11 @@ export async function ejecutarAnalisisBrief(
   const repo = AppDataSource.getRepository(AnalisisBrief);
 
   try {
-    const resultado = await generarBrief(producto, input);
+    const { resultado, meta_ia } = await generarResultadoBrief({ producto, input });
 
     await repo.update(analisisId, {
       resultado_data: resultado as unknown as object,
+      meta_ia: meta_ia as unknown as object,
       resultado_estimado: huboFallbackIA(),
       estado_analisis: 'completado',
       fecha_completado: new Date(),

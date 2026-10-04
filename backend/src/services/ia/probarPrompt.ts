@@ -12,6 +12,8 @@ import { CASOS_VENTAS } from './casosPruebaVentas';
 import { probarCasoVentas } from '../ventas/pruebaVentas';
 import { CASOS_MARKETING } from './casosPruebaMarketing';
 import { probarCasoMarketing } from '../marketing/pruebaMarketing';
+import { CASOS_BRIEF } from './casosPruebaBrief';
+import { probarCasoBrief } from '../brief/pruebaBrief';
 
 /**
  * «Probar» del panel de prompts: corre la parte de IA de un módulo sobre un
@@ -32,6 +34,7 @@ const CASOS: Record<ModuloPrompt, { id: string; titulo: string; pais: string }[]
   finanzas: CASOS_FINANZAS,
   ventas: CASOS_VENTAS,
   marketing: CASOS_MARKETING,
+  brief: CASOS_BRIEF,
 };
 
 export function casosDeModulo(modulo: ModuloPrompt): CasoResumen[] {
@@ -69,6 +72,7 @@ export async function probarVersion(
   if (info.modulo === 'finanzas') return probarModo(CASOS_FINANZAS, probarCasoFinanzas);
   if (info.modulo === 'ventas') return probarModo(CASOS_VENTAS, probarCasoVentas);
   if (info.modulo === 'marketing') return probarModo(CASOS_MARKETING, probarCasoMarketing);
+  if (info.modulo === 'brief') return probarModo(CASOS_BRIEF, probarCasoBrief);
 
   const caso = CASOS_LEGAL.find((c) => c.id === casoId);
   if (!caso) throw new ErrorPrueba(404, 'Caso de prueba no encontrado');

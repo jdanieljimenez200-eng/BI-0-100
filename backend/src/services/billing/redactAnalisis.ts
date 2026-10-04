@@ -315,7 +315,11 @@ function redactBrief(fila: Fila, bloq: Set<string>): void {
   if (bloq.has('brief.identidad_visual')) {
     data.identidad_visual = JSON.parse(JSON.stringify(IDENTIDAD_VISUAL_BLOQUEADA));
   }
-  if (bloq.has('brief.diagnostico_estrategico')) data.diagnostico_estrategico = CANDADO_PRO;
+  if (bloq.has('brief.diagnostico_estrategico')) {
+    data.diagnostico_estrategico = CANDADO_PRO;
+    // Las secciones extra del admin salen de la misma llamada que el diagnóstico.
+    if (esObjeto(fila.meta_ia)) fila.meta_ia = { ...fila.meta_ia, secciones_extra: [] };
+  }
   if (bloq.has('brief.instrucciones_disenador')) data.instrucciones_disenador = [];
 }
 
