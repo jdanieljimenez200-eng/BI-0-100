@@ -1,6 +1,18 @@
 import { r2, r4 } from '../../utils/dinero';
 import { getTaxConfig } from '../../utils/taxConfig';
 import type { EconomiaUnitaria, FinanzasInput } from './types';
+import type { PerfilNegocio } from '../ia/perfilNegocio';
+
+/**
+ * ¿Vende algo que se echa a perder? Ahí la merma pesa en el margen y se pide.
+ * Sale del sector declarado o, si no lo hay, de la categoría del producto.
+ */
+export function vendePerecederos(categoria: string | null | undefined, perfil?: PerfilNegocio | null): boolean {
+  if (perfil?.sectores_regulados?.includes('alimentos_bebidas')) return true;
+  return /aliment|comida|restaur|panad|paster|reposter|tamal|taco|taquer|caf[eé]|fruta|verdura|flor|carne|poll|pescad|mariscos|l[aá]cteo|helad|jugo|cocina|antojit|pizz|hamburgues|torta|abarrote/i.test(
+    categoria ?? ''
+  );
+}
 
 /** «12,500 COP»: la moneda del país del negocio, nunca «$» ni MXN fijos. */
 export function formatoDinero(n: number, pais: string | null | undefined): string {
@@ -14,7 +26,9 @@ export function formatoDinero(n: number, pais: string | null | undefined): strin
  * 100 con el IVA dentro y le paga 30 % a la app de reparto aparecía con el
  * margen de quien se queda los 100. Aquí se quita el impuesto incluido (es del
  * fisco, no del negocio), se suma la comisión al costo variable y el sueldo del
- * dueño que no estaba en los costos fijos. Sin esos datos, todo queda como antes.
+ * dueño que no estaba en los costos fijos. La merma encarece cada venta: si se
+ * tira el 10 % de lo producido, lo que sí se vende carga con el costo de todo
+ * (costo ÷ 0.9). Sin esos datos, todo queda como antes.
  */
 export function economiaUnitaria(input: FinanzasInput): EconomiaUnitaria {
   const precio = Math.max(0, Number(input.precio_venta) || 0);
@@ -23,13 +37,17 @@ export function economiaUnitaria(input: FinanzasInput): EconomiaUnitaria {
   // La plataforma cobra sobre lo que paga el cliente, impuesto incluido.
   const comisionPct = Math.min(Math.max(Number(input.comision_venta_pct) || 0, 0), 100);
   const comision_unitaria = r4(precio * (comisionPct / 100));
-  const costo_variable_efectivo = r4((Number(input.costo_variable_unitario) || 0) + comision_unitaria);
+  const costo = Math.max(0, Number(input.costo_variable_unitario) || 0);
+  const merma = Math.min(Math.max(Number(input.merma_pct) || 0, 0), 90) / 100;
+  const costoConMerma = merma > 0 ? r4(costo / (1 - merma)) : costo;
+  const costo_variable_efectivo = r4(costoConMerma + comision_unitaria);
   const sueldo = Math.max(0, Number(input.sueldo_dueno_mensual) || 0);
 
   return {
     precio_neto: r2(precio_neto),
     impuesto_unitario: r2(precio - precio_neto),
     comision_unitaria: r2(comision_unitaria),
+    merma_unitaria: r2(costoConMerma - costo),
     costo_variable_efectivo: r2(costo_variable_efectivo),
     margen_unitario: r2(precio_neto - costo_variable_efectivo),
     costos_fijos_efectivos: r2((Number(input.costos_fijos_mensuales) || 0) + sueldo),

@@ -119,6 +119,12 @@ export function generarResumen(
       `Las comisiones (${dinero(eco.comision_unitaria)} por venta) se llevan al menos la mitad de lo que te queda de cada venta (${dinero(margen_unitario)}). Mueve a tus clientes frecuentes a un canal propio.`,
     );
   }
+  if (eco.merma_unitaria > 0) {
+    alertas.push(
+      // Con centavos: en un ticket chico la merma por venta es de unos pesos y redondearla la esconde.
+      `Lo que no se vende (${Number(input.merma_pct)}% de lo que preparas) te cuesta ${eco.merma_unitaria.toLocaleString('es-MX', { maximumFractionDigits: 2 })} ${getTaxConfig(input.pais).moneda} por cada venta: el modelo ya lo suma al costo.`,
+    );
+  }
   if (input.precio_incluye_impuesto && eco.impuesto_unitario > 0) {
     alertas.push(
       `Tu precio incluye ${impuesto}: de cada venta de ${dinero(input.precio_venta)}, ${dinero(eco.impuesto_unitario)} no son tuyos. El modelo ya calcula con ${dinero(eco.precio_neto)}.`,

@@ -42,6 +42,12 @@ export interface FinanzasInput {
   sueldo_dueno_mensual?: number | null;
   /** Cuota mensual de las deudas del negocio (capital más intereses). */
   pago_deuda_mensual?: number | null;
+  /**
+   * % de lo que se prepara o compra que no se vende (se tira, caduca o se
+   * regala). En comida es donde se va el margen: sin él, el cálculo supone que
+   * se vende todo lo producido.
+   */
+  merma_pct?: number | null;
 }
 
 /** Lo que de verdad deja cada venta, una vez quitado el impuesto y las comisiones. */
@@ -52,7 +58,9 @@ export interface EconomiaUnitaria {
   impuesto_unitario: number;
   /** Comisión por venta, sobre lo que paga el cliente. */
   comision_unitaria: number;
-  /** Costo variable declarado más la comisión. */
+  /** Lo que cuesta por cada venta lo que se tira (0 sin merma declarada). */
+  merma_unitaria: number;
+  /** Costo variable declarado, más la merma y la comisión. */
   costo_variable_efectivo: number;
   margen_unitario: number;
   /** Costos fijos declarados más el sueldo del dueño que no estaba dentro. */

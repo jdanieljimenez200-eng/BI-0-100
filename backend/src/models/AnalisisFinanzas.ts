@@ -28,7 +28,7 @@ export type FinanzasInputsSnapshot = Pick<FinanzasInput,
   | 'unidades_mes_inicial' | 'tasa_crecimiento_mensual' | 'inversion_inicial'>
   & Partial<Pick<FinanzasInput,
     'precio_incluye_impuesto' | 'tasa_impuesto_consumo' | 'comision_venta_pct' | 'dias_cobro'
-    | 'dias_pago' | 'sueldo_dueno_mensual' | 'pago_deuda_mensual'>>;
+    | 'dias_pago' | 'sueldo_dueno_mensual' | 'pago_deuda_mensual' | 'merma_pct'>>;
 
 @Entity('analisis_finanzas')
 @Index(['usuario_id', 'producto_id'])

@@ -38,6 +38,8 @@ export interface PerfilNegocio {
   dias_cobro?: number | null;
   dias_pago?: number | null;
   pago_deuda_mensual?: number | null;
+  /** % de lo que se prepara o compra que no se vende (comida y perecederos). */
+  merma_pct?: number | null;
 }
 
 export const OPCIONES = {

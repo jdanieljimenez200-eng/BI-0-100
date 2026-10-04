@@ -91,6 +91,15 @@ describe('economiaUnitaria', () => {
     expect(e.costos_fijos_efectivos).toBe(8000);
   });
 
+  it('la merma encarece cada venta: lo que sí se vende carga con el costo de lo que se tira', () => {
+    // Se tira el 20 %: cada venta cuesta 40 / 0.8 = 50, 10 más que lo declarado.
+    const e = economiaUnitaria(conTodo({ merma_pct: 20 }));
+    expect(e.merma_unitaria).toBe(10);
+    expect(e.costo_variable_efectivo).toBe(61.6);
+    expect(e.margen_unitario).toBe(38.4);
+    expect(economiaUnitaria(conTodo()).merma_unitaria).toBe(0);
+  });
+
   it('sin datos nuevos deja los números declarados tal cual', () => {
     const e = economiaUnitaria(base);
     expect(e).toMatchObject({ precio_neto: 116, impuesto_unitario: 0, comision_unitaria: 0, margen_unitario: 76, costos_fijos_efectivos: 5000 });
@@ -341,6 +350,24 @@ describe('transparenciaBaseFinanzas', () => {
     expect(t.nivel_confianza).toBe('alto');
   });
 
+  it('si vende comida y no dijo cuánto se tira, pide la merma (6 datos en vez de 5)', () => {
+    const sinMerma = transparenciaBaseFinanzas(datos(conTodo(), { categoria: 'Alimentos preparados' }));
+    expect(sinMerma.informacion_faltante.map((f) => f.dato)).toContain('Qué parte de lo que preparas o compras no se vende (merma)');
+    expect(sinMerma.supuestos.join(' ')).toMatch(/vendes todo lo que preparas/);
+    expect(sinMerma.motivo_confianza).toMatch(/faltan 1 de 6/);
+
+    const conMerma = transparenciaBaseFinanzas(datos(conTodo({ merma_pct: 8 }), { categoria: 'Alimentos preparados' }));
+    expect(conMerma.informacion_faltante).toEqual([]);
+    // A un negocio que no vende perecederos no se le pregunta.
+    const servicio = transparenciaBaseFinanzas(datos(conTodo(), { categoria: 'Consultoría' }));
+    expect(servicio.informacion_faltante).toEqual([]);
+  });
+
+  it('una idea sin ventas reales lo dice como supuesto', () => {
+    const t = transparenciaBaseFinanzas(datos(conTodo(), { estatus: 'idea' }));
+    expect(t.supuestos.join(' ')).toMatch(/el negocio todavía no vende/);
+  });
+
   it('un crecimiento muy alto baja la confianza aunque esté todo', () => {
     const t = transparenciaBaseFinanzas(datos(conTodo({ tasa_crecimiento_mensual: 30 }), { origenDatos: 'contabilidad' }));
     expect(t.nivel_confianza).toBe('bajo');
@@ -367,6 +394,34 @@ describe('construirMetaIaFinanzas', () => {
     expect(m.secciones_extra.map((s) => s.titulo)).toEqual(['Impuestos']);
     expect(m.meta).toMatchObject({ contrato: CONTRATO_FINANZAS, origen: 'ia', versiones_prompt: { 'finanzas.modo': { id: 'v1' } } });
     expect(m.meta.contexto_usado).toMatchObject({ moneda: 'MXN', precio_sin_impuesto: 100, comision_por_venta: 11.6 });
+  });
+
+  it('las cifras que la IA escribe sin respaldo se dicen como estimación suya', () => {
+    const riesgo = (descripcion: string) => ({ titulo: 'Margen', descripcion, senales_alerta: [], como_evitarlo: 'Revisa tus costos.' });
+    const m = construirMetaIaFinanzas({
+      datos: datos(conTodo()),
+      riesgos: {
+        // 48.4 es el margen por venta (cálculo); el 70 % no sale de ningún lado.
+        riesgos: { patron_comun: 'x', riesgos: [riesgo('Te quedan 48.4 por venta, pero el 70 % de los negocios así cierra antes del año.')] },
+        contrato: null,
+        sistema: null,
+        es_mock: false,
+      },
+      modo,
+      ocultas: new Set(),
+    });
+    expect(m.transparencia.supuestos[0]).toMatch(/^Cifras que la IA calculó o estimó por su cuenta.*70 %/);
+    expect(m.transparencia.supuestos[0]).not.toContain('48.4');
+    expect(m.meta.contexto_usado).toMatchObject({ cifras_sin_respaldo: ['70 %'] });
+
+    // La plantilla no se revisa: sus números los pone el código.
+    const plantilla = construirMetaIaFinanzas({
+      datos: datos(conTodo()),
+      riesgos: { riesgos: { patron_comun: 'x', riesgos: [riesgo('El 70 % de los negocios.')] }, contrato: null, sistema: null, es_mock: true },
+      modo,
+      ocultas: new Set(),
+    });
+    expect(plantilla.meta.contexto_usado).toMatchObject({ cifras_sin_respaldo: [] });
   });
 });
 

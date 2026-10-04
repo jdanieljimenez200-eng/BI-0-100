@@ -12,7 +12,8 @@ import {
 import { origenDe, type MetaIaAnalisis } from '../ia/metaAnalisis';
 import type { VersionResuelta } from '../ia/registroPrompts';
 import type { ResultadoRiesgos } from './riesgosService';
-import { formatoDinero } from './economiaUnitaria';
+import { formatoDinero, vendePerecederos } from './economiaUnitaria';
+import { cifrasSinRespaldo, numerosDe, supuestoCifras } from '../ia/verificadorCifras';
 
 /**
  * Forma del resultado de Finanzas.
@@ -29,6 +30,8 @@ export interface DatosTransparenciaFinanzas {
   origenDatos: 'contabilidad' | 'declarado';
   estatus: EstatusProyecto;
   perfil: PerfilNegocio;
+  /** Categoría del producto: decide si la merma es un dato que cambia el cálculo. */
+  categoria?: string | null;
 }
 
 const sinDato = (v: unknown) => v === null || v === undefined;
@@ -77,6 +80,20 @@ export function transparenciaBaseFinanzas(d: DatosTransparenciaFinanzas): Transp
       por_que_importa: 'La cuota sale de la caja cada mes y cambia cuánto dinero necesitas.',
     });
   }
+  // En comida y perecederos lo que no se vende es costo: sin el dato, el cálculo
+  // supone que se vende todo lo que se prepara.
+  const perecedero = vendePerecederos(d.categoria, d.perfil);
+  if (perecedero && sinDato(input.merma_pct)) {
+    supuestos.push('Se asumió que vendes todo lo que preparas o compras; lo que se tira encarece cada venta.');
+    faltante.push({
+      dato: 'Qué parte de lo que preparas o compras no se vende (merma)',
+      por_que_importa: 'Si se tira el 10 %, cada venta carga con el costo de lo que no se vendió.',
+    });
+  }
+  // Una idea todavía no vende: las ventas son la suposición más grande.
+  if (d.origenDatos !== 'contabilidad' && d.estatus === 'idea') {
+    supuestos.push('Las ventas son una estimación tuya: el negocio todavía no vende, así que el resultado depende de que se cumplan.');
+  }
   if (sinDato(input.sueldo_dueno_mensual)) {
     supuestos.push('Se asumió que tu sueldo como dueño ya está dentro de los costos fijos (o que no te pagas uno).');
   }
@@ -92,8 +109,10 @@ export function transparenciaBaseFinanzas(d: DatosTransparenciaFinanzas): Transp
     supuestos.push('La caja necesaria cuenta la inversión inicial y la cuota de la deuda: si la deuda pagó esa inversión, revisa que no la estés contando dos veces.');
   }
 
-  // Cinco datos cambian el cálculo; la inversión, el impuesto y las comisiones son los que más.
+  // Cinco datos cambian el cálculo (seis si vende perecederos); la inversión, el
+  // impuesto y las comisiones son los que más.
   const claves = faltante.length;
+  const totalClaves = perecedero ? 6 : 5;
   let nivel: NivelConfianza = claves >= 3 ? 'bajo' : 'medio';
   if (d.origenDatos === 'contabilidad' && claves <= 1) nivel = 'alto';
   if (crecimiento > 25) nivel = 'bajo';
@@ -101,7 +120,7 @@ export function transparenciaBaseFinanzas(d: DatosTransparenciaFinanzas): Transp
   const origen = d.origenDatos === 'contabilidad' ? 'Números tomados de tu contabilidad' : 'Números declarados por ti';
   const motivo =
     `${origen}; ` +
-    (claves ? `faltan ${claves} de 5 datos que cambian el cálculo.` : 'están todos los datos que cambian el cálculo.') +
+    (claves ? `faltan ${claves} de ${totalClaves} datos que cambian el cálculo.` : 'están todos los datos que cambian el cálculo.') +
     (crecimiento > 25 ? ` Un crecimiento de ${crecimiento}% mensual es muy optimista.` : '');
 
   return {
@@ -134,8 +153,33 @@ export function construirMetaIaFinanzas(p: {
   const { input, proyeccion } = p.datos;
   const eco = proyeccion.economia_unitaria;
   const sinResponder = camposSinResponder(p.datos.perfil);
+
+  // Verificador de cifras: lo que escribió la IA con números que no salen ni de
+  // lo declarado ni del cálculo se dice como estimación suya. La plantilla no se
+  // revisa: sus números los pone el código.
+  const transparencia = combinarTransparencia(base, deIA?.transparencia);
+  const sueltas =
+    p.riesgos && !p.riesgos.es_mock
+      ? cifrasSinRespaldo(
+          [
+            p.riesgos.riesgos.patron_comun,
+            ...p.riesgos.riesgos.riesgos.flatMap((r) => [r.titulo, r.descripcion, r.como_evitarlo, ...r.senales_alerta]),
+            ...(deIA?.secciones_extra ?? []).flatMap((s) => [s.resumen, ...s.puntos]),
+          ],
+          [
+            ...numerosDe(input, proyeccion, p.datos.breakeven),
+            proyeccion.totales.utilidad_neta_total / 12,
+            proyeccion.totales.ingresos_totales / 12,
+            (Number(input.tasa_impuesto_consumo) || 0) * 100,
+            Number(input.inversion_inicial) > 0 ? (proyeccion.totales.utilidad_neta_total / Number(input.inversion_inicial)) * 100 : 0,
+          ]
+        )
+      : [];
+  const notaCifras = supuestoCifras(sueltas);
+  if (notaCifras) transparencia.supuestos = [notaCifras, ...transparencia.supuestos].slice(0, 9);
+
   return {
-    transparencia: combinarTransparencia(base, deIA?.transparencia),
+    transparencia,
     secciones_extra: deIA?.secciones_extra ?? [],
     secciones_ocultas: [...p.ocultas],
     meta: {
@@ -155,6 +199,7 @@ export function construirMetaIaFinanzas(p: {
         margen_por_venta: eco.margen_unitario,
         costos_fijos_con_sueldo: eco.costos_fijos_efectivos,
         caja_necesaria: formatoDinero(proyeccion.caja_necesaria, input.pais),
+        cifras_sin_respaldo: sueltas.map((c) => c.texto),
         perfil_respondido: Object.keys(p.datos.perfil).filter((c) => !sinResponder.includes(c as keyof PerfilNegocio)),
       },
     },

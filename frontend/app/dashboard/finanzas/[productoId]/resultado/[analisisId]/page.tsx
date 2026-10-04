@@ -150,6 +150,8 @@ interface EconomiaUnitaria {
   precio_neto: number;
   impuesto_unitario: number;
   comision_unitaria: number;
+  /** Lo que cuesta por venta lo que se tira (0 en análisis anteriores). */
+  merma_unitaria: number;
   costo_variable_efectivo: number;
   margen_unitario: number;
   costos_fijos_efectivos: number;
@@ -263,6 +265,7 @@ interface InputsFinanzas extends OverrideValues {
   dias_pago?: number | null;
   sueldo_dueno_mensual?: number | null;
   pago_deuda_mensual?: number | null;
+  merma_pct?: number | null;
 }
 
 interface AnalisisFinanzas {
@@ -398,6 +401,7 @@ function normalizeEconomia(raw: unknown): EconomiaUnitaria | null {
     precio_neto: num(e.precio_neto),
     impuesto_unitario: num(e.impuesto_unitario),
     comision_unitaria: num(e.comision_unitaria),
+    merma_unitaria: num(e.merma_unitaria),
     costo_variable_efectivo: num(e.costo_variable_efectivo),
     margen_unitario: num(e.margen_unitario),
     costos_fijos_efectivos: num(e.costos_fijos_efectivos),
@@ -890,8 +894,10 @@ export default function FinanzasResultadoPage() {
     const tasa = extra?.precio_incluye_impuesto ? (extra.tasa_impuesto_consumo ?? taxCfg.consumo.tasa) : 0;
     const pNeto = pv / (1 + tasa);
     const comision = pv * ((extra?.comision_venta_pct ?? 0) / 100);
+    // Lo que se tira encarece cada venta (costo ÷ (1 − merma)), igual que en el backend.
+    const merma = Math.min(Math.max(extra?.merma_pct ?? 0, 0), 90) / 100;
     const cf = cfDeclarados + (extra?.sueldo_dueno_mensual ?? 0);
-    const mc_u = pNeto - cvu - comision;
+    const mc_u = pNeto - cvu / (1 - merma) - comision;
     const mc_pct = pNeto > 0 ? (mc_u / pNeto) * 100 : 0;
     const u_be = mc_u > 0 ? Math.ceil(cf / mc_u) : Infinity;
     const ingresos_be = u_be * pNeto;
@@ -949,6 +955,9 @@ export default function FinanzasResultadoPage() {
   }
   if (eco && eco.comision_unitaria > 0) {
     parametrosExtra.push({ label: 'Comisión por venta', value: `${fmtCurrency(eco.comision_unitaria)} (${inputsExtra.comision_venta_pct ?? 0}%)` });
+  }
+  if (eco && eco.merma_unitaria > 0) {
+    parametrosExtra.push({ label: 'Merma por venta', value: `${fmtCurrency(eco.merma_unitaria)} (${inputsExtra.merma_pct ?? 0}% no se vende)` });
   }
   if ((inputsExtra.sueldo_dueno_mensual ?? 0) > 0) {
     parametrosExtra.push({ label: 'Sueldo del dueño/mes', value: fmtCurrency(inputsExtra.sueldo_dueno_mensual ?? 0) });

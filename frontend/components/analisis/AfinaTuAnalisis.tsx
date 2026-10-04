@@ -49,6 +49,7 @@ const PORQUE_DEFECTO: Record<Campo, string> = {
   dias_cobro: 'Vender a crédito necesita caja extra aunque el negocio sea rentable.',
   dias_pago: 'Pagar a tus proveedores después de cobrar libera caja.',
   pago_deuda_mensual: 'La cuota sale de la caja cada mes, aunque no sea un gasto.',
+  merma_pct: 'Lo que se tira también se paga: cada venta carga con el costo de lo que no se vendió.',
 };
 
 function Numero({
@@ -340,6 +341,18 @@ export default function AfinaTuAnalisis({
           unidad={moneda || undefined}
           max={999_999_999_999}
           placeholder="0 si no tienes deudas"
+        />
+      </Pregunta>
+    ),
+    merma_pct: () => (
+      <Pregunta titulo="¿Qué parte de lo que preparas o compras no se vende? (merma)" porque={explicar('merma_pct')}>
+        <Numero
+          etiqueta="Merma"
+          valor={perfil.merma_pct}
+          onChange={(v) => set('merma_pct', v)}
+          unidad="%"
+          max={90}
+          placeholder="0 si no vendes nada que caduque"
         />
       </Pregunta>
     ),

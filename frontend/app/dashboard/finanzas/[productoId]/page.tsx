@@ -13,7 +13,7 @@ import { leerPerfil, monedaDePais, perfilParaEnviar, type PerfilNegocio } from '
 import { getTaxConfig } from '@/lib/taxConfig';
 
 /** Las preguntas de «Afina tu análisis» que cambian el cálculo financiero. */
-const CAMPOS_PERFIL_FINANZAS = ['precio_incluye_impuesto', 'comision_venta_pct', 'dias_cobro', 'dias_pago', 'pago_deuda_mensual'] as const;
+const CAMPOS_PERFIL_FINANZAS = ['precio_incluye_impuesto', 'comision_venta_pct', 'dias_cobro', 'dias_pago', 'pago_deuda_mensual', 'merma_pct'] as const;
 
 interface Producto {
   id: string;
@@ -300,15 +300,17 @@ export default function FinanzasScopePage() {
   const impuesto = getTaxConfig((producto.pais ?? 'MX').toUpperCase()).consumo;
   const dinero = (n: number) => `${n.toLocaleString('es-MX')} ${moneda}`;
   // El margen que de verdad queda (como economiaUnitaria.ts del backend): sin el
-  // impuesto incluido y con la comisión de la plataforma.
+  // impuesto incluido, con la comisión de la plataforma y con lo que se tira.
   const precio = Number(form.precio_venta);
   const precioNeto = perfil.precio_incluye_impuesto ? precio / (1 + impuesto.tasa) : precio;
   const comision = precio * ((perfil.comision_venta_pct ?? 0) / 100);
+  const merma = Math.min(Math.max(perfil.merma_pct ?? 0, 0), 90) / 100;
+  const costoConMerma = Number(form.costo_variable_unitario) / (1 - merma);
   const margen =
     form.precio_venta && form.costo_variable_unitario && precioNeto > 0
-      ? Math.round(((precioNeto - comision - Number(form.costo_variable_unitario)) / precioNeto) * 100)
+      ? Math.round(((precioNeto - comision - costoConMerma) / precioNeto) * 100)
       : null;
-  const margenAjustado = Boolean(perfil.precio_incluye_impuesto || perfil.comision_venta_pct);
+  const margenAjustado = Boolean(perfil.precio_incluye_impuesto || perfil.comision_venta_pct || perfil.merma_pct);
 
   const crecimientoLabel =
     Number(form.tasa_crecimiento_mensual) <= 5 ? 'Conservador' :

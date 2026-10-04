@@ -53,6 +53,8 @@ export const PerfilNegocioSchema = z
     dias_pago: z.number().int().min(0).max(365).nullable().optional(),
     /** Cuota mensual de las deudas del negocio (capital más intereses). */
     pago_deuda_mensual: dinero('pago_deuda_mensual').nullable().optional(),
+    /** % de lo que se prepara o compra que no se vende (comida y perecederos). */
+    merma_pct: z.number().finite().min(0).max(90).nullable().optional(),
   })
   .strict();
 
@@ -63,6 +65,7 @@ export const CAMPOS_FINANCIEROS = [
   'dias_cobro',
   'dias_pago',
   'pago_deuda_mensual',
+  'merma_pct',
 ] as const;
 
 export type PerfilNegocio = z.infer<typeof PerfilNegocioSchema>;

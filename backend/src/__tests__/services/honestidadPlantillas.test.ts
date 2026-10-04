@@ -61,6 +61,14 @@ describe('Finanzas: el resumen no presume ni inventa referencias', () => {
     expect(resumen.recomendaciones.join(' ')).toContain('comprueba durante unas semanas');
   });
 
+  it('la merma sube el punto de equilibrio y se explica con centavos', () => {
+    const sin = resumir(inputTamales);
+    const con = resumir({ ...inputTamales, merma_pct: 12 });
+    // 17 / 0.88 = 19.32: cada venta carga 2.32 de lo que se tira.
+    expect(con.breakeven.unidades_breakeven_mes).toBeGreaterThan(sin.breakeven.unidades_breakeven_mes);
+    expect(con.resumen.alertas.join(' ')).toContain('te cuesta 2.32 MXN por cada venta');
+  });
+
   it('con ventas de la contabilidad no pide comprobarlas', () => {
     const { resumen } = resumir(inputTamales, true);
     expect(resumen.mensaje_viabilidad).toContain('Con tus ventas reales');

@@ -92,6 +92,8 @@ export async function generarResultadoFinanzas(p: {
       precio_neto: eco.precio_neto,
       precio_incluye_impuesto: input.precio_incluye_impuesto ?? null,
       comision_unitaria: eco.comision_unitaria,
+      merma_pct: input.merma_pct ?? null,
+      merma_unitaria: eco.merma_unitaria,
       margen_unitario: eco.margen_unitario,
       sueldo_dueno_mensual: input.sueldo_dueno_mensual ?? null,
       dias_cobro: input.dias_cobro ?? null,
@@ -120,10 +122,11 @@ export async function generarResultadoFinanzas(p: {
     dias_pago: input.dias_pago ?? null,
     sueldo_dueno_mensual: input.sueldo_dueno_mensual ?? null,
     pago_deuda_mensual: input.pago_deuda_mensual ?? null,
+    merma_pct: input.merma_pct ?? null,
   };
 
   const meta_ia = construirMetaIaFinanzas({
-    datos: { input, proyeccion, breakeven, origenDatos: p.origenDatos, estatus, perfil: p.perfil },
+    datos: { input, proyeccion, breakeven, origenDatos: p.origenDatos, estatus, perfil: p.perfil, categoria: p.producto.categoria },
     riesgos,
     modo,
     ocultas,

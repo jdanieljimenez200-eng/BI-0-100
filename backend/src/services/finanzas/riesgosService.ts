@@ -65,6 +65,9 @@ export interface RiesgosContexto {
   precio_neto?: number;
   precio_incluye_impuesto?: boolean | null;
   comision_unitaria?: number;
+  /** % de lo producido que no se vende y lo que eso cuesta por venta. */
+  merma_pct?: number | null;
+  merma_unitaria?: number;
   margen_unitario?: number;
   sueldo_dueno_mensual?: number | null;
   dias_cobro?: number | null;
@@ -158,11 +161,13 @@ ${textoPerfil(ctx.perfil, tax.moneda)}
   <dias_cobro>${noDeclarado(ctx.dias_cobro, `${ctx.dias_cobro} días`)}</dias_cobro>
   <dias_pago_proveedores>${noDeclarado(ctx.dias_pago, `${ctx.dias_pago} días`)}</dias_pago_proveedores>
   <cuota_deuda_mensual>${d(ctx.pago_deuda_mensual)}</cuota_deuda_mensual>
+  <merma_lo_que_no_se_vende>${noDeclarado(ctx.merma_pct, `${ctx.merma_pct}% de lo producido`)}</merma_lo_que_no_se_vende>
 </datos_declarados>
 
 <calculos_del_sistema moneda="${tax.moneda}">
   <precio_sin_impuesto>${d(ctx.precio_neto ?? ctx.precio_venta)}</precio_sin_impuesto>
   <comision_por_venta>${d(ctx.comision_unitaria ?? 0)}</comision_por_venta>
+  <costo_de_la_merma_por_venta>${d(ctx.merma_unitaria ?? 0)}</costo_de_la_merma_por_venta>
   <margen_por_venta>${d(ctx.margen_unitario ?? ctx.precio_venta - ctx.costo_variable_unitario)}</margen_por_venta>
   <margen_neto_promedio>${ctx.margen_neto_promedio}%</margen_neto_promedio>
   <unidades_equilibrio_mes>${ctx.unidades_breakeven_mes ?? 'no calculado'}</unidades_equilibrio_mes>
