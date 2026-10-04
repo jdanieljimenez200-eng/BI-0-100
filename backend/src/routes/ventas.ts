@@ -15,6 +15,7 @@ import { generarHistoriaMock, generarTipsMock, generarRebatidas, generarFollowUp
 import { redisClient } from '../config/redis';
 import { analysisQueue } from '../workers/analysisQueue';
 import { cobrarCreditos, conCreditos, reembolsarCreditos, responderSinCreditos, CreditosInsuficientesError } from '../services/billing/creditosIA';
+import { conSeguimientoIA, huboFallbackIA } from '../utils/seguimientoIA';
 import { logger } from '../utils/logger';
 import { hoyDePeticion } from '../utils/fechaLocal';
 import { uploadAudio, reservarCupoSubidaPesada } from '../middleware/upload';
@@ -883,43 +884,53 @@ router.post(
       const archivoVideo = archivos?.video?.[0];
       const archivoFoto = archivos?.foto?.[0];
 
-      let analisisComp: AnalisisCompetidor;
-      let origen: 'video' | 'foto' | 'texto';
-      let degradado: boolean;
+      // Se asignan dentro del análisis con seguimiento (más abajo).
+      let analisisComp!: AnalisisCompetidor;
+      let origen!: 'video' | 'foto' | 'texto';
+      let degradado!: boolean;
       // Un cobro por competidor (análisis + comparativa). Se devuelve si algo falla.
       cobroCompetidor = await cobrarCreditos(req.userId!, plan, 'ventas_competidor');
 
-      if (archivoVideo?.buffer?.length) {
-        // Transcripción del video del competidor
-        let transcripcion = typeof req.body?.transcripcion === 'string' ? req.body.transcripcion.trim() : '';
-        if (!transcripcion && isTranscripcionAvailable()) {
-          try {
-            const t = await transcribirAudio(archivoVideo.buffer, archivoVideo.originalname, { idioma: 'es', mimetype: archivoVideo.mimetype });
-            transcripcion = t.texto ?? '';
-          } catch (e) {
-            logger.warn('Transcripción de video de competidor falló, se analiza sin audio:', e);
+      // El análisis corre bajo seguimiento: si la IA falla y sale plantilla, el
+      // crédito se devuelve (antes se cobraba igual).
+      const competidorEstimado = await conSeguimientoIA(
+        async () => {
+          if (archivoVideo?.buffer?.length) {
+            // Transcripción del video del competidor
+            let transcripcion = typeof req.body?.transcripcion === 'string' ? req.body.transcripcion.trim() : '';
+            if (!transcripcion && isTranscripcionAvailable()) {
+              try {
+                const t = await transcribirAudio(archivoVideo.buffer, archivoVideo.originalname, { idioma: 'es', mimetype: archivoVideo.mimetype });
+                transcripcion = t.texto ?? '';
+              } catch (e) {
+                logger.warn('Transcripción de video de competidor falló, se analiza sin audio:', e);
+              }
+            }
+            degradado = !transcripcion;
+            if (!transcripcion) transcripcion = `Video del competidor: ${nombre}`;
+            analisisComp = await analizarCompetidor(nombre, transcripcion, input, contexto);
+            origen = 'video';
+          } else if (archivoFoto?.buffer?.length) {
+            const mediaType = archivoFoto.mimetype.split(';')[0].trim().toLowerCase() as ImagenParaAnalisis['media_type'];
+            const imagen: ImagenParaAnalisis = { base64: archivoFoto.buffer.toString('base64'), media_type: mediaType };
+            analisisComp = await analizarCompetidorFoto(nombre, imagen, input, contexto);
+            origen = 'foto';
+            degradado = false;
+          } else {
+            // Sin vídeo ni foto: si mandaron transcripción/descripción manual se
+            // usa esa; si no, corre sobre un placeholder genérico y se marca
+            // degradado para que el frontend avise que no es un análisis real.
+            const transcripcionManual = typeof req.body?.transcripcion === 'string' ? req.body.transcripcion.trim() : '';
+            degradado = !transcripcionManual;
+            const transcripcion = transcripcionManual || `Competidor: ${nombre}`;
+            analisisComp = await analizarCompetidor(nombre, transcripcion, input, contexto);
+            origen = 'texto';
           }
-        }
-        degradado = !transcripcion;
-        if (!transcripcion) transcripcion = `Video del competidor: ${nombre}`;
-        analisisComp = await analizarCompetidor(nombre, transcripcion, input, contexto);
-        origen = 'video';
-      } else if (archivoFoto?.buffer?.length) {
-        const mediaType = archivoFoto.mimetype.split(';')[0].trim().toLowerCase() as ImagenParaAnalisis['media_type'];
-        const imagen: ImagenParaAnalisis = { base64: archivoFoto.buffer.toString('base64'), media_type: mediaType };
-        analisisComp = await analizarCompetidorFoto(nombre, imagen, input, contexto);
-        origen = 'foto';
-        degradado = false;
-      } else {
-        // Sin vídeo ni foto: si mandaron transcripción/descripción manual se
-        // usa esa; si no, corre sobre un placeholder genérico y se marca
-        // degradado para que el frontend avise que no es un análisis real.
-        const transcripcionManual = typeof req.body?.transcripcion === 'string' ? req.body.transcripcion.trim() : '';
-        degradado = !transcripcionManual;
-        const transcripcion = transcripcionManual || `Competidor: ${nombre}`;
-        analisisComp = await analizarCompetidor(nombre, transcripcion, input, contexto);
-        origen = 'texto';
-      }
+          return huboFallbackIA();
+        },
+        { usuarioId: req.userId!, modulo: 'ventas_competidor' }
+      );
+      if (competidorEstimado) await reembolsarCreditos({ cobroId: cobroCompetidor });
 
       const entradaComp = {
         ...analisisComp,

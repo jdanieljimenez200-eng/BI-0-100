@@ -161,6 +161,14 @@ describe('Legal: prompt compuesto y contrato', () => {
     expect(r.meta?.versiones_prompt['legal.modo'].id).toBe('v4');
   });
 
+  it('a un puesto en la calle le pide permiso de vía pública, no licencia de local', () => {
+    const r = generarAnalisisLegalMock(productoDeCaso(caso('mx_tamales_via_publica')), inputDe('mx_tamales_via_publica'));
+    const nombres = r.permisos_licencias.map((p) => p.nombre);
+    expect(nombres).toContain('Permiso para vender en la vía pública');
+    expect(nombres).not.toContain('Licencia de funcionamiento municipal');
+    expect(JSON.stringify(r)).not.toMatch(/causa más común|causa habitual/);
+  });
+
   it('una sección oculta se pide vacía en el prompt', () => {
     const { iso, meta } = resolverPais('CO');
     const texto = userPromptLegal(

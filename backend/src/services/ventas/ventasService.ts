@@ -282,16 +282,16 @@ export function generarTipsMock(input: VentasAnalisisInput): TipNegociacion[] {
       error_comun: 'Preguntar "¿qué le parece?" invita al "déjelo pensando".',
     },
     {
-      titulo: 'Regla del 70/30 para descuentos',
+      titulo: 'Descuento con tope',
       descripcion:
-        'Descuenta como máximo lo que tu margen aguanta sin entrar en pérdida: nunca más del 10-15% en primera oferta.',
+        'Antes de ofrecer un descuento, calcula cuánto aguanta tu margen: un descuento igual a tu margen te deja vendiendo sin ganar nada.',
       ejemplo_practico:
-        `Si tu margen bruto es ~40%, un descuento del 15% sobre ${d(ticket)} aún deja utilidad; uno del 30% te deja vendiendo para perder.`,
+        `Si tu margen fuera del 40%, un descuento del 15% sobre ${d(ticket)} todavía deja utilidad; uno del 40% te deja sin ganar nada y uno mayor, en pérdida.`,
       error_comun: 'Igualar el precio del competidor bajando precio en vez de sumando valor.',
     },
     {
       titulo: 'Follow-up en 48h o no existió',
-      descripcion: 'La mayoría de las ventas se cierran en el segundo o tercer contacto, no en el primero.',
+      descripcion: 'Muchas ventas no se cierran en el primer contacto: el seguimiento es parte de la venta, no una molestia.',
       ejemplo_practico:
         'Mensaje de seguimiento con un dato nuevo (stock, fecha, caso de uso), nunca un "¿ya lo vio?".',
       error_comun: 'Dar por muerto el lead tras un primer "no por ahora".',
@@ -380,7 +380,13 @@ async function llamarClaudeConImagenes(
   return parseLLMJson(text);
 }
 
-function avisoFallo(que: string, err: unknown): void {
+/**
+ * La IA falló y se entrega la plantilla. Se anota el fallback de la sección:
+ * sin eso, `conCreditos` cobraba la objeción, el guion o el competidor como si
+ * los hubiera hecho la IA.
+ */
+function avisoFallo(que: string, err: unknown, seccion?: string): void {
+  if (seccion) registrarFallbackIA(seccion);
   logger.warn(`[ventas] ${que} con IA falló; se usa la plantilla`, { error: err instanceof Error ? err.message : String(err) });
 }
 
@@ -477,7 +483,6 @@ export const PerfilClienteSchema = z.object({
 
 export function generarPerfilClienteMock(input: VentasAnalisisInput): PerfilClienteIdeal {
   const ticket = input.ticket_promedio > 0 ? input.ticket_promedio : 500;
-  const esB2B = input.tipo_venta === 'B2B';
   // La escala AMAI (C+, C…) es mexicana: en otro país se describe.
   const esMexico = (input.pais || 'MX') === 'MX';
   const nse = ticket > 1000 ? (esMexico ? 'B, C+' : 'Medio-alto') : esMexico ? 'C+, C' : 'Medio';
@@ -495,10 +500,11 @@ export function generarPerfilClienteMock(input: VentasAnalisisInput): PerfilClie
   ].slice(0, 3);
   return {
     demograficos: {
-      edad_rango: esB2B ? '30-50 años' : '25-42 años',
+      // Sin IA no hay de dónde sacar la edad: se pide en vez de inventarla.
+      edad_rango: 'Por confirmar con tus clientes reales',
       genero_predominante: 'Mixto',
       nivel_socioeconomico: nse,
-      ubicacion_tipica: 'Zona urbana y suburbana, radio 5-10 km del punto de venta',
+      ubicacion_tipica: 'Por confirmar: ¿de qué zonas vienen tus clientes?',
     },
     psicografia: {
       miedos_principales: [
@@ -595,7 +601,7 @@ Escribe la rebatida de cada objeción. Devuelve SOLO el objeto JSON.`;
     const parsed = RebatidasOutputSchema.parse(await llamarClaude(sistema.system, prompt, 'ventas.objeciones'));
     return parsed.rebatidas;
   } catch (err) {
-    avisoFallo('Rebatidas', err);
+    avisoFallo('Rebatidas', err, 'ventas.objeciones');
     return generarRebatidasMock(perfil);
   }
 }
@@ -653,7 +659,7 @@ Formato JSON: {"mensajes":[{"momento","mensaje"}]}
     const parsed = FollowUpsOutputSchema.parse(await llamarClaude(sistema.system, prompt, 'ventas.followups', 'mecanica'));
     return parsed.mensajes;
   } catch (err) {
-    avisoFallo('Seguimientos', err);
+    avisoFallo('Seguimientos', err, 'ventas.followups');
     return generarFollowUpsMock(input);
   }
 }
@@ -713,7 +719,7 @@ Formato JSON: {"keywords_busqueda":[...],"intereses_meta":[...]}`;
     const parsed = PalabrasClaveAdsSchema.parse(await llamarClaude(sistema.system, prompt, 'ventas.palabras_clave', 'mecanica'));
     return parsed;
   } catch (err) {
-    avisoFallo('Palabras clave', err);
+    avisoFallo('Palabras clave', err, 'ventas.palabras_clave');
     return generarPalabrasClaveAdsMock(perfil);
   }
 }
@@ -742,16 +748,20 @@ export function evaluarGuionMock(
   const palabras = guion.trim().split(/\s+/).length;
   const tieneCTA = /compra|llama|escríb|contácta|agenda|reser|pide/i.test(guion);
   const tieneUrgencia = /hoy|ahora|últim|limit|oferta|descuento/i.test(guion);
+  const primeraFrase = guion.trim().split(/[.!\n]/)[0] ?? '';
+  const hookConGancho = /[¿?]|\d/.test(primeraFrase);
   const score = Math.min(85, 40 + (tieneCTA ? 20 : 0) + (tieneUrgencia ? 10 : 0) + Math.min(15, Math.floor(palabras / 10)));
 
   return {
     score_general: score,
-    resumen: `El guion tiene ${palabras} palabras. ${tieneCTA ? 'Tiene un CTA claro.' : 'Le falta un CTA directo.'} ${tieneUrgencia ? 'Genera urgencia.' : 'No comunica urgencia.'}`,
+    resumen: `Revisión básica sin IA: el guion tiene ${palabras} palabras. ${tieneCTA ? 'Tiene un CTA claro.' : 'Le falta un CTA directo.'} ${tieneUrgencia ? 'Genera urgencia.' : 'No comunica urgencia.'}`,
     metricas: [
       {
         nombre: 'Fuerza del Hook',
-        score: tieneCTA ? 70 : 45,
-        explicacion: 'El inicio debe capturar atención en los primeros 2-3 segundos.',
+        score: hookConGancho ? 70 : 45,
+        explicacion: hookConGancho
+          ? 'La primera frase abre con una pregunta o un dato concreto.'
+          : 'La primera frase no abre con una pregunta ni con un dato concreto.',
         mejora: 'Empieza con una pregunta o dato que interrumpa el scroll.',
       },
       {
@@ -760,31 +770,19 @@ export function evaluarGuionMock(
         explicacion: tieneCTA ? 'El guion indica qué debe hacer el cliente.' : 'No queda claro qué debe hacer el cliente después de leer.',
         mejora: tieneCTA ? 'Agrega fricción cero: número de WhatsApp directo o botón.' : 'Añade un CTA único: "Escríbenos ahora al [número]".',
       },
-      {
-        nombre: 'Alineación con ICP',
-        score: 65,
-        explicacion: 'El lenguaje debe resonar con los miedos y deseos del cliente ideal.',
-        mejora: 'Menciona el problema específico del cliente antes de ofrecer la solución.',
-      },
-      {
-        nombre: 'Manejo de Objeciones',
-        score: 50,
-        explicacion: 'Las objeciones típicas no están anticipadas en el texto.',
-        mejora: 'Agrega una línea que responda la objeción más común: precio, confianza o disponibilidad.',
-      },
+      // La alineación con el cliente ideal y el manejo de objeciones no se
+      // pueden medir sin IA: antes salían con un 65 y un 50 fijos.
     ],
     puntos_fuertes: [
-      tieneCTA ? 'Incluye un llamado a la acción' : 'Texto directo y sin relleno',
-      'Lenguaje sencillo y entendible',
+      tieneCTA ? 'Incluye un llamado a la acción' : palabras <= 120 ? 'Texto breve' : 'Tiene contenido para recortar y ordenar',
     ],
     puntos_debiles: [
       !tieneCTA ? 'Falta CTA claro' : 'CTA podría ser más urgente',
-      !tieneUrgencia ? 'No genera urgencia ni escasez' : 'La urgencia podría ser más específica',
-      'No aborda la objeción principal del cliente',
+      !tieneUrgencia ? 'No da una razón para actuar hoy' : 'La urgencia podría ser más específica',
     ],
     // Sin testimonios inventados: la prueba social queda como hueco a llenar.
     version_mejorada:
-      `[Hook] ¿Sabías que ${_input.nombre_producto || 'nuestro producto'} puede resolver tu problema en menos de 24 horas?\n\n` +
+      `[Hook] [Una pregunta sobre el problema que resuelve ${_input.nombre_producto || 'tu producto'}]\n\n` +
       `[Propuesta] ${guion.slice(0, 120).trim()}...\n\n` +
       `[Prueba social] [Una reseña o resultado real de un cliente tuyo]\n\n` +
       `[CTA] Escríbenos HOY al WhatsApp y te damos más info sin compromiso. ↙️`,
@@ -817,7 +815,7 @@ Evalúa este guion. Devuelve SOLO el objeto JSON.`;
     const raw = await llamarClaude(sistema.system, prompt, 'ventas.guion');
     return EvaluacionGuionSchema.parse(raw) as EvaluacionGuion;
   } catch (err) {
-    avisoFallo('Evaluación de guion', err);
+    avisoFallo('Evaluación de guion', err, 'ventas.guion');
     return evaluarGuionMock(guion, input);
   }
 }
@@ -859,7 +857,7 @@ Analiza estos frames de un video de pitch de venta, capturados en distintos mome
     const parsed = MetricasVisualesSchema.parse(raw);
     return { ...base, metricas_visuales: parsed.metricas_visuales };
   } catch (err) {
-    avisoFallo('Evaluación visual del video', err);
+    avisoFallo('Evaluación visual del video', err, 'ventas.guion_video');
     return base;
   }
 }
@@ -889,22 +887,26 @@ const ComparativaSchema = z.object({
   tabla_comparativa: z.array(z.record(z.string())),
 });
 
+/**
+ * Respaldo cuando la IA no pudo analizar al competidor. Antes describía un
+ * video que nadie había revisado («muestra el producto en uso», «CTA:
+ * Contáctanos ahora»). Ahora solo dice lo que se puede leer en el texto
+ * recibido y marca lo demás como pendiente.
+ */
 export function analizarCompetidorMock(nombre: string, transcripcion: string): AnalisisCompetidor {
+  const texto = transcripcion.trim();
+  const hayTexto = texto.length >= 40 && !texto.startsWith('[foto]') && !/^(Competidor|Video del competidor):/.test(texto);
+  const cta = texto.match(/[^.!?\n]*(compra|llam|escr[ií]b|cont[aá]ct|agend|reserv|pide|visit|link|enlace)[^.!?\n]*[.!?]?/i)?.[0]?.trim();
+  const pendiente = 'Sin analizar: la IA no estuvo disponible. Vuelve a intentarlo más tarde.';
   return {
     nombre,
-    hook_primeros_segundos: `Introduce el problema que resuelve y muestra el producto en los primeros 3 segundos.`,
-    propuesta_valor: `Precio accesible + entrega rápida.`,
-    tono: 'Directo y aspiracional',
-    puntos_fuertes: [
-      'Muestra el producto en uso',
-      'CTA claro al final',
-    ],
-    puntos_debiles: [
-      'No resuelve objeciones de precio',
-      'No muestra prueba social',
-    ],
-    estructura_contenido: 'Problema → Producto → Precio → CTA',
-    cta_usado: `"Contáctanos ahora"`,
+    hook_primeros_segundos: hayTexto ? `Empieza con: «${texto.split(/\s+/).slice(0, 15).join(' ')}…»` : pendiente,
+    propuesta_valor: pendiente,
+    tono: 'Sin analizar',
+    puntos_fuertes: hayTexto && cta ? ['Cierra pidiendo una acción concreta'] : ['Sin analizar'],
+    puntos_debiles: hayTexto && !cta ? ['No se detectó una llamada a la acción clara'] : ['Sin analizar'],
+    estructura_contenido: 'Sin analizar',
+    cta_usado: cta ? `"${cta}"` : hayTexto ? 'Ninguno detectado' : 'Sin analizar',
   };
 }
 
@@ -979,7 +981,7 @@ Analiza este competidor (usa su nombre tal cual en "nombre"). Devuelve SOLO el o
     const raw = await llamarClaude(sistema.system, prompt, 'ventas.competidor');
     return CompetidorSchema.parse(raw) as AnalisisCompetidor;
   } catch (err) {
-    avisoFallo('Análisis de competidor', err);
+    avisoFallo('Análisis de competidor', err, 'ventas.competidor');
     return analizarCompetidorMock(nombre, transcripcion);
   }
 }
@@ -1007,7 +1009,7 @@ Analiza esta FOTO (anuncio, publicación, empaque o local) del competidor "${san
     const raw = await llamarClaudeConImagenes(sistema.system, userText, [imagen], 'ventas.competidor_foto');
     return CompetidorSchema.parse(raw) as AnalisisCompetidor;
   } catch (err) {
-    avisoFallo('Análisis de foto de competidor', err);
+    avisoFallo('Análisis de foto de competidor', err, 'ventas.competidor_foto');
     return analizarCompetidorMock(nombre, `[foto] ${nombre}`);
   }
 }
@@ -1039,7 +1041,7 @@ Mi producto se llama "${sanitizeForLLM(miProducto.nombre, { maxLen: 100 })}". Ge
     const parsed = ComparativaSchema.parse(raw);
     return parsed as ComparativaCompetidores;
   } catch (err) {
-    avisoFallo('Comparativa de competidores', err);
+    avisoFallo('Comparativa de competidores', err, 'ventas.comparativa');
     return generarComparativaMock(miProducto, competidores);
   }
 }

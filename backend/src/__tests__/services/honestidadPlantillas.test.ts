@@ -4,6 +4,16 @@ import { calcularBreakeven } from '../../services/finanzas/breakevenService';
 import { generarEstrategias } from '../../services/marketing/posicionamientoService';
 import { CASOS_FINANZAS } from '../../services/ia/casosPruebaFinanzas';
 import type { FinanzasInput } from '../../services/finanzas/types';
+import { generarAnalisisLegalMock } from '../../services/legal/legalService';
+import { CASOS_LEGAL, productoDeCaso } from '../../services/ia/casosPrueba';
+import {
+  analizarCompetidorMock,
+  evaluarGuionMock,
+  generarPerfilClienteMock,
+  generarRebatidasMock,
+  generarTipsMock,
+} from '../../services/ventas/ventasService';
+import { CASOS_VENTAS } from '../../services/ia/casosPruebaVentas';
 
 /**
  * Lo que arma el código (no la IA) tampoco puede decir cosas que no son.
@@ -34,6 +44,13 @@ const SIN_RESPALDO = [
   /normalmente está en/i,
   /80 ?% de ventas/i,
   /25 ?% de leads/i,
+  /causa más común/i,
+  /causa habitual/i,
+  /La mayoría de las ventas/i,
+  /Muestra el producto en uso/i,
+  /Alta competencia establecida/i,
+  /proveedores mejor evaluados/i,
+  /menos de 24 horas/i,
 ];
 
 function sinRespaldo(texto: string): string[] {
@@ -135,6 +152,28 @@ describe('Marketing: la plantilla no rellena con canales ni ofertas que el negoc
 
   it('ningún texto de las estrategias usa frases sin respaldo', () => {
     const texto = JSON.stringify([...estrategias(), ...generarEstrategias('Taller El Rayo', 'Servicios', 'servicio', 450, 6000)]);
+    expect(sinRespaldo(texto)).toEqual([]);
+  });
+});
+
+describe('Legal y Ventas: las plantillas tampoco usan frases sin respaldo', () => {
+  it.each(CASOS_LEGAL.map((c) => c.id))('Legal %s', (id) => {
+    const caso = CASOS_LEGAL.find((c) => c.id === id)!;
+    const r = generarAnalisisLegalMock(productoDeCaso(caso), { ...caso.input, productoId: 'p', usuarioId: 'u' });
+    expect(sinRespaldo(JSON.stringify(r))).toEqual([]);
+  });
+
+  it.each(CASOS_VENTAS.map((c) => c.id))('Ventas %s', (id) => {
+    const caso = CASOS_VENTAS.find((c) => c.id === id)!;
+    const input = { ...caso.input, pais: caso.pais } as Parameters<typeof generarTipsMock>[0];
+    const perfil = generarPerfilClienteMock(input);
+    const texto = JSON.stringify([
+      generarTipsMock(input),
+      perfil,
+      generarRebatidasMock(perfil),
+      evaluarGuionMock('Hola, te ofrezco nuestro servicio. Escríbenos.', input),
+      analizarCompetidorMock('La Competencia', 'Video del competidor: La Competencia'),
+    ]);
     expect(sinRespaldo(texto)).toEqual([]);
   });
 });

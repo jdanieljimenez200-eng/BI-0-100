@@ -944,6 +944,10 @@ export default function FinanzasResultadoPage() {
   const proy = normalizeProyeccion(analisis.proyeccion_data);
   const be = normalizeBreakeven(analisis.breakeven_data);
   const res = normalizeResumen(analisis.resumen_data, proy, analisis);
+  // Con una inversión muy chica el ROI se dispara (un puesto de $25,000 salía
+  // con «2658 %») sin decirle nada útil al dueño: se muestra en cuánto la recupera.
+  const roiDesbordado = res.base_roi === 'inversion_inicial' && res.roi_anual > 300 && res.payback_meses !== null;
+  const recuperaEn = res.payback_meses !== null && res.payback_meses <= 1 ? 'menos de 1 mes' : `${res.payback_meses} meses`;
   const riesgos = normalizeRiesgos(analisis.riesgos_data);
   const inp = normalizeInputs(analisis.inputs_data);
   // Lo que entró al cálculo además de lo editable (análisis viejos: nada).
@@ -1056,7 +1060,9 @@ export default function FinanzasResultadoPage() {
                   'text-red-300 bg-red-500/15 border-red-500/30'
                 }`}>Viabilidad {res.viabilidad}</div>
                 <div className="text-[10px] font-medium text-emerald-400/60 uppercase tracking-widest">
-                  {res.base_roi === 'inversion_inicial' ? 'ROI' : 'Retorno s/ costos fijos'}: {res.roi_anual}% anual
+                  {roiDesbordado
+                    ? `Recuperas la inversión en ${recuperaEn}`
+                    : `${res.base_roi === 'inversion_inicial' ? 'ROI' : 'Retorno s/ costos fijos'}: ${res.roi_anual}% anual`}
                 </div>
               </>
             )}
@@ -1107,8 +1113,8 @@ export default function FinanzasResultadoPage() {
             {
               // Sin inversión declarada esto mide utilidad contra costos fijos,
               // que no es ROI: la etiqueta lo dice en vez de disfrazarlo.
-              label: res.base_roi === 'inversion_inicial' ? 'ROI anual' : 'Retorno s/ costos fijos',
-              value: `${res.roi_anual}%`,
+              label: roiDesbordado ? 'Recuperas la inversión en' : res.base_roi === 'inversion_inicial' ? 'ROI anual' : 'Retorno s/ costos fijos',
+              value: roiDesbordado ? recuperaEn : `${res.roi_anual}%`,
               icon: (
                 <Target className="w-5 h-5 text-blue-400" strokeWidth={1.8} />
               ),

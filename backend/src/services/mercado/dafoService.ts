@@ -10,36 +10,56 @@ import { logger } from '../../utils/logger';
 
 // ─── DAFO template cuando no hay API key ─────────────────────────────────────
 
+/**
+ * DAFO de respaldo. Solo afirma lo que se sabe (si el negocio ya opera, qué
+ * devolvieron las fuentes de competencia y tendencia); lo demás va como
+ * pregunta o como acción, no como hecho. Antes decía «Alta competencia
+ * establecida: 0 competidores detectados» cuando no había fuente, «Marca
+ * nueva» a negocios que ya operan y «contacta a los 3 proveedores mejor
+ * evaluados del análisis» sin que el análisis evaluara proveedores.
+ */
 function dafoTemplate(
   producto: { nombre: string; categoria: string },
   competencia: CompetenciaResult,
   tendencias: TendenciasResult,
-  pais?: string
+  pais?: string,
+  estatus?: EstatusProyecto
 ): DafoResult {
   const paisNombre = getPaisNombre(pais ?? 'MX');
   const moneda = getMoneda(pais ?? 'MX');
+  const enMarcha = estatus === 'en_marcha';
+  const hayCompetencia = competencia.fuente_disponible && competencia.total_competidores > 0;
+  const hayTendencia = tendencias.fuente_disponible;
   return {
     debilidades: [
-      { titulo: 'Marca nueva', descripcion: 'Sin reputación establecida en el mercado', impacto: 'alto', mitigacion: 'Enfocarse en calidad y satisfacción del cliente para construir reputación rápido' },
-      { titulo: 'Capital inicial limitado', descripcion: 'Presupuesto acotado limita alcance de marketing inicial', impacto: 'medio', mitigacion: 'Priorizar canales orgánicos: redes sociales, boca a boca, SEO local' },
-      { titulo: 'Sin red de distribución establecida', descripcion: 'Falta de alianzas logísticas para escalar', impacto: 'medio', mitigacion: 'Iniciar con plataformas existentes (MercadoLibre, marketplace local) antes de logística propia' },
+      enMarcha
+        ? { titulo: 'Qué tan conocida es tu marca', descripcion: 'Sin datos de reconocimiento: mide cuántos clientes llegan por recomendación y cuántos repiten.', impacto: 'medio', mitigacion: 'Pide a cada cliente que te diga cómo te conoció y anótalo durante un mes.' }
+        : { titulo: 'Marca nueva', descripcion: 'Todavía no tienes clientes que te recomienden.', impacto: 'alto', mitigacion: 'Consigue tus primeras reseñas reales y pide permiso para mostrarlas.' },
+      { titulo: 'Presupuesto de marketing por definir', descripcion: 'El análisis no conoce tu presupuesto: con poco, conviene empezar por canales sin costo.', impacto: 'medio', mitigacion: 'Prioriza canales orgánicos: redes sociales, boca a boca y tu ficha en mapas.' },
+      { titulo: 'Capacidad de entrega por confirmar', descripcion: 'Revisa cuánto puedes producir o atender si la demanda sube de golpe.', impacto: 'medio', mitigacion: 'Define tu tope semanal antes de promocionarte.' },
     ],
     amenazas: [
-      { titulo: `Alta competencia establecida`, descripcion: `${competencia.total_competidores} competidores detectados en el mercado`, probabilidad: 'alta', mitigacion: 'Diferenciarse por nicho específico o propuesta de valor única' },
-      { titulo: 'Volatilidad económica', descripcion: 'Inflación y tipo de cambio afectan costos e ingresos', probabilidad: 'media', mitigacion: 'Establecer contratos fijos con proveedores y revisar precios trimestralmente' },
-      { titulo: tendencias.tendencia === 'DECRECIENTE' ? 'Demanda decreciente' : 'Entrada de nuevos competidores', descripcion: tendencias.tendencia === 'DECRECIENTE' ? 'Tendencia a la baja en búsquedas del producto' : 'Mercado atractivo puede atraer nuevos jugadores', probabilidad: 'media', mitigacion: tendencias.tendencia === 'DECRECIENTE' ? 'Pivotar hacia segmento en crecimiento o expandir categorías' : 'Construir barreras de entrada: marca, fidelización, precio' },
+      hayCompetencia
+        ? { titulo: 'Competencia en el mercado', descripcion: `${competencia.total_competidores} competidores detectados en las fuentes consultadas`, probabilidad: competencia.total_competidores >= 10 ? 'alta' : 'media', mitigacion: 'Diferénciate por un nicho específico o por tu propuesta de valor.' }
+        : { titulo: 'Competencia sin medir', descripcion: 'No hubo fuente de competencia para este análisis: no sabemos cuántos competidores hay.', probabilidad: 'media', mitigacion: 'Visita o busca a 3 competidores cercanos y anota precio, oferta y horario.' },
+      { titulo: 'Costos que suben', descripcion: 'Si tus insumos suben de precio, el margen se reduce aunque vendas lo mismo.', probabilidad: 'media', mitigacion: 'Revisa tus costos y precios cada trimestre.' },
+      hayTendencia && tendencias.tendencia === 'DECRECIENTE'
+        ? { titulo: 'Demanda decreciente', descripcion: 'Las búsquedas del producto van a la baja en la fuente consultada.', probabilidad: 'media', mitigacion: 'Busca el segmento que sí crece o amplía la oferta.' }
+        : { titulo: 'Nuevos competidores', descripcion: 'Si el negocio funciona, otros pueden copiarlo.', probabilidad: 'media', mitigacion: 'Construye lo que no se copia fácil: trato, fidelidad y marca.' },
     ],
     fortalezas: [
-      { titulo: 'Agilidad de startup', descripcion: 'Capacidad de adaptarse rápido vs competidores grandes', impacto: 'alto', apalancamiento: 'Implementar feedback loops cortos: lanzar, medir, iterar semanalmente' },
       competencia.gap_detectado
-        ? { titulo: 'Oportunidad de nicho detectada', descripcion: competencia.gap_detectado, impacto: 'alto', apalancamiento: 'Comunicar claramente la propuesta de valor en todos los canales' }
-        : { titulo: 'Referencia de precio del mercado', descripcion: competencia.precio_mercado_promedio > 0 ? `El precio promedio detectado es de ${competencia.precio_mercado_promedio} ${moneda}: úsalo para posicionar el tuyo.` : 'Sin precio de referencia del mercado: valida tu precio con clientes antes de fijarlo.', impacto: 'medio', apalancamiento: 'Comunicar claramente la propuesta de valor en todos los canales' },
-      { titulo: 'Conocimiento local del mercado', descripcion: 'Mejor entendimiento del cliente objetivo que competidores nacionales', impacto: 'medio', apalancamiento: 'Personalizar producto y comunicación al contexto local' },
+        ? { titulo: 'Oportunidad de nicho detectada', descripcion: competencia.gap_detectado, impacto: 'alto', apalancamiento: 'Comunica esa diferencia en todos tus canales.' }
+        : { titulo: 'Referencia de precio del mercado', descripcion: competencia.precio_mercado_promedio > 0 ? `El precio promedio detectado es de ${competencia.precio_mercado_promedio} ${moneda}: úsalo para posicionar el tuyo.` : 'Sin precio de referencia del mercado: valida tu precio con clientes antes de fijarlo.', impacto: 'medio', apalancamiento: 'Comunica tu propuesta de valor con el precio como contexto.' },
+      { titulo: 'Tamaño para moverte rápido', descripcion: 'Un negocio pequeño puede cambiar oferta, precio u horario de un día para otro.', impacto: 'medio', apalancamiento: 'Prueba un cambio por semana y mide qué pasa con las ventas.' },
+      { titulo: 'Cercanía con tus clientes', descripcion: 'Puedes hablar directo con quien te compra.', impacto: 'medio', apalancamiento: 'Pregunta a tus clientes qué les falta y ajusta la oferta.' },
     ],
     oportunidades: [
-      { titulo: tendencias.tendencia === 'CRECIENTE' ? `Mercado en crecimiento (+${tendencias.crecimiento_porcentaje}%)` : 'Digitalización del comercio', descripcion: tendencias.tendencia === 'CRECIENTE' ? 'Demanda creciente da espacio para nuevos jugadores' : 'Más compradores adoptando comercio en línea año a año', potencial: 'muy alto', accion: 'Lanzar presencia digital sólida antes de que el mercado se sature' },
-      { titulo: 'TikTok y redes sociales como canal de adquisición', descripcion: `Canales de bajo costo para marcas nuevas en ${paisNombre}`, potencial: 'alto', accion: 'Crear contenido educativo/entretenido sobre el producto 3-5 veces por semana' },
-      { titulo: 'Colaboraciones con proveedores locales', descripcion: 'Reducir costos y tiempos de entrega con proveedores cercanos', potencial: 'medio', accion: `Contactar a los ${Math.min(competencia.total_competidores, 3)} proveedores mejor evaluados del análisis` },
+      hayTendencia && tendencias.tendencia === 'CRECIENTE'
+        ? { titulo: `Mercado en crecimiento (+${tendencias.crecimiento_porcentaje}%)`, descripcion: 'Las búsquedas del producto suben en la fuente consultada.', potencial: 'muy alto', accion: 'Asegura tu presencia digital mientras la demanda crece.' }
+        : { titulo: 'Presencia digital', descripcion: hayTendencia ? 'La demanda en búsquedas se ve estable.' : 'No hubo fuente de tendencias para este análisis.', potencial: 'alto', accion: 'Ten al día tu ficha en mapas y un canal de pedidos (WhatsApp o redes).' },
+      { titulo: 'Redes sociales como canal de adquisición', descripcion: `Canales sin costo de entrada en ${paisNombre}`, potencial: 'alto', accion: 'Publica contenido sobre el producto 3-5 veces por semana y mide cuál trae mensajes.' },
+      { titulo: 'Proveedores cercanos', descripcion: 'Un proveedor cerca puede bajar costos y tiempos de entrega.', potencial: 'medio', accion: 'Cotiza con 2 o 3 proveedores de tu zona y compara precio y tiempos.' },
     ],
     es_mock: true,
   };
@@ -260,13 +280,13 @@ export async function generarDafo(
   contextoExtra?: DafoContextoExtra
 ): Promise<DafoResult> {
   if (!hayClaveAnthropic()) {
-    return dafoTemplate(producto, competencia, tendencias, contextoExtra?.pais);
+    return dafoTemplate(producto, competencia, tendencias, contextoExtra?.pais, contextoExtra?.estatus);
   }
   try {
     return await claudeDafo(producto, competencia, tendencias, viabilidad, contextoExtra);
   } catch (err) {
     registrarFallbackIA('mercado.dafo');
     logger.warn('[mercado] DAFO con IA falló; se usa la plantilla', { error: err instanceof Error ? err.message : String(err) });
-    return dafoTemplate(producto, competencia, tendencias, contextoExtra?.pais);
+    return dafoTemplate(producto, competencia, tendencias, contextoExtra?.pais, contextoExtra?.estatus);
   }
 }

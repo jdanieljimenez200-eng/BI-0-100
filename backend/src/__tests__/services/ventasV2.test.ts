@@ -1,9 +1,12 @@
 import { crearMensaje, hayClaveAnthropic } from '../../config/anthropic';
 import { AppDataSource } from '../../config/database';
-import { conSeguimientoIA } from '../../utils/seguimientoIA';
+import { conSeguimientoIA, huboFallbackIA } from '../../utils/seguimientoIA';
 import {
+  analizarCompetidor,
+  analizarCompetidorMock,
   ctxProducto,
   evaluarGuionMock,
+  generarRebatidas,
   generarFollowUps,
   generarHistoriaDiaria,
   generarPerfilClienteMock,
@@ -298,5 +301,61 @@ describe('probarCasoVentas', () => {
     // El caso trae el embudo completo: la IA no puede subir la confianza por encima de lo que fija el código.
     expect(r.meta_ia.transparencia.nivel_confianza).toBe('alto');
     expect(r.meta_ia.transparencia.supuestos.join(' ')).not.toMatch(/caso compuesto/);
+  });
+});
+
+// ─── Plantillas que no inventan y créditos que se devuelven ─────────────────
+
+describe('Ventas: si la IA falla no se cobra ni se inventa', () => {
+  it('una acción con créditos que cae a plantilla anota el fallback (y conCreditos devuelve el crédito)', async () => {
+    mockClave.mockReturnValue(true);
+    const original = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-prueba';
+    try {
+      mockCrear.mockRejectedValue(new Error('overloaded'));
+      const perfil = generarPerfilClienteMock(inputCO);
+      const objeciones = await conSeguimientoIA(async () => {
+        await generarRebatidas(perfil, inputCO);
+        return huboFallbackIA();
+      });
+      const competidor = await conSeguimientoIA(async () => {
+        await analizarCompetidor('La Competencia', 'Texto del anuncio', inputCO);
+        return huboFallbackIA();
+      });
+      expect(objeciones).toBe(true);
+      expect(competidor).toBe(true);
+    } finally {
+      process.env.ANTHROPIC_API_KEY = original;
+      mockCrear.mockReset();
+    }
+  });
+
+  it('el competidor sin IA no describe un video que nadie revisó', () => {
+    const sinContenido = analizarCompetidorMock('La Competencia', 'Video del competidor: La Competencia');
+    expect(sinContenido.propuesta_valor).toMatch(/^Sin analizar/);
+    expect(sinContenido.hook_primeros_segundos).toMatch(/^Sin analizar/);
+    expect(JSON.stringify(sinContenido)).not.toMatch(/Muestra el producto en uso|Contáctanos ahora|Precio accesible/);
+
+    const conTexto = analizarCompetidorMock(
+      'La Competencia',
+      'Hola, somos la mejor opción de la ciudad para tu negocio. Escríbenos por WhatsApp y agenda tu cita hoy mismo.'
+    );
+    expect(conTexto.hook_primeros_segundos).toMatch(/^Empieza con: «Hola, somos la mejor opción/);
+    expect(conTexto.cta_usado).toContain('Escríbenos por WhatsApp');
+  });
+
+  it('el guion sin IA no pone notas que no puede medir ni promete plazos', () => {
+    const e = evaluarGuionMock('¿Te cansaste de esperar? Pide tu pedido hoy por WhatsApp.', inputCO);
+    expect(e.resumen).toMatch(/^Revisión básica sin IA/);
+    expect(e.metricas.map((m) => m.nombre)).not.toContain('Alineación con ICP');
+    expect(e.metricas.map((m) => m.nombre)).not.toContain('Manejo de Objeciones');
+    expect(e.version_mejorada).not.toMatch(/menos de 24 horas/);
+  });
+
+  it('los tips y el perfil de plantilla no traen estadísticas ni datos del cliente inventados', () => {
+    const texto = JSON.stringify([generarTipsMock(inputCO), generarPerfilClienteMock(inputCO)]);
+    expect(texto).not.toMatch(/La mayoría|Regla del 70\/30|25-42|30-50 años|radio 5-10 km/);
+    // La cuenta del descuento es correcta: con 40 % de margen, un 30 % todavía deja utilidad.
+    expect(texto).not.toMatch(/uno del 30% te deja vendiendo para perder/);
   });
 });

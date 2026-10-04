@@ -464,22 +464,38 @@ function permisosMock(
         `Debe coincidir con el giro real del negocio (${giroBase(producto, input)}).`,
       obligatorio: true,
       nivel_riesgo: 'alto',
-      plazo_tramite: '1-5 días hábiles',
+      plazo_tramite: '1-5 días hábiles aprox.',
       costo_estimado: 'Gratuito',
       url_tramite: urlOficial(meta.portal_principal, meta),
     },
-    {
-      nombre: meta.licencia_local,
-      autoridad: 'Autoridad municipal o local del domicilio del negocio',
-      descripcion:
-        `Autoriza operar en el domicilio declarado${input.estado_constitucion ? ` (${input.estado_constitucion})` : ''}. ` +
-        'Su ausencia es la causa más común de clausura en inspección, incluso cuando lo fiscal está en orden.',
-      obligatorio: true,
-      nivel_riesgo: 'alto',
-      plazo_tramite: '10-30 días hábiles',
-      costo_estimado: `Variable según municipio y superficie (${meta.moneda}, aprox.)`,
-      url_tramite: urlOficial(meta.portal_principal, meta),
-    },
+    // Un puesto en la calle no saca licencia de local: necesita permiso para
+    // ocupar la vía pública (antes se le pedía la licencia de funcionamiento).
+    perfil.local_fisico === 'via_publica'
+      ? {
+          nombre: 'Permiso para vender en la vía pública',
+          autoridad: 'Autoridad municipal o local (alcaldía, municipio o intendencia)',
+          descripcion:
+            `Un puesto en la calle necesita permiso de la autoridad local para ocupar el espacio público${input.estado_constitucion ? ` (${input.estado_constitucion})` : ''} ` +
+            'y suele pagar un derecho por usarlo. Sin él, la autoridad puede retirar el puesto y la mercancía. ' +
+            'Las cuotas que piden organizaciones o líderes no sustituyen el permiso.',
+          obligatorio: true,
+          nivel_riesgo: 'alto',
+          plazo_tramite: 'Variable según el municipio',
+          costo_estimado: `Derecho por uso de la vía pública, variable (${meta.moneda})`,
+          url_tramite: urlOficial(meta.portal_principal, meta),
+        }
+      : {
+          nombre: meta.licencia_local,
+          autoridad: 'Autoridad municipal o local del domicilio del negocio',
+          descripcion:
+            `Autoriza operar en el domicilio declarado${input.estado_constitucion ? ` (${input.estado_constitucion})` : ''}. ` +
+            'Sin ella, una inspección puede terminar en clausura aunque lo fiscal esté en orden.',
+          obligatorio: true,
+          nivel_riesgo: 'alto',
+          plazo_tramite: '10-30 días hábiles aprox.',
+          costo_estimado: `Variable según municipio y superficie (${meta.moneda}, aprox.)`,
+          url_tramite: urlOficial(meta.portal_principal, meta),
+        },
     {
       nombre: `Registro de marca ante ${meta.propiedad_industrial.nombre}`,
       autoridad: meta.propiedad_industrial.nombre,
@@ -488,7 +504,7 @@ function permisosMock(
         'pero sin registro puedes verte obligado a cambiar de nombre después de haber invertido en marca.',
       obligatorio: false,
       nivel_riesgo: 'medio',
-      plazo_tramite: '4-8 meses',
+      plazo_tramite: '4-8 meses aprox.',
       costo_estimado: `Tarifa oficial por clase (${meta.moneda}, aprox.)`,
       url_tramite: urlOficial(meta.propiedad_industrial.url, meta),
     },
@@ -503,7 +519,7 @@ function permisosMock(
         'del manejo de insumos y del personal que los procesa.',
       obligatorio: true,
       nivel_riesgo: 'alto',
-      plazo_tramite: '15-40 días hábiles',
+      plazo_tramite: '15-40 días hábiles aprox.',
       costo_estimado: `Gratuito o tarifa baja según trámite (${meta.moneda}, aprox.)`,
       url_tramite: urlOficial(meta.portal_principal, meta),
     });
@@ -532,7 +548,7 @@ function permisosMock(
         'Sin inscripción vigente la mercancía se queda retenida en aduana. Requiere domicilio fiscal verificado y obligaciones tributarias al día.',
       obligatorio: true,
       nivel_riesgo: 'alto',
-      plazo_tramite: '2-6 semanas',
+      plazo_tramite: '2-6 semanas aprox.',
       costo_estimado: `Gratuito el registro; honorarios de agente aduanal aparte (${meta.moneda})`,
       url_tramite: urlOficial(meta.portal_principal, meta),
     });
@@ -675,7 +691,7 @@ function comercioExteriorMock(input: LegalAnalisisInput, meta: PaisMeta): Obliga
       regimen_fiscal: `Régimen aduanero — ${meta.aduana}`,
       periodicidad: 'Por operación',
       descripcion:
-        'La fracción arancelaria define impuestos, permisos previos y restricciones. Clasificar mal es la causa habitual de multas y de mercancía detenida.',
+        'La fracción arancelaria define impuestos, permisos previos y restricciones. Clasificarla mal puede traer multas y mercancía detenida.',
       nivel_riesgo: 'alto',
       aplica_si: 'Toda importación o exportación',
     },

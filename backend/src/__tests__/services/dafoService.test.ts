@@ -401,4 +401,21 @@ describe('dafoService.generarDafo — plantilla sin IA', () => {
     const dafo = await generarDafo(producto, competencia({ gap_detectado: null }), tendencias(), viabilidad());
     expect(JSON.stringify(dafo)).not.toMatch(/por debajo del promedio/i);
   });
+
+  it('sin fuente de competencia no habla de «alta competencia» ni de proveedores que nadie evaluó', async () => {
+    const sinFuente = await generarDafo(producto, competencia({ fuente_disponible: false, total_competidores: 0 }), tendencias(), viabilidad());
+    const texto = JSON.stringify(sinFuente);
+    expect(texto).not.toMatch(/Alta competencia|0 competidores detectados|proveedores mejor evaluados/);
+    expect(sinFuente.amenazas[0].titulo).toBe('Competencia sin medir');
+
+    const conFuente = await generarDafo(producto, competencia({ fuente_disponible: true, total_competidores: 7 }), tendencias(), viabilidad());
+    expect(conFuente.amenazas[0].descripcion).toContain('7 competidores detectados');
+  });
+
+  it('a un negocio que ya opera no le dice «marca nueva»', async () => {
+    const enMarcha = await generarDafo(producto, competencia(), tendencias(), viabilidad(), { estatus: 'en_marcha' });
+    expect(JSON.stringify(enMarcha.debilidades)).not.toContain('Marca nueva');
+    const idea = await generarDafo(producto, competencia(), tendencias(), viabilidad(), { estatus: 'idea' });
+    expect(idea.debilidades[0].titulo).toBe('Marca nueva');
+  });
 });
