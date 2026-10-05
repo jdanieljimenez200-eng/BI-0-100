@@ -1,6 +1,7 @@
 import { AppDataSource } from '../../config/database';
 import { timezoneSegura } from '../../utils/timezones';
 import { r2 } from '../../utils/dinero';
+import { JOIN_ORIGINAL, sumaNeta } from '../contabilidad/reversos';
 
 /**
  * Motor de agregación del área de Reportes.
@@ -196,11 +197,10 @@ export async function flujoContable(f: FiltrosReporte) {
     sql += ` AND (m.producto_id = $4 OR m.producto_id IS NULL)`;
     params.push(f.productoId);
   }
+  // Neto de cancelaciones (ver `contabilidad/reversos.ts`).
   const [row] = await AppDataSource.query(
-    `SELECT
-       COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'ingreso'), 0) AS ingresos,
-       COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'egreso'), 0)  AS egresos
-     FROM movimientos_contables m
+    `SELECT ${sumaNeta('ingreso')} AS ingresos, ${sumaNeta('egreso')} AS egresos
+     FROM movimientos_contables m ${JOIN_ORIGINAL}
      WHERE ${sql}`,
     params,
   );

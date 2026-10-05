@@ -10,6 +10,14 @@
 process.env.RATE_LIMIT_DISABLED = 'true';
 
 /**
+ * Secretos de firma solo para la suite, si el entorno no trae los suyos. Sin
+ * ellos el alta respondía 500 y fallaban ~280 tests de integración que no
+ * tenían nada roto (dependían de que el shell exportara las variables).
+ */
+process.env.JWT_SECRET ??= 'secreto-solo-para-tests-jwt-0000000000000000';
+process.env.JWT_REFRESH_SECRET ??= 'secreto-solo-para-tests-refresh-000000000000';
+
+/**
  * La suite corre SIEMPRE contra el esquema de las migraciones, como en CI.
  *
  * `config/database.ts` activaba synchronize fuera de producción salvo que

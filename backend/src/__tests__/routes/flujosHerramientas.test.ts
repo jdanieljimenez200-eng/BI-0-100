@@ -252,6 +252,46 @@ describeWithDb('Flujos entre herramientas', () => {
       await api().post(`/pos/ventas/${r.body.venta.id}/cancelar`, {});
     });
 
+    it('una venta cancelada suma cero en Contabilidad, Reportes e Inventario; la base fiscal va sin el IVA', async () => {
+      const resumen = async () => (await api().get(`/contabilidad/${productoId}/resumen`)).body;
+      const pnl = async () => (await api().get(`/contabilidad/${productoId}/pnl`)).body.pnl;
+      const area = async (nombre: string) => (await api().get(`/reportes/area/${nombre}?desde=${HOY}&hasta=${HOY}`)).body;
+      const antes = { r: await resumen(), p: await pnl(), c: await area('contabilidad'), i: await area('inventario') };
+
+      const r = await vender({ metodo_pago: 'efectivo' });
+      expect(r.status).toBe(201);
+      const durante = await resumen();
+      expect(durante.kpis.ingresos - antes.r.kpis.ingresos).toBeCloseTo(348, 2);
+      // La base de la estimación fiscal no incluye el IVA que ya viene en la venta
+      // (antes le calculaba IVA al IVA): 348 − 48 = 300.
+      expect(durante.fiscal_base.ingresos - antes.r.fiscal_base.ingresos).toBeCloseTo(300, 2);
+
+      expect((await api().post(`/pos/ventas/${r.body.venta.id}/cancelar`, { motivo: 'prueba' })).status).toBe(200);
+      // Cada inverso apunta al asiento que revierte.
+      const sinEnlace = await q(
+        `SELECT COUNT(*)::int AS n FROM movimientos_contables
+          WHERE referencia_id = $1 AND categoria = 'Cancelaciones' AND revierte_movimiento_id IS NULL`,
+        [r.body.venta.id]
+      );
+      expect(sinEnlace[0].n).toBe(0);
+
+      // Antes: ingresos +348 +48 (IVA devuelto) y egresos +348 +48; base fiscal +396;
+      // gasto operativo +348 en el P&L; «Compras» con la devolución al almacén.
+      const despues = { r: await resumen(), p: await pnl(), c: await area('contabilidad'), i: await area('inventario') };
+      expect(despues.r.kpis.ingresos).toBeCloseTo(antes.r.kpis.ingresos, 2);
+      expect(despues.r.kpis.egresos).toBeCloseTo(antes.r.kpis.egresos, 2);
+      expect(despues.r.fiscal_base.ingresos).toBeCloseTo(antes.r.fiscal_base.ingresos, 2);
+      expect(despues.p.ingresos_brutos).toBeCloseTo(antes.p.ingresos_brutos, 2);
+      expect(despues.p.gastos_operativos_opex).toBeCloseTo(antes.p.gastos_operativos_opex, 2);
+      expect(despues.p.impuestos).toBeCloseTo(antes.p.impuestos, 2);
+      expect(despues.c.flujo.ingresos).toBeCloseTo(antes.c.flujo.ingresos, 2);
+      expect(despues.c.flujo.egresos).toBeCloseTo(antes.c.flujo.egresos, 2);
+      expect(despues.c.fiscal.movimientos_sin_cfdi).toBe(antes.c.fiscal.movimientos_sin_cfdi);
+      expect(despues.c.egresos_por_categoria.map((x: { categoria: string }) => x.categoria)).not.toContain('Cancelaciones');
+      expect(despues.i.consumo.compras).toBeCloseTo(antes.i.consumo.compras, 2);
+      expect(despues.i.consumo.por_ventas).toBeCloseTo(antes.i.consumo.por_ventas, 2);
+    });
+
     it('un canal inexistente, desactivado o de otra cuenta aborta la venta sin dejar rastro', async () => {
       const antes = Number((await q(`SELECT COUNT(*) FROM ventas WHERE usuario_id = $1`, [cuentaId]))[0].count);
       const ajeno = await api(tokenOtra).post(`/contabilidad/${productoAjenoId}/canales`, {

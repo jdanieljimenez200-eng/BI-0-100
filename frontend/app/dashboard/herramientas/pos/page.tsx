@@ -31,7 +31,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import api, { hayRespuestaDelServidor, nuevaClaveIdempotencia } from '@/lib/api';
-import RecetaEditor from './RecetaEditor';
+import RecetaEditor, { type RecetaEditorHandle } from './RecetaEditor';
 import { getTaxConfig, TaxConfig } from '@/lib/taxConfig';
 import { fechaLocal, hoyLocal } from '@/lib/fechaLocal';
 import { abrirMenuPdf } from './MenuPdf';
@@ -361,6 +361,10 @@ function PosInner({
     emoji: string;
   }>({ nombre: '', descripcion: '', precio: '', categoria: '', emoji: '' });
   const [showItemForm, setShowItemForm] = useState(false);
+  const [guardandoItem, setGuardandoItem] = useState(false);
+  // Error o aviso del modal del producto: antes un fallo al guardar no decía nada.
+  const [avisoItem, setAvisoItem] = useState<{ tipo: 'error' | 'info'; texto: string } | null>(null);
+  const recetaRef = useRef<RecetaEditorHandle>(null);
 
   // Detalle de venta seleccionada
   const [ventaDetalle, setVentaDetalle] = useState<Venta | null>(null);
@@ -827,18 +831,39 @@ function PosInner({
       negocio_id: negocioId,
     };
 
-    if (itemForm.id) {
-      const { data } = await api.patch(`/pos/catalogo/${itemForm.id}`, payload);
-      setItems((prev) => prev.map((i) => (i.id === itemForm.id ? (data as ItemPOS) : i)));
-    } else {
-      const { data } = await api.post(`/pos/catalogo`, payload);
-      setItems((prev) => [data as ItemPOS, ...prev]);
+    setGuardandoItem(true);
+    setAvisoItem(null);
+    try {
+      if (itemForm.id) {
+        const { data } = await api.patch(`/pos/catalogo/${itemForm.id}`, payload);
+        setItems((prev) => prev.map((i) => (i.id === itemForm.id ? (data as ItemPOS) : i)));
+        // La receta pendiente también se guarda; si falla, el modal sigue abierto con el aviso.
+        const recetaOk = (await recetaRef.current?.guardarPendiente()) ?? true;
+        if (!recetaOk) return;
+      } else {
+        const { data } = await api.post(`/pos/catalogo`, payload);
+        const nuevo = data as ItemPOS;
+        setItems((prev) => [nuevo, ...prev]);
+        // Con insumos en el almacén, el modal sigue abierto para definir la receta
+        // ahora: si se cerraba, había que descubrir «Editar» para hacerlo.
+        if (recetaRef.current?.hayInsumos()) {
+          setItemForm((f) => ({ ...f, id: nuevo.id }));
+          setAvisoItem({ tipo: 'info', texto: 'Producto creado. Indica qué insumos consume cada venta y pulsa «Guardar cambios».' });
+          return;
+        }
+      }
+      setShowItemForm(false);
+      setItemForm({ nombre: '', descripcion: '', precio: '', categoria: '', emoji: '' });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string; message?: string } } };
+      setAvisoItem({ tipo: 'error', texto: e.response?.data?.error ?? e.response?.data?.message ?? 'No se pudo guardar el producto. Intenta de nuevo.' });
+    } finally {
+      setGuardandoItem(false);
     }
-    setShowItemForm(false);
-    setItemForm({ nombre: '', descripcion: '', precio: '', categoria: '', emoji: '' });
   }, [itemForm, negocioId, categoriasExistentes]);
 
   const editarItem = useCallback((it: ItemPOS) => {
+    setAvisoItem(null);
     setItemForm({
       id: it.id,
       nombre: it.nombre,
@@ -908,26 +933,26 @@ function PosInner({
   // al almacén, auditoría y permiso `cancelar_ventas` para cajeros), pero ningún
   // botón lo llamaba: una venta hecha por error no se podía anular.
   const [cancelandoVenta, setCancelandoVenta] = useState(false);
-  const cancelarVenta = useCallback(async (v: Venta) => {
-    const motivo = window.prompt(
-      `¿Cancelar la venta ${v.numero_ticket}?\n\n` +
-      'Se devolverá el stock al almacén y se registrarán los asientos contables inversos con fecha de hoy. ' +
-      'La venta no se borra: queda marcada como cancelada.\n\nMotivo (opcional):',
-    );
-    if (motivo === null) return; // el usuario cerró el diálogo
+  // Confirmación de la cancelación dentro del detalle de la venta. Antes era un
+  // window.prompt: en navegadores que no lo soportan (algunos dentro de apps)
+  // el botón no hacía nada y el error ni se veía.
+  const [cancelacion, setCancelacion] = useState<{ ventaId: string; motivo: string; error: string | null } | null>(null);
+
+  const cancelarVenta = useCallback(async (v: Venta, motivo: string) => {
     setCancelandoVenta(true);
     try {
       const { data } = await api.post(`/pos/ventas/${v.id}/cancelar`, { motivo: motivo.trim() || undefined });
       const cancelada = { ...v, ...(data?.venta ?? {}), estado: 'cancelada' } as Venta;
       setVentas((prev) => prev.map((x) => (x.id === v.id ? { ...x, ...cancelada } : x)));
       setVentaDetalle(cancelada);
+      setCancelacion(null);
     } catch (err: unknown) {
       const ax = err as { response?: { status?: number; data?: { error?: string } } };
-      alert(
+      const error =
         ax.response?.status === 403
           ? 'No tienes permiso para cancelar ventas. Pídeselo al dueño de la cuenta.'
-          : `No se pudo cancelar la venta: ${ax.response?.data?.error ?? 'error de conexión'}`,
-      );
+          : `No se pudo cancelar la venta: ${ax.response?.data?.error ?? 'error de conexión'}`;
+      setCancelacion((c) => (c ? { ...c, error } : c));
     } finally {
       setCancelandoVenta(false);
     }
@@ -1642,6 +1667,7 @@ function PosInner({
               <button
                 onClick={() => {
                   setItemForm({ nombre: '', descripcion: '', precio: '', categoria: '', emoji: '' });
+                  setAvisoItem(null);
                   setShowItemForm(true);
                 }}
                 className="text-xs font-bold bg-emerald-500 text-white px-4 py-2 rounded-xl hover:bg-emerald-400 transition flex items-center gap-1.5 shadow-[0_2px_12px_rgba(16,185,129,0.3)]"
@@ -2415,6 +2441,7 @@ function PosInner({
                 {/* Receta: lo que conecta este producto con el almacen. Sin
                     ella la venta no descuenta stock ni hay margen real. */}
                 <RecetaEditor
+                  ref={recetaRef}
                   itemPosId={itemForm.id ?? null}
                   simbolo={taxCfg.simbolo}
                   locale={taxCfg.locale}
@@ -2470,16 +2497,29 @@ function PosInner({
                 </div>
               </div>
 
+              {avisoItem && (
+                <p
+                  role={avisoItem.tipo === 'error' ? 'alert' : 'status'}
+                  className={`mt-4 rounded-xl border px-3 py-2 text-[11px] leading-relaxed ${
+                    avisoItem.tipo === 'error'
+                      ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                      : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                  }`}
+                >
+                  {avisoItem.texto}
+                </p>
+              )}
+
               <div className="flex gap-2 mt-5">
                 <button
                   onClick={() => setShowItemForm(false)}
                   className="flex-1 py-2.5 rounded-xl border border-white/10 text-white/60 text-xs font-semibold hover:bg-white/5"
                 >
-                  Cancelar
+                  {avisoItem?.tipo === 'info' ? 'Sin receta por ahora' : 'Cancelar'}
                 </button>
                 <button
                   onClick={guardarItem}
-                  disabled={!itemForm.nombre.trim() || !itemForm.precio}
+                  disabled={guardandoItem || !itemForm.nombre.trim() || !itemForm.precio}
                   className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs disabled:opacity-40 transition shadow-md"
                 >
                   {itemForm.id ? 'Guardar Cambios' : 'Crear Producto'}
@@ -2604,14 +2644,53 @@ function PosInner({
                 <p className="mt-3 text-center text-xs text-red-300/80 bg-red-500/[0.06] border border-red-500/20 rounded-xl py-2">
                   Venta cancelada — se devolvió el stock y se registraron los asientos inversos.
                 </p>
+              ) : cancelacion?.ventaId === ventaDetalle.id ? (
+                <div className="mt-3 space-y-2 rounded-xl border border-red-500/25 bg-red-500/[0.06] p-3">
+                  <p className="text-[11px] leading-relaxed text-red-200/90">
+                    ¿Cancelar la venta {ventaDetalle.numero_ticket}? El stock vuelve al almacén y se registran los asientos
+                    contables inversos con fecha de hoy. La venta no se borra: queda marcada como cancelada.
+                  </p>
+                  <label htmlFor="pos-motivo-cancelacion" className="block text-[10px] font-bold uppercase tracking-wider text-white/40">
+                    Motivo (opcional)
+                  </label>
+                  <input
+                    id="pos-motivo-cancelacion"
+                    type="text"
+                    maxLength={300}
+                    value={cancelacion.motivo}
+                    onChange={(e) => setCancelacion({ ...cancelacion, motivo: e.target.value, error: null })}
+                    placeholder="Ej. el cliente devolvió el producto"
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none focus:border-red-400/40"
+                  />
+                  {cancelacion.error && (
+                    <p role="alert" className="text-[11px] text-red-300">{cancelacion.error}</p>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCancelacion(null)}
+                      disabled={cancelandoVenta}
+                      className="flex-1 py-2 rounded-lg border border-white/10 text-white/60 text-xs font-semibold hover:bg-white/5 disabled:opacity-50"
+                    >
+                      Volver
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => cancelarVenta(ventaDetalle, cancelacion.motivo)}
+                      disabled={cancelandoVenta}
+                      className="flex-1 py-2 rounded-lg bg-red-500/80 text-white text-xs font-bold hover:bg-red-500 disabled:opacity-50"
+                    >
+                      {cancelandoVenta ? 'Cancelando…' : 'Sí, cancelar venta'}
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <button
                   type="button"
-                  onClick={() => cancelarVenta(ventaDetalle)}
-                  disabled={cancelandoVenta}
-                  className="mt-3 w-full py-2 rounded-xl border border-red-500/25 text-red-300/90 text-xs font-semibold hover:bg-red-500/10 transition disabled:opacity-50"
+                  onClick={() => setCancelacion({ ventaId: ventaDetalle.id, motivo: '', error: null })}
+                  className="mt-3 w-full py-2 rounded-xl border border-red-500/25 text-red-300/90 text-xs font-semibold hover:bg-red-500/10 transition"
                 >
-                  {cancelandoVenta ? 'Cancelando…' : 'Cancelar venta'}
+                  Cancelar venta
                 </button>
               )}
             </motion.div>

@@ -1,8 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useState, type Ref } from 'react';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
+
+/** Lo que el modal del producto puede pedirle al editor al pulsar su botón de guardar. */
+export interface RecetaEditorHandle {
+  /** Guarda la receta si tiene cambios sin guardar. `false` si falló (el aviso queda en pantalla). */
+  guardarPendiente: () => Promise<boolean>;
+  /** ¿Hay insumos en el almacén con los que armar una receta? */
+  hayInsumos: () => boolean;
+}
 
 interface InsumoMin {
   id: string;
@@ -25,6 +33,7 @@ interface Props {
   itemPosId: string | null;
   simbolo: string;
   locale: string;
+  ref?: Ref<RecetaEditorHandle>;
 }
 
 const n = (v: unknown) => Number(v ?? 0);
@@ -35,16 +44,24 @@ const n = (v: unknown) => Number(v ?? 0);
  * Es lo que conecta el POS con el almacén: al cobrar, cada línea se expande
  * contra esta lista para descontar stock y calcular el costo de la venta.
  *
- * Se guarda por separado del item (PUT completo de la receta) para no mezclar
- * dos operaciones distintas en un mismo botón, y porque un item nuevo todavía
- * no tiene id al que colgarla.
+ * Se guarda con un PUT completo de la receta, aparte del item (un item nuevo
+ * todavía no tiene id al que colgarla). El botón «Guardar cambios» del modal
+ * también la guarda si quedó algo pendiente (`guardarPendiente`): antes se
+ * cerraba el modal, la receta se perdía sin aviso y las ventas no descontaban
+ * el almacén aunque el dueño creía haberla definido.
  */
-export default function RecetaEditor({ itemPosId, simbolo, locale }: Props) {
+export default function RecetaEditor({ itemPosId, simbolo, locale, ref }: Props) {
   const [insumos, setInsumos] = useState<InsumoMin[]>([]);
-  const [filas, setFilas] = useState<FilaReceta[]>([]);
+  const [filas, setFilasEstado] = useState<FilaReceta[]>([]);
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  // Cambios del usuario sin guardar (la carga desde el servidor no cuenta).
+  const [sucio, setSucio] = useState(false);
+  const setFilas: typeof setFilasEstado = (v) => {
+    setFilasEstado(v);
+    setSucio(true);
+  };
 
   const money = useCallback(
     (v: number) =>
@@ -68,8 +85,9 @@ export default function RecetaEditor({ itemPosId, simbolo, locale }: Props) {
   }, []);
 
   useEffect(() => {
+    setSucio(false);
     if (!itemPosId) {
-      setFilas([]);
+      setFilasEstado([]);
       return;
     }
     setCargando(true);
@@ -83,7 +101,7 @@ export default function RecetaEditor({ itemPosId, simbolo, locale }: Props) {
           unidad: string;
           costo_promedio: number;
         }[];
-        setFilas(
+        setFilasEstado(
           receta.map((r) => ({
             insumo_id: r.insumo_id,
             cantidad: String(n(r.cantidad)),
@@ -93,7 +111,7 @@ export default function RecetaEditor({ itemPosId, simbolo, locale }: Props) {
           })),
         );
       })
-      .catch(() => setFilas([]))
+      .catch(() => setFilasEstado([]))
       .finally(() => setCargando(false));
   }, [itemPosId]);
 
@@ -102,8 +120,8 @@ export default function RecetaEditor({ itemPosId, simbolo, locale }: Props) {
     return acc + n(f.cantidad) * n(insumo?.costo_promedio ?? f.costo_promedio);
   }, 0);
 
-  const guardar = async () => {
-    if (!itemPosId) return;
+  const guardar = async (): Promise<boolean> => {
+    if (!itemPosId) return true;
     setGuardando(true);
     setAviso(null);
     try {
@@ -112,14 +130,22 @@ export default function RecetaEditor({ itemPosId, simbolo, locale }: Props) {
           .filter((f) => f.insumo_id && n(f.cantidad) > 0)
           .map((f) => ({ insumo_id: f.insumo_id, cantidad: n(f.cantidad) })),
       });
+      setSucio(false);
       setAviso('Receta guardada');
+      return true;
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       setAviso(e.response?.data?.error ?? 'No se pudo guardar la receta');
+      return false;
     } finally {
       setGuardando(false);
     }
   };
+
+  useImperativeHandle(ref, () => ({
+    guardarPendiente: () => (sucio ? guardar() : Promise.resolve(true)),
+    hayInsumos: () => insumos.length > 0,
+  }));
 
   if (!itemPosId) {
     return (
@@ -235,6 +261,9 @@ export default function RecetaEditor({ itemPosId, simbolo, locale }: Props) {
           </div>
 
           {aviso && <p className="text-[10px] text-white/45">{aviso}</p>}
+          {sucio && !aviso && (
+            <p className="text-[10px] text-amber-300/80">Receta sin guardar: se guarda al pulsar «Guardar cambios».</p>
+          )}
 
           {filas.length === 0 && (
             <p className="text-[10px] leading-relaxed text-white/30">

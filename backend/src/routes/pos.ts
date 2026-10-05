@@ -802,6 +802,8 @@ async function cancelarVenta(req: AuthRequest, res: Response): Promise<void> {
             monto:                mov.monto,
             fecha:                hoy,
             parent_movimiento_id: null,
+            // Qué revierte: los agregados restan el reverso de la clase del original.
+            revierte_movimiento_id: mov.id,
             es_auto_generado:     true,
             tiene_cfdi:           false,
             fuente:               mov.fuente,

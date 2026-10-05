@@ -2,6 +2,7 @@ import { SelectQueryBuilder } from 'typeorm';
 import { AppDataSource } from '../../config/database';
 import { MovimientoContable } from '../../models/MovimientoContable';
 import { r2 } from '../../utils/dinero';
+import { JOIN_ORIGINAL, LATERAL_CLASE, esImpuestoTrasladado, sumaNeta } from './reversos';
 
 /**
  * Consultas de Contabilidad que escalan con el tamaño de la cuenta.
@@ -166,15 +167,20 @@ export interface MesAgregado {
   egresos: number;
 }
 
-/** Ingresos/egresos capturados (no auto-generados) por mes: base de la calibración. */
+/**
+ * Ingresos/egresos capturados (no auto-generados) por mes: base de la
+ * calibración. Los reversos de capturados restan (ver `reversos.ts`): una venta
+ * cancelada ya no infla el ingreso promedio con el que se calibra Finanzas.
+ */
 export async function agregadoMensual(f: FiltrosMovimientos): Promise<MesAgregado[]> {
   const w = whereSql(f);
   const filas: Array<{ mes: string; ingresos: string; egresos: string }> = await AppDataSource.query(
     `SELECT to_char(date_trunc('month', m.fecha), 'YYYY-MM') AS mes,
-            COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'ingreso'), 0) AS ingresos,
-            COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'egreso'), 0) AS egresos
-       FROM movimientos_contables m
-      WHERE ${w.sql} AND m.es_auto_generado = false
+            ${sumaNeta('ingreso')} AS ingresos,
+            ${sumaNeta('egreso')} AS egresos
+       FROM movimientos_contables m ${JOIN_ORIGINAL}
+      WHERE ${w.sql}
+        AND ((o.id IS NULL AND m.es_auto_generado = false) OR o.es_auto_generado = false)
       GROUP BY 1 ORDER BY 1`,
     w.params
   );
@@ -189,11 +195,12 @@ export async function resumenContable(f: FiltrosMovimientos) {
               COUNT(*) FILTER (WHERE m.tipo = 'ingreso')::int AS n_ingresos,
               COUNT(*) FILTER (WHERE m.tipo = 'egreso')::int AS n_egresos,
               COUNT(*) FILTER (WHERE m.es_auto_generado = false)::int AS manuales,
-              COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'ingreso'), 0) AS ingresos,
-              COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'egreso'), 0) AS egresos,
+              ${sumaNeta('ingreso')} AS ingresos,
+              ${sumaNeta('egreso')} AS egresos,
+              ${sumaNeta('egreso', esImpuestoTrasladado('m'))} AS impuesto_trasladado,
               COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'egreso' AND m.es_auto_generado = false), 0) AS egresos_no_auto,
               COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'egreso' AND m.es_auto_generado = false AND m.tiene_cfdi), 0) AS egresos_con_comprobante
-         FROM movimientos_contables m WHERE ${w.sql}`,
+         FROM movimientos_contables m ${JOIN_ORIGINAL} WHERE ${w.sql}`,
       w.params
     ),
     AppDataSource.query(
@@ -222,7 +229,9 @@ export async function resumenContable(f: FiltrosMovimientos) {
     manuales: totales.manuales,
     categorias: categorias.map((c) => c.categoria),
     fiscal_base: {
-      ingresos: r2(ingresos),
+      // Sin el impuesto que ya viene dentro de las ventas (si no, la estimación
+      // le calculaba IVA al IVA) y neto de cancelaciones.
+      ingresos: r2(ingresos - num(totales.impuesto_trasladado)),
       egresos_no_auto: r2(num(totales.egresos_no_auto)),
       egresos_con_comprobante: r2(num(totales.egresos_con_comprobante)),
     },
@@ -253,16 +262,19 @@ export async function pnl(f: FiltrosMovimientos) {
     bruto: string;
     deducciones: string;
   }> = await AppDataSource.query(
-    `SELECT m.tipo,
-            lower(trim(COALESCE(m.categoria, ''))) AS cat,
-            m.fuente,
-            (m.parent_movimiento_id IS NULL) AS sin_padre,
-            COALESCE(SUM(m.monto), 0) AS monto,
-            COALESCE(SUM(COALESCE(m.monto_bruto, m.monto)), 0) AS bruto,
-            COALESCE(SUM(CASE WHEN COALESCE(m.comision_monto, 0) <> 0
-                              THEN m.comision_monto + COALESCE(m.comision_iva, 0) + COALESCE(m.retencion_monto, 0)
+    // Un reverso se clasifica como su original (`x`) y entra con signo negativo:
+    // una venta cancelada resta ingresos e impuestos en vez de sumar ingresos
+    // (el IVA devuelto) y gasto operativo (la venta revertida).
+    `SELECT x.tipo,
+            lower(trim(COALESCE(x.categoria, ''))) AS cat,
+            x.fuente,
+            (x.parent_movimiento_id IS NULL) AS sin_padre,
+            COALESCE(SUM(s.signo * m.monto), 0) AS monto,
+            COALESCE(SUM(s.signo * COALESCE(x.monto_bruto, x.monto)), 0) AS bruto,
+            COALESCE(SUM(s.signo * CASE WHEN COALESCE(x.comision_monto, 0) <> 0
+                              THEN x.comision_monto + COALESCE(x.comision_iva, 0) + COALESCE(x.retencion_monto, 0)
                               ELSE 0 END), 0) AS deducciones
-       FROM movimientos_contables m
+       FROM movimientos_contables m ${JOIN_ORIGINAL} ${LATERAL_CLASE}
       WHERE ${w.sql}
       GROUP BY 1, 2, 3, 4`,
     w.params

@@ -4,6 +4,7 @@ import { AsignacionTrabajador } from '../../models/AsignacionTrabajador';
 import { usuarioTieneHerramienta } from '../../middleware/requirePlan';
 import { computePermisosEfectivos, type CapabilityKey } from '../billing/planService';
 import { timezoneSegura } from '../../utils/timezones';
+import { JOIN_ORIGINAL, LATERAL_CLASE, sumaNeta } from '../contabilidad/reversos';
 import {
   n,
   r2,
@@ -319,21 +320,25 @@ export async function inventario(f: FiltrosReporte) {
         ORDER BY valor DESC LIMIT 20`,
       [f.usuarioId, f.desde, f.hasta]
     ),
+    // Una entrada con `venta_id` es la devolución de una venta cancelada, no una
+    // compra: no va a compras ni a proveedores y resta del consumo por ventas
+    // (antes cancelar una venta mostraba «Compras $1»).
     AppDataSource.query(
       `SELECT COALESCE(NULLIF(mi.proveedor, ''), 'Sin proveedor') AS proveedor,
               COUNT(*)::int AS compras, COALESCE(SUM(mi.costo_total), 0) AS valor,
               COUNT(DISTINCT mi.insumo_id)::int AS insumos
          FROM movimientos_inventario mi
-        WHERE ${filtroMov} AND mi.tipo = 'entrada'
+        WHERE ${filtroMov} AND mi.tipo = 'entrada' AND mi.venta_id IS NULL
         GROUP BY 1 ORDER BY valor DESC LIMIT 20`,
       pMov
     ),
     AppDataSource.query(
       `SELECT
-         COALESCE(SUM(mi.costo_total) FILTER (WHERE mi.tipo = 'salida' AND mi.venta_id IS NOT NULL), 0) AS por_ventas,
+         COALESCE(SUM(mi.costo_total) FILTER (WHERE mi.tipo = 'salida' AND mi.venta_id IS NOT NULL), 0)
+           - COALESCE(SUM(mi.costo_total) FILTER (WHERE mi.tipo = 'entrada' AND mi.venta_id IS NOT NULL), 0) AS por_ventas,
          COALESCE(SUM(mi.costo_total) FILTER (WHERE mi.tipo = 'salida' AND mi.venta_id IS NULL), 0) AS manuales,
          COALESCE(SUM(mi.costo_total) FILTER (WHERE mi.tipo = 'merma'), 0) AS mermas,
-         COALESCE(SUM(mi.costo_total) FILTER (WHERE mi.tipo = 'entrada'), 0) AS compras
+         COALESCE(SUM(mi.costo_total) FILTER (WHERE mi.tipo = 'entrada' AND mi.venta_id IS NULL), 0) AS compras
        FROM movimientos_inventario mi WHERE ${filtroMov}`,
       pMov
     ),
@@ -348,12 +353,14 @@ export async function inventario(f: FiltrosReporte) {
     // Días de cobertura: con el consumo medio del periodo, cuánto dura el stock.
     AppDataSource.query(
       `SELECT i.id, i.nombre, i.unidad, i.stock_actual,
-              COALESCE(SUM(mi.cantidad) FILTER (WHERE mi.tipo IN ('salida', 'merma')), 0) AS consumo
+              COALESCE(SUM(mi.cantidad) FILTER (WHERE mi.tipo IN ('salida', 'merma')), 0)
+                - COALESCE(SUM(mi.cantidad) FILTER (WHERE mi.tipo = 'entrada' AND mi.venta_id IS NOT NULL), 0) AS consumo
          FROM insumos_inventario i
          LEFT JOIN movimientos_inventario mi ON mi.insumo_id = i.id AND mi.fecha BETWEEN $2 AND $3
         WHERE i.usuario_id = $1 AND i.activo = true
         GROUP BY i.id, i.nombre, i.unidad, i.stock_actual
-       HAVING COALESCE(SUM(mi.cantidad) FILTER (WHERE mi.tipo IN ('salida', 'merma')), 0) > 0
+       HAVING COALESCE(SUM(mi.cantidad) FILTER (WHERE mi.tipo IN ('salida', 'merma')), 0)
+                - COALESCE(SUM(mi.cantidad) FILTER (WHERE mi.tipo = 'entrada' AND mi.venta_id IS NOT NULL), 0) > 0
         ORDER BY consumo DESC LIMIT 30`,
       [f.usuarioId, f.desde, f.hasta]
     ),
@@ -915,20 +922,24 @@ export async function contabilidad(f: FiltrosReporte) {
   const [flujo, flujoPrevio, porCategoria, porFuente, serie, fiscal, topEgresos, origen] = await Promise.all([
     flujoContable(f),
     flujoContable({ ...f, ...previo }),
+    // Los reversos de una cancelación cuentan como el negativo de su original
+    // (`contabilidad/reversos.ts`): la venta cancelada se anula en su categoría
+    // en vez de sumar a «Cancelaciones» como ingreso y egreso a la vez.
     AppDataSource.query(
-      `SELECT m.tipo, COALESCE(NULLIF(m.categoria, ''), 'Sin categoría') AS categoria,
-              COUNT(*)::int AS movimientos, COALESCE(SUM(m.monto), 0) AS total
-         FROM movimientos_contables m WHERE ${filtro}
-        GROUP BY 1, 2 ORDER BY total DESC`,
+      `SELECT x.tipo, COALESCE(NULLIF(x.categoria, ''), 'Sin categoría') AS categoria,
+              COUNT(*) FILTER (WHERE o.id IS NULL)::int AS movimientos, COALESCE(SUM(s.signo * m.monto), 0) AS total
+         FROM movimientos_contables m ${JOIN_ORIGINAL} ${LATERAL_CLASE} WHERE ${filtro}
+        GROUP BY 1, 2 HAVING COALESCE(SUM(s.signo * m.monto), 0) <> 0 OR COUNT(*) FILTER (WHERE o.id IS NULL) > 0
+        ORDER BY total DESC`,
       p
     ),
     AppDataSource.query(
-      `SELECT COALESCE(m.fuente, 'manual') AS fuente,
-              COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'ingreso'), 0) AS ingresos,
-              COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'egreso'), 0) AS egresos,
-              COUNT(*)::int AS movimientos
-         FROM movimientos_contables m WHERE ${filtro}
-        GROUP BY 1 ORDER BY (COALESCE(SUM(m.monto), 0)) DESC`,
+      `SELECT COALESCE(x.fuente, 'manual') AS fuente,
+              COALESCE(SUM(s.signo * m.monto) FILTER (WHERE x.tipo = 'ingreso'), 0) AS ingresos,
+              COALESCE(SUM(s.signo * m.monto) FILTER (WHERE x.tipo = 'egreso'), 0) AS egresos,
+              COUNT(*) FILTER (WHERE o.id IS NULL)::int AS movimientos
+         FROM movimientos_contables m ${JOIN_ORIGINAL} ${LATERAL_CLASE} WHERE ${filtro}
+        GROUP BY 1 ORDER BY (COALESCE(SUM(s.signo * m.monto), 0)) DESC`,
       p
     ),
     AppDataSource.query(
@@ -937,18 +948,22 @@ export async function contabilidad(f: FiltrosReporte) {
                                 date_trunc('${g.unidad}', $${p.length + 2}::date),
                                 interval '${g.intervalo}')::date AS periodo)
        SELECT to_char(pe.periodo, 'YYYY-MM-DD') AS periodo,
-              COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'ingreso'), 0) AS ingresos,
-              COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'egreso'), 0) AS egresos
+              ${sumaNeta('ingreso')} AS ingresos,
+              ${sumaNeta('egreso')} AS egresos
          FROM periodos pe
          LEFT JOIN movimientos_contables m ON date_trunc('${g.unidad}', m.fecha)::date = pe.periodo AND ${filtro}
+         ${JOIN_ORIGINAL}
         GROUP BY pe.periodo ORDER BY pe.periodo`,
       [...p, f.desde, f.hasta]
     ),
+    // Comprobantes: solo los gastos capturados. El IVA de una venta, el reverso
+    // de una cancelación o una comisión automática no son gastos que pidan CFDI
+    // (antes «1 egreso sin CFDI» aparecía por cancelar una venta).
     AppDataSource.query(
       `SELECT
-         COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'egreso' AND m.tiene_cfdi), 0) AS egresos_con_cfdi,
-         COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'egreso' AND NOT m.tiene_cfdi), 0) AS egresos_sin_cfdi,
-         COUNT(*) FILTER (WHERE m.tipo = 'egreso' AND NOT m.tiene_cfdi)::int AS movimientos_sin_cfdi,
+         COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'egreso' AND NOT m.es_auto_generado AND m.tiene_cfdi), 0) AS egresos_con_cfdi,
+         COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'egreso' AND NOT m.es_auto_generado AND NOT m.tiene_cfdi), 0) AS egresos_sin_cfdi,
+         COUNT(*) FILTER (WHERE m.tipo = 'egreso' AND NOT m.es_auto_generado AND NOT m.tiene_cfdi)::int AS movimientos_sin_cfdi,
          COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'ingreso' AND m.tiene_cfdi), 0) AS ingresos_con_cfdi
        FROM movimientos_contables m WHERE ${filtro}`,
       p
@@ -956,7 +971,7 @@ export async function contabilidad(f: FiltrosReporte) {
     AppDataSource.query(
       `SELECT m.id, m.descripcion, COALESCE(NULLIF(m.categoria, ''), 'Sin categoría') AS categoria,
               to_char(m.fecha, 'YYYY-MM-DD') AS fecha, m.monto, COALESCE(m.fuente, 'manual') AS fuente, m.tiene_cfdi
-         FROM movimientos_contables m WHERE ${filtro} AND m.tipo = 'egreso'
+         FROM movimientos_contables m WHERE ${filtro} AND m.tipo = 'egreso' AND m.revierte_movimiento_id IS NULL
         ORDER BY m.monto DESC LIMIT 10`,
       p
     ),

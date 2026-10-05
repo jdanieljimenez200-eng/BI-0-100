@@ -17,6 +17,7 @@ import { CanalCobro } from './CanalCobro';
 @Index(['batch_id'])
 @Index(['fuente'])
 @Index(['parent_movimiento_id'])
+@Index('IDX_movimientos_revierte', ['revierte_movimiento_id'])
 @Index(['canal_cobro_id'])
 @Index(['usuario_id', 'estado_liquidacion'])
 export class MovimientoContable {
@@ -63,6 +64,18 @@ export class MovimientoContable {
 
   @Column({ nullable: true, type: 'uuid' })
   parent_movimiento_id!: string | null;
+
+  /**
+   * Asiento que este revierte (cancelación de una venta). Los agregados de
+   * Contabilidad lo usan para restar el reverso de la clase del original: el de
+   * un ingreso resta ingresos, el de un impuesto resta impuestos.
+   */
+  @ManyToOne(() => MovimientoContable, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'revierte_movimiento_id' })
+  revierte_movimiento!: MovimientoContable | null;
+
+  @Column({ nullable: true, type: 'uuid' })
+  revierte_movimiento_id!: string | null;
 
   @Column({ default: false })
   es_auto_generado!: boolean;
