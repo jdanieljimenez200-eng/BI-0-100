@@ -127,7 +127,7 @@ export function puntajePorReglas(input: BriefAnalisisInput, producto: ProductoBr
  * haber analizado nada.
  */
 function generarBriefFallback(
-  producto: ProductoBrief,
+  producto: ProductoBrief & { perfil_negocio?: unknown },
   input: BriefAnalisisInput,
   paleta: PaletaColores,
   ocultas: ReadonlySet<string>
@@ -137,6 +137,12 @@ function generarBriefFallback(
   const percepciones = input.percepcion?.length ? input.percepcion.join(', ').toLowerCase() : 'lo que quieres transmitir';
   const resultado = input.resultado_cliente?.trim();
   const usos = input.usos_marca ?? [];
+  // El «letrero» de un puesto en la calle es una lona o una manta.
+  const enLaCalle = leerPerfil(producto.perfil_negocio).local_fisico === 'via_publica';
+  const instruccionUso = (u: (typeof usos)[number]) =>
+    u === 'local_letrero' && enLaCalle
+      ? 'Preparar una versión para la lona o manta del puesto: que el nombre se lea a varios metros y que funcione impresa en pocas tintas.'
+      : `Preparar una versión para ${ETIQUETA_USO[u]}.`;
 
   return {
     brief_identidad: {
@@ -170,7 +176,7 @@ function generarBriefFallback(
           `Evitar que la marca se vea: ${input.anti_valores?.length ? input.anti_valores.join(', ').toLowerCase() : '[lo que no quieres transmitir]'}.`,
           'Entregar el logo también en una sola tinta y en versión para fondo oscuro.',
           ...(input.elementos_conservar?.trim() ? [`Conservar: ${input.elementos_conservar.trim()}.`] : []),
-          ...usos.map((u) => `Preparar una versión para ${ETIQUETA_USO[u]}.`),
+          ...usos.map(instruccionUso),
         ],
     resumen_tweet: `${nombre}: marca ${(input.estilo_visual || 'minimalista').toLowerCase()} con tono ${(input.tono_comunicacion || 'cercano').toLowerCase()} que busca transmitir ${(input.emocion || 'confianza').toLowerCase()}.`,
     es_mock: true,

@@ -81,6 +81,8 @@ function textoPrecio(producto: Producto, meta: PaisMeta): string {
   return Number.isFinite(n) && n > 0 ? `${n.toLocaleString('es-MX')} ${meta.moneda}` : 'no especificado';
 }
 
+const primeraMayuscula = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+
 function giroBase(producto: Producto, input: LegalAnalisisInput): string {
   const candidatos = [input.giro_especifico, producto.categoria, producto.nombre]
     .map((p) => (p || '').trim())
@@ -491,11 +493,16 @@ function permisosMock(
     perfil.local_fisico === 'via_publica'
       ? {
           nombre: 'Permiso para vender en la vía pública',
-          autoridad: 'Autoridad municipal o local (alcaldía, municipio o intendencia)',
-          descripcion:
-            `Un puesto en la calle necesita permiso de la autoridad local para ocupar el espacio público${input.estado_constitucion ? ` (${input.estado_constitucion})` : ''} ` +
-            'y suele pagar un derecho por usarlo. Sin él, la autoridad puede retirar el puesto y la mercancía. ' +
-            'Las cuotas que piden organizaciones o líderes no sustituyen el permiso.',
+          autoridad: meta.via_publica
+            ? primeraMayuscula(meta.via_publica.autoridad)
+            : 'Autoridad municipal o local (alcaldía, municipio o intendencia)',
+          // Con ficha, lo que dice la ficha del país; sin ella, la regla general.
+          descripcion: meta.via_publica
+            ? `${meta.via_publica.permiso}${input.estado_constitucion ? ` Tu puesto está en ${input.estado_constitucion}: confirma ahí el trámite.` : ''} ` +
+              'Sin permiso, la autoridad puede retirar el puesto y la mercancía.'
+            : `Un puesto en la calle necesita permiso de la autoridad local para ocupar el espacio público${input.estado_constitucion ? ` (${input.estado_constitucion})` : ''} ` +
+              'y suele pagar un derecho por usarlo. Sin él, la autoridad puede retirar el puesto y la mercancía. ' +
+              'Las cuotas que piden organizaciones o líderes no sustituyen el permiso.',
           obligatorio: true,
           nivel_riesgo: 'alto',
           plazo_tramite: 'Variable según el municipio',
@@ -528,7 +535,21 @@ function permisosMock(
     },
   ];
 
-  if (requiereSanitario(producto, input, perfil)) {
+  if (requiereSanitario(producto, input, perfil) && perfil.local_fisico === 'via_publica') {
+    // Un puesto no tiene «establecimiento»: lo que se revisa es el puesto y quien manipula.
+    permisos.push({
+      nombre: 'Requisitos sanitarios para vender alimentos en la calle',
+      autoridad: 'Autoridad sanitaria o municipal',
+      descripcion:
+        meta.via_publica?.alimentos ??
+        'La autoridad sanitaria o el municipio revisa la higiene del puesto y de quien manipula los alimentos. Pregunta al tramitar el permiso si te piden carné o curso de manipulador.',
+      obligatorio: true,
+      nivel_riesgo: 'alto',
+      plazo_tramite: 'Variable según el municipio',
+      costo_estimado: `Variable (${meta.moneda})`,
+      url_tramite: urlOficial(meta.portal_principal, meta),
+    });
+  } else if (requiereSanitario(producto, input, perfil)) {
     permisos.push({
       nombre: 'Aviso de funcionamiento / registro sanitario del establecimiento',
       autoridad: 'Autoridad sanitaria competente',
@@ -734,8 +755,21 @@ function comercioExteriorMock(input: LegalAnalisisInput, meta: PaisMeta): Obliga
   ];
 }
 
-function alertasMock(input: LegalAnalisisInput, meta: PaisMeta, puntaje: number): AlertaLegal[] {
+function alertasMock(input: LegalAnalisisInput, meta: PaisMeta, puntaje: number, perfil: PerfilNegocio = {}): AlertaLegal[] {
   const alertas: AlertaLegal[] = [];
+  const enLaCalle = perfil.local_fisico === 'via_publica';
+  const permisoBase = enLaCalle ? 'el permiso de vía pública' : meta.licencia_local;
+
+  if (enLaCalle) {
+    alertas.push({
+      nivel: 'amarillo',
+      titulo: 'Puesto en la calle: el permiso va primero',
+      descripcion:
+        `Sin permiso de ${meta.via_publica?.autoridad ?? 'la autoridad local'}, una revisión puede terminar con el retiro del puesto y de la mercancía, ` +
+        'aunque lo fiscal esté en orden.',
+      accion_recomendada: 'Pregunta en tu alcaldía o municipio qué permiso aplica a tu lugar y horario, y lleva el permiso en el puesto.',
+    });
+  }
 
   if (input.tiene_empleados) {
     alertas.push({
@@ -753,7 +787,7 @@ function alertasMock(input: LegalAnalisisInput, meta: PaisMeta, puntaje: number)
       nivel: 'amarillo',
       titulo: 'Arranque sin trámites base completados',
       descripcion:
-        `Un negocio en su primer año suele operar antes de cerrar el registro ante ${meta.entidad_fiscal} y ${meta.licencia_local}, lo que impide facturar y expone a clausura.`,
+        `Un negocio en su primer año suele operar antes de cerrar el registro ante ${meta.entidad_fiscal} y ${permisoBase}, lo que impide facturar y expone a ${enLaCalle ? 'que retiren el puesto' : 'clausura'}.`,
       accion_recomendada: 'Cierra primero los dos trámites base y después escala inversión en publicidad o inventario.',
     });
   }
@@ -783,22 +817,37 @@ function alertasMock(input: LegalAnalisisInput, meta: PaisMeta, puntaje: number)
       nivel: puntaje >= 80 ? 'verde' : 'amarillo',
       titulo: 'Perfil de riesgo contenido, con mantenimiento pendiente',
       descripcion:
-        'La estructura declarada es simple: sin empleados, sin venta en línea y sin comercio exterior. El riesgo se concentra en mantener declaraciones y licencia local vigentes.',
-      accion_recomendada: 'Agenda recordatorios de declaración periódica y de renovación de licencia local.',
+        `La estructura declarada es simple: sin empleados, sin venta en línea y sin comercio exterior. El riesgo se concentra en mantener declaraciones y ${enLaCalle ? 'el permiso de vía pública' : 'licencia local'} vigentes.`,
+      accion_recomendada: `Agenda recordatorios de declaración periódica y de renovación de ${enLaCalle ? 'tu permiso de vía pública' : 'licencia local'}.`,
     });
   }
 
   return alertas.slice(0, 4);
 }
 
-function checklistMock(input: LegalAnalisisInput, meta: PaisMeta): ChecklistItem[] {
+function checklistMock(
+  input: LegalAnalisisInput,
+  meta: PaisMeta,
+  perfil: PerfilNegocio = {},
+  sanitario = requiereSanitarioTexto(input)
+): ChecklistItem[] {
+  const enLaCalle = perfil.local_fisico === 'via_publica';
   const items: ChecklistItem[] = [
     {
       categoria: 'fiscal',
       texto: `Confirmar que mi ${meta.registro_tributario} está activo y con la actividad económica correcta`,
       prioridad: 'alta',
     },
-    { categoria: 'permiso', texto: `Obtener o renovar ${meta.licencia_local}`, prioridad: 'alta' },
+    ...(enLaCalle
+      ? [
+          {
+            categoria: 'permiso' as const,
+            texto: `Obtener o renovar el permiso para vender en la vía pública ante ${meta.via_publica?.autoridad ?? 'mi alcaldía o municipio'}`,
+            prioridad: 'alta' as const,
+          },
+          { categoria: 'permiso' as const, texto: 'Llevar el permiso en el puesto, a la vista', prioridad: 'media' as const },
+        ]
+      : [{ categoria: 'permiso' as const, texto: `Obtener o renovar ${meta.licencia_local}`, prioridad: 'alta' as const }]),
     { categoria: 'fiscal', texto: `Emitir ${meta.facturacion} en el 100% de mis ventas`, prioridad: 'alta' },
     { categoria: 'fiscal', texto: 'Presentar mis declaraciones periódicas incluso en meses sin ventas', prioridad: 'alta' },
     {
@@ -835,10 +884,12 @@ function checklistMock(input: LegalAnalisisInput, meta: PaisMeta): ChecklistItem
     );
   }
 
-  if (requiereSanitarioTexto(input)) {
+  if (sanitario) {
     items.push({
       categoria: 'permiso',
-      texto: 'Tramitar el aviso de funcionamiento sanitario del establecimiento',
+      texto: enLaCalle
+        ? 'Cumplir los requisitos sanitarios del puesto y de quien manipula los alimentos'
+        : 'Tramitar el aviso de funcionamiento sanitario del establecimiento',
       prioridad: 'alta',
     });
   }
@@ -854,8 +905,10 @@ function resumenMock(
   producto: Producto,
   input: LegalAnalisisInput,
   meta: PaisMeta,
-  puntaje: number
+  puntaje: number,
+  perfil: PerfilNegocio = {}
 ): string {
+  const enLaCalle = perfil.local_fisico === 'via_publica';
   const banderas = [
     input.tiene_empleados ? 'con personal contratado' : 'sin personal contratado',
     input.vende_en_linea ? 'con venta en línea' : 'sin venta en línea',
@@ -864,7 +917,9 @@ function resumenMock(
 
   return (
     `El negocio opera en ${meta.nombre} bajo "${input.forma_juridica || 'forma jurídica no declarada'}" en el giro de ${giroBase(producto, input)}, ${banderas}. ` +
-    `Con los datos declarados el nivel de cumplimiento estimado es de ${puntaje}/100: la base fiscal y la licencia local concentran el riesgo inmediato de multa o clausura. ` +
+    (enLaCalle
+      ? `Con los datos declarados el nivel de cumplimiento estimado es de ${puntaje}/100: la base fiscal y el permiso para vender en la vía pública concentran el riesgo inmediato de multa o de que retiren el puesto. `
+      : `Con los datos declarados el nivel de cumplimiento estimado es de ${puntaje}/100: la base fiscal y la licencia local concentran el riesgo inmediato de multa o clausura. `) +
     `${input.tiene_empleados ? 'La prioridad número uno es el alta y el contrato de todo el personal, porque un accidente sin alta se paga íntegro de tu bolsillo. ' : ''}` +
     `${input.vende_en_linea ? 'En el canal digital falta blindar el tratamiento de datos y la información obligatoria al consumidor. ' : ''}` +
     `${input.exporta_importa ? 'En comercio exterior, sin padrón vigente y clasificación arancelaria validada cada embarque puede quedar retenido. ' : ''}` +
@@ -934,14 +989,14 @@ export function generarAnalisisLegalMock(
     fecha_generacion: fechaISO,
     cumplimiento_global: semaforo(puntaje),
     puntaje_cumplimiento: puntaje,
-    resumen_ejecutivo: resumenMock(producto, input, meta, puntaje),
+    resumen_ejecutivo: resumenMock(producto, input, meta, puntaje, perfil),
     permisos_licencias: permisosMock(producto, input, meta, perfil),
     obligaciones_fiscales: fiscalesMock(input, meta),
     obligaciones_laborales: visible('legal.obligaciones_laborales', laboralesMock(input, meta)),
     regulacion_digital: visible('legal.regulacion_digital', digitalMock(input, meta)),
     regulacion_comercio_exterior: visible('legal.regulacion_comercio_exterior', comercioExteriorMock(input, meta)),
-    alertas: visible('legal.alertas', alertasMock(input, meta, puntaje)),
-    checklist: visible('legal.checklist', checklistMock(input, meta)),
+    alertas: visible('legal.alertas', alertasMock(input, meta, puntaje, perfil)),
+    checklist: visible('legal.checklist', checklistMock(input, meta, perfil, requiereSanitario(producto, input, perfil))),
     disclaimer: disclaimerTexto(meta, fechaISO),
     fuentes_recomendadas: meta.fuentes,
     transparencia,

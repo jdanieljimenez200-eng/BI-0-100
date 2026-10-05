@@ -206,8 +206,10 @@ export function generarRiesgosMock(ctx: RiesgosContexto): RiesgosNegocio {
         'Repones inventario o insumos con tarjeta de crédito',
         'No sabes tu margen exacto por venta',
       ],
+      // Sin «25-30 %» de manual: la referencia es el margen que el negocio tiene hoy.
       como_evitarlo:
-        'Revisa tu costo variable unitario cada trimestre y ajusta precio antes de que el margen caiga de 25-30%.',
+        `Revisa tu costo variable unitario cada trimestre: si tu margen baja del ${margen}% que tienes hoy, ` +
+        'sube el precio o renegocia el costo antes de que se note en la caja.',
     },
     {
       titulo: 'Flujo de caja antes de llegar al punto de equilibrio',
@@ -243,7 +245,37 @@ export function generarRiesgosMock(ctx: RiesgosContexto): RiesgosNegocio {
     },
   ];
 
+  // Un puesto en la calle depende de poder ponerse: va primero.
+  if (ctx.perfil?.local_fisico === 'via_publica') {
+    const equilibrio = typeof ctx.unidades_breakeven_mes === 'number' && ctx.unidades_breakeven_mes > 0
+      ? `: necesitas ${ctx.unidades_breakeven_mes} ventas al mes solo para cubrirlos`
+      : '';
+    riesgos.unshift({
+      titulo: 'Días sin vender por un retiro, un cambio de lugar o el clima',
+      descripcion:
+        `En la calle, un operativo, una obra o la lluvia pueden dejarte días sin vender, y los ${dinero(ctx.costos_fijos_mensuales)} ` +
+        `de costos fijos del mes se pagan igual${equilibrio}.`,
+      senales_alerta: [
+        'Vendes sin permiso o con el permiso vencido',
+        'Pagas por el lugar sin recibo ni permiso',
+        'Tus ventas caen en temporada de lluvias o de frío',
+      ],
+      como_evitarlo:
+        'Saca o renueva el permiso (revisa Legal), aparta algo de los días buenos para los días sin venta y toma pedidos por WhatsApp para no depender de un solo lugar.',
+    });
+  }
+
   // Riesgos que solo aparecen si el dueño declaró el dato: sin dato no se afirma nada.
+  if (typeof ctx.merma_pct === 'number' && ctx.merma_pct > 0 && typeof ctx.merma_unitaria === 'number' && ctx.merma_unitaria > 0) {
+    riesgos.push({
+      titulo: 'Lo que no se vende encarece cada venta',
+      descripcion:
+        `Tirar el ${ctx.merma_pct}% de lo que preparas o compras te cuesta ${dinero(ctx.merma_unitaria)} en cada venta: ` +
+        'es dinero que ya gastaste y no regresa.',
+      senales_alerta: ['Te sobra producto casi todos los días', 'Preparas lo mismo sin importar el día de la semana'],
+      como_evitarlo: 'Anota cada día lo que sobra y ajusta lo que preparas o compras según el día de la semana.',
+    });
+  }
   if (typeof ctx.cobertura_deuda === 'number' && ctx.cobertura_deuda < 1.25) {
     riesgos.push({
       titulo: ctx.cobertura_deuda < 1 ? 'La deuda cuesta más de lo que genera el negocio' : 'Deuda sin margen de seguridad',
@@ -262,9 +294,10 @@ export function generarRiesgosMock(ctx: RiesgosContexto): RiesgosNegocio {
   }
 
   return {
+    // Sin generalizar sobre «los negocios de este giro»: solo lo que dicen sus números.
     patron_comun:
-      `Los negocios de ${ctx.categoria || 'este giro'} con un margen neto de ${margen}% rara vez mueren ` +
-      'por falta de clientes: mueren por matemáticas rotas disfrazadas de "mal mes".',
+      `En tu negocio de ${ctx.categoria || 'este giro'}, con un margen neto de ${margen}% y ${dinero(ctx.costos_fijos_mensuales)} ` +
+      'de costos fijos al mes, el riesgo está en que el margen se erosione, en la caja de los primeros meses y en gastos fijos que crecen.',
     riesgos: riesgos.slice(0, 5),
   };
 }

@@ -5,7 +5,7 @@ import {
   generarAnalisisLegalMock,
   userPromptLegal,
 } from '../../services/legal/legalService';
-import { resolverPais } from '../../services/legal/fichasPais';
+import { resolverPais, textoFichaPais, PAISES } from '../../services/legal/fichasPais';
 import { CASOS_LEGAL, productoDeCaso } from '../../services/ia/casosPrueba';
 import { _reiniciarCachePrompts } from '../../services/ia/registroPrompts';
 
@@ -177,6 +177,38 @@ describe('Legal: prompt compuesto y contrato', () => {
     expect(nombres).toContain('Permiso para vender en la vía pública');
     expect(nombres).not.toContain('Licencia de funcionamiento municipal');
     expect(JSON.stringify(r)).not.toMatch(/causa más común|causa habitual/);
+    // El detalle de México sale de su ficha: dentro del Metro no se vende.
+    expect(r.permisos_licencias.find((p) => p.nombre === 'Permiso para vender en la vía pública')?.descripcion).toContain('Metro');
+  });
+
+  it.each(Object.keys(PAISES))('la ficha de %s dice quién da el permiso para vender en la calle', (iso) => {
+    expect(resolverPais(iso).meta.via_publica?.autoridad).toBeTruthy();
+    expect(textoFichaPais(iso)).toContain('Venta en la vía pública (puestos fijos, semifijos o ambulantes), permiso de');
+  });
+
+  it('un puesto en la calle en Perú: permiso de la municipalidad y carné de sanidad, sin licencia de local', () => {
+    const r = generarAnalisisLegalMock(productoDeCaso(caso('mx_tamales_via_publica'), 'PE'), inputDe('mx_tamales_via_publica'));
+
+    const permiso = r.permisos_licencias.find((p) => p.nombre === 'Permiso para vender en la vía pública');
+    expect(permiso?.autoridad).toBe('La municipalidad distrital');
+    expect(permiso?.descripcion).toContain('autorización municipal temporal');
+    const sanitario = r.permisos_licencias.find((p) => /sanitari/i.test(p.nombre));
+    expect(sanitario?.nombre).toBe('Requisitos sanitarios para vender alimentos en la calle');
+    expect(sanitario?.descripcion).toContain('carné de sanidad');
+
+    const checklist = r.checklist.map((c) => c.texto).join(' | ');
+    expect(checklist).toContain('permiso para vender en la vía pública ante la municipalidad distrital');
+    expect(checklist).not.toMatch(/Licencia de funcionamiento|establecimiento/);
+    expect(r.alertas[0].titulo).toBe('Puesto en la calle: el permiso va primero');
+    expect(r.resumen_ejecutivo).toContain('vía pública');
+    expect(r.resumen_ejecutivo).not.toContain('licencia local');
+  });
+
+  it('en un país sin ficha, el permiso de la calle se describe en general', () => {
+    const r = generarAnalisisLegalMock(productoDeCaso(caso('mx_tamales_via_publica'), 'GT'), inputDe('mx_tamales_via_publica'));
+    const permiso = r.permisos_licencias.find((p) => p.nombre === 'Permiso para vender en la vía pública');
+    expect(permiso?.autoridad).toBe('Autoridad municipal o local (alcaldía, municipio o intendencia)');
+    expect(permiso?.descripcion).not.toContain('Metro');
   });
 
   it('una sección oculta se pide vacía en el prompt', () => {

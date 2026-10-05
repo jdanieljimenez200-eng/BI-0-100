@@ -38,18 +38,24 @@ export interface ColorExtraido {
 
 export interface LogoAnalysisResult {
   score_logo: {
-    legibilidad: number;
-    versatilidad: number;
-    originalidad: number;
-    coherencia_marca: number;
-    impacto_visual: number;
-    total: number;
+    /** `null`: sin IA no se ve la imagen y no se califica (logo@2). */
+    legibilidad: number | null;
+    versatilidad: number | null;
+    originalidad: number | null;
+    coherencia_marca: number | null;
+    impacto_visual: number | null;
+    total: number | null;
+    origen?: 'ia' | 'sin_ia';
+    razon?: string;
   };
   colores_extraidos: ColorExtraido[];
+  /** Vacío si no se pudo ver la imagen. */
   tipo_logo_detectado: string;
   analisis_tecnico: string;
   recomendaciones: string[];
   coherencia_con_brief: string | null;
+  es_mock?: boolean;
+  transparencia?: import('@/components/analisis/TransparenciaIA').Transparencia | null;
 }
 
 export interface AnalisisBriefPoll {

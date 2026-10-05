@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { contrastRatio, wcagLevel } from './types';
 import type { ColorExtraido, LogoAnalysisResult } from './types';
+import TransparenciaIA from '@/components/analisis/TransparenciaIA';
 
 // ─── OtroInput ────────────────────────────────────────────────────────────────
 
@@ -312,11 +313,14 @@ export function LogoUpload({ onAnalysisComplete, productoId, logoUrl: existingLo
               <p className="text-xs text-white/50 mb-1">{analysis ? 'Logo analizado' : 'Logo subido'}</p>
               <p className="text-[11px] text-white/25">Click o arrastra para reemplazar</p>
             </div>
-            {analysis && (
+            {analysis && analysis.score_logo.total !== null && (
               <div className="text-right">
                 <span className="font-mono text-2xl font-black text-[#8B5CF6]">{analysis.score_logo.total}</span>
                 <span className="text-[10px] text-white/30 block">/10</span>
               </div>
+            )}
+            {analysis?.es_mock && (
+              <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-[10px] font-medium text-amber-400">Sin IA</span>
             )}
           </div>
         ) : (
@@ -348,26 +352,38 @@ export function LogoUpload({ onAnalysisComplete, productoId, logoUrl: existingLo
               <ScoreBar label="Impacto" value={analysis.score_logo.impacto_visual} tip="Aumenta el contraste y el peso visual del elemento principal." />
               <div className="flex items-center justify-between pt-3 border-t border-white/[0.06]">
                 <span className="text-sm font-semibold text-white/50">Score total</span>
-                <span className="font-mono text-2xl font-black text-[#8B5CF6]">{analysis.score_logo.total}<span className="text-sm font-normal text-white/30">/10</span></span>
+                {analysis.score_logo.total !== null ? (
+                  <span className="font-mono text-2xl font-black text-[#8B5CF6]">{analysis.score_logo.total}<span className="text-sm font-normal text-white/30">/10</span></span>
+                ) : (
+                  <span className="font-mono text-2xl font-black text-white/30">—</span>
+                )}
+              </div>
+              {/* De dónde sale el puntaje (logo@2); los análisis anteriores no lo traen. */}
+              {analysis.score_logo.razon && (
+                <p className="pt-1 text-[11px] leading-relaxed text-white/40">{analysis.score_logo.razon}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Tipo detectado (sin IA no se ve la imagen: no se muestra) */}
+          {analysis.tipo_logo_detectado && (
+            <div className="rounded-2xl border border-white/[0.06] p-5" style={{ background: '#0A1520', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
+              <span className="block text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Tipo de Logo Detectado</span>
+              <p className="text-sm font-semibold text-white">{analysis.tipo_logo_detectado}</p>
+            </div>
+          )}
+
+          {/* Colores extraídos: el porcentaje es una estimación visual de la IA */}
+          {analysis.colores_extraidos.length > 0 && (
+            <div className="rounded-2xl border border-white/[0.06] p-5" style={{ background: '#0A1520', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
+              <span className="block text-[10px] font-bold uppercase tracking-widest text-white/25 mb-3">Colores Extraídos del Logo</span>
+              <div className="grid grid-cols-4 gap-3">
+                {analysis.colores_extraidos.map((c: ColorExtraido, i: number) => (
+                  <ColorSwatch key={i} hex={c.hex} nombre={`${c.nombre} (≈${c.porcentaje}%)`} showContrast />
+                ))}
               </div>
             </div>
-          </div>
-
-          {/* Tipo detectado */}
-          <div className="rounded-2xl border border-white/[0.06] p-5" style={{ background: '#0A1520', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
-            <span className="block text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">Tipo de Logo Detectado</span>
-            <p className="text-sm font-semibold text-white">{analysis.tipo_logo_detectado}</p>
-          </div>
-
-          {/* Colores extraídos */}
-          <div className="rounded-2xl border border-white/[0.06] p-5" style={{ background: '#0A1520', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
-            <span className="block text-[10px] font-bold uppercase tracking-widest text-white/25 mb-3">Colores Extraídos del Logo</span>
-            <div className="grid grid-cols-4 gap-3">
-              {analysis.colores_extraidos.map((c: ColorExtraido, i: number) => (
-                <ColorSwatch key={i} hex={c.hex} nombre={`${c.nombre} (${c.porcentaje}%)`} showContrast />
-              ))}
-            </div>
-          </div>
+          )}
 
           {/* Análisis técnico */}
           <div className="rounded-2xl border border-white/[0.06] p-5" style={{ background: '#0A1520', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
@@ -385,7 +401,9 @@ export function LogoUpload({ onAnalysisComplete, productoId, logoUrl: existingLo
 
           {/* Recomendaciones */}
           <div className="rounded-2xl border border-white/[0.06] p-5" style={{ background: '#0A1520', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
-            <span className="block text-[10px] font-bold uppercase tracking-widest text-white/25 mb-3">Recomendaciones</span>
+            <span className="block text-[10px] font-bold uppercase tracking-widest text-white/25 mb-3">
+              {analysis.es_mock ? 'Pruebas que puedes hacer tú' : 'Recomendaciones'}
+            </span>
             <ol className="space-y-2.5">
               {analysis.recomendaciones.map((rec: string, i: number) => (
                 <li key={i} className="flex gap-3">
@@ -395,6 +413,9 @@ export function LogoUpload({ onAnalysisComplete, productoId, logoUrl: existingLo
               ))}
             </ol>
           </div>
+
+          {/* Qué tan confiable es (logo@2; los análisis anteriores no lo traen). */}
+          <TransparenciaIA transparencia={analysis.transparencia} />
         </div>
       )}
     </div>

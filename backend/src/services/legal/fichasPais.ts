@@ -30,6 +30,12 @@ export interface PaisMeta {
   propiedad_industrial: { nombre: string; url: string };
   /** Autoridades que intervienen en giros regulados (salud, alimentos, seguridad del local). */
   autoridades_sectoriales: string[];
+  /**
+   * Venta en la calle (puesto fijo, semifijo o ambulante): quién da el permiso y
+   * qué pide. Lo leen la IA (en la ficha) y la plantilla. Sin este dato la
+   * plantilla lo describe de forma genérica.
+   */
+  via_publica?: { autoridad: string; permiso: string; alimentos?: string };
   moneda: string;
   portal_principal: string;
   dominios_oficiales: string[];
@@ -41,7 +47,7 @@ export interface PaisMeta {
  * una validación profesional: la ficha lo dice así para que la IA la trate como
  * orientación y la contraste.
  */
-export const FICHAS_CONSOLIDADAS_EL = '2026-09-29';
+export const FICHAS_CONSOLIDADAS_EL = '2026-10-05';
 
 /** Cuándo hay que revisar una ficha. Aplica a todos los países. */
 export const REVISAR_FICHA_CUANDO = [
@@ -70,8 +76,14 @@ export const PAISES: Record<string, PaisMeta> = {
       'Seguridad del establecimiento: Protección Civil municipal o estatal',
       'Uso de suelo: dirección de desarrollo urbano del municipio',
       'Venta de alcohol: licencia específica municipal o estatal',
-      'Comercio en vía pública (puestos fijos, semifijos o ambulantes): permiso o registro de la alcaldía (CDMX) o del municipio y pago por el uso de la vía pública; dentro de las instalaciones del Metro de la CDMX no se permite vender. Las cuotas que piden organizaciones o líderes no sustituyen el permiso.',
     ],
+    via_publica: {
+      autoridad: 'la alcaldía (CDMX) o el municipio',
+      permiso:
+        'Los puestos fijos, semifijos o ambulantes necesitan permiso o registro de la alcaldía o del municipio y pagan por el uso de la vía pública. Dentro de las instalaciones del Metro de la CDMX no se permite vender. Las cuotas que piden organizaciones o líderes no sustituyen el permiso.',
+      alimentos:
+        'Si vendes alimentos, la autoridad sanitaria local puede revisar la higiene del puesto (agua limpia, alimentos tapados, lavado de manos).',
+    },
     moneda: 'MXN',
     portal_principal: 'https://www.gob.mx/tramites',
     dominios_oficiales: ['gob.mx', 'org.mx'],
@@ -100,6 +112,13 @@ export const PAISES: Record<string, PaisMeta> = {
       'Seguridad del establecimiento: cuerpo de bomberos del municipio',
       'Uso de suelo: oficina de planeación municipal',
     ],
+    via_publica: {
+      autoridad: 'la alcaldía municipal o distrital (en Bogotá intervienen el IPES y el DADEP)',
+      permiso:
+        'Cada alcaldía decide dónde y cómo se puede vender en el espacio público. El Código Nacional de Seguridad y Convivencia Ciudadana (Ley 1801 de 2016) sanciona ocuparlo sin autorización, con multa y retiro de los elementos. La Ley 1988 de 2019 ordena una política pública para vendedores informales (formación y protección social).',
+      alimentos:
+        'Si vendes alimentos, la secretaría de salud vigila la higiene y pide que quien los manipula esté capacitado en manipulación de alimentos.',
+    },
     moneda: 'COP',
     portal_principal: 'https://www.gov.co',
     dominios_oficiales: ['gov.co', 'org.co'],
@@ -127,6 +146,12 @@ export const PAISES: Record<string, PaisMeta> = {
       'Sanitaria: ANMAT (alimentos envasados, medicamentos y cosméticos) y bromatología municipal',
       'Agroalimentaria: SENASA (productos de origen animal y vegetal)',
     ],
+    via_publica: {
+      autoridad: 'el municipio (en la Ciudad de Buenos Aires, el Gobierno de la Ciudad)',
+      permiso:
+        'El permiso para vender en la vía pública suele ser personal, precario y por plazo. En la Ciudad de Buenos Aires vender sin permiso es una contravención por uso indebido del espacio público (Código Contravencional), salvo la venta de baratijas o artesanías que no compite con el comercio establecido.',
+      alimentos: 'Para vender alimentos, la bromatología municipal pide el carnet de manipulador de alimentos.',
+    },
     moneda: 'ARS',
     portal_principal: 'https://www.argentina.gob.ar',
     dominios_oficiales: ['gob.ar'],
@@ -153,6 +178,12 @@ export const PAISES: Record<string, PaisMeta> = {
       'Sanitaria: DIGESA (alimentos y bebidas) y DIGEMID (medicamentos, cosméticos y productos sanitarios)',
       'Seguridad del establecimiento: Inspección Técnica de Seguridad en Edificaciones (ITSE) municipal',
     ],
+    via_publica: {
+      autoridad: 'la municipalidad distrital',
+      permiso:
+        'El comercio ambulatorio necesita autorización municipal temporal para usar el espacio público: fija el lugar, el horario y el giro, se exhibe en el puesto y no da derecho permanente al lugar. Las reglas cambian por distrito (cada uno tiene su ordenanza).',
+      alimentos: 'Quien vende alimentos necesita carné de sanidad vigente, y también su ayudante.',
+    },
     moneda: 'PEN',
     portal_principal: 'https://www.gob.pe',
     dominios_oficiales: ['gob.pe'],
@@ -179,6 +210,12 @@ export const PAISES: Record<string, PaisMeta> = {
     autoridades_sectoriales: [
       'Sanitaria: SEREMI de Salud (autorización sanitaria del establecimiento) e ISP (medicamentos y cosméticos)',
     ],
+    via_publica: {
+      autoridad: 'la municipalidad',
+      permiso:
+        'El comercio estacionado o ambulante en bienes nacionales de uso público necesita permiso municipal, con pago de derechos. Es precario: la municipalidad lo puede revocar o cambiar de lugar, y su ordenanza fija dónde se puede vender. Desde la Ley 21.426 (2022), Carabineros, los inspectores municipales y el SII pueden exigir los permisos municipales y sanitarios.',
+      alimentos: 'Para vender alimentos, autorización sanitaria de la SEREMI de Salud.',
+    },
     moneda: 'CLP',
     portal_principal: 'https://www.chileatiende.gob.cl',
     dominios_oficiales: ['gob.cl', 'sii.cl', 'sernac.cl', 'inapi.cl', 'dt.gob.cl'],
@@ -205,6 +242,12 @@ export const PAISES: Record<string, PaisMeta> = {
     autoridades_sectoriales: [
       'Sanitaria: AESAN (alimentos), AEMPS (medicamentos y cosméticos) y las autoridades sanitarias autonómicas',
     ],
+    via_publica: {
+      autoridad: 'el ayuntamiento',
+      permiso:
+        'La venta ambulante o no sedentaria necesita autorización del ayuntamiento para cada emplazamiento y modalidad (Real Decreto 199/2010), con el lugar, las fechas, el horario y los productos. La ordenanza municipal fija las zonas, y el puesto no puede ponerse en la entrada de edificios públicos o comercios ni donde estorbe el paso.',
+      alimentos: 'Para vender alimentos, las normas de higiene alimentaria y la formación en higiene de quien los manipula.',
+    },
     moneda: 'EUR',
     portal_principal: 'https://administracion.gob.es',
     dominios_oficiales: ['gob.es', 'seg-social.es', 'aepd.es', 'boe.es', 'oepm.es'],
@@ -257,6 +300,14 @@ export function resolverPais(iso?: string | null): { iso: string; meta: PaisMeta
   return meta ? { iso: code, meta } : { iso: code, meta: metaGenerica(code) };
 }
 
+function lineaViaPublica(m: PaisMeta): string[] {
+  const v = m.via_publica;
+  if (!v) return [];
+  return [
+    `Venta en la vía pública (puestos fijos, semifijos o ambulantes), permiso de ${v.autoridad}: ${v.permiso}${v.alimentos ? ` ${v.alimentos}` : ''}`,
+  ];
+}
+
 /**
  * Texto de la ficha que lee la IA (valor por defecto de `legal.pais.<ISO>`).
  * `null` si el país no tiene ficha en el repositorio: entonces el compositor usa
@@ -279,7 +330,7 @@ Consolidada el ${FICHAS_CONSOLIDADAS_EL}. Aún no la ha validado un profesional 
 - Aduanas: ${m.aduana}
 - Permiso para operar el local: ${m.licencia_local}
 - Propiedad industrial (marcas): ${m.propiedad_industrial.nombre}
-${m.autoridades_sectoriales.map((a) => `- ${a}`).join('\n')}
+${[...m.autoridades_sectoriales, ...lineaViaPublica(m)].map((a) => `- ${a}`).join('\n')}
 - Dominios oficiales (solo estos valen para url_tramite): ${m.dominios_oficiales.join(', ')}
 - Portal de trámites: ${m.portal_principal}
 
@@ -304,6 +355,7 @@ Consolidada el [fecha]. Validada por: [profesional o fuente].
 - Permiso para operar el local: [completar]
 - Propiedad industrial (marcas): [completar]
 - Sanitaria y otras autoridades sectoriales: [completar]
+- Venta en la vía pública (quién da el permiso, qué pide, zonas donde no se puede): [completar]
 - Portal de trámites: [completar]
 
 Revisa esta ficha cuando haya: ${REVISAR_FICHA_CUANDO.join('; ')}.`;

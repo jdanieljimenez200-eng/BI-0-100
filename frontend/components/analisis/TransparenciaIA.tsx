@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import Link from 'next/link';
 
 /**
@@ -39,17 +40,19 @@ export default function TransparenciaIA({
   /** Dónde completar los datos que faltan (el formulario del módulo). */
   hrefCompletar?: string;
 }) {
+  // Puede haber dos en la misma página (el brief y el logo): id único por instancia.
+  const idTitulo = useId();
   if (!transparencia) return null;
   const supuestos = transparencia.supuestos ?? [];
   const faltante = transparencia.informacion_faltante ?? [];
 
   return (
     <section
-      aria-labelledby="titulo-transparencia"
+      aria-labelledby={idTitulo}
       className="rounded-2xl border border-white/[0.08] bg-[#1C1C1E] p-5 space-y-4"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <h2 id="titulo-transparencia" className="text-sm font-bold text-white">
+        <h2 id={idTitulo} className="text-sm font-bold text-white">
           Qué tan confiable es este análisis
         </h2>
         <BadgeConfianza nivel={transparencia.nivel_confianza} />

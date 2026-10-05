@@ -140,8 +140,15 @@ describe('Brief: plantilla sin IA', () => {
     const r = await generarBrief(productoDe('mx_tamales_via_publica'), inputDe('mx_tamales_via_publica'));
     const instrucciones = r.resultado.instrucciones_disenador.join(' ');
     expect(instrucciones).toContain('Conservar: El nombre «Doña Lupe»');
-    expect(instrucciones).toContain('letrero o fachada del local');
+    // Un puesto en la calle no tiene fachada: su letrero es una lona o una manta.
+    expect(instrucciones).toContain('lona o manta del puesto');
+    expect(instrucciones).not.toContain('fachada del local');
     expect(instrucciones).toContain('uniformes');
+  });
+
+  it('con local, el letrero sigue siendo el del local', async () => {
+    const r = await generarBrief(productoDe('mx_cafeteria_conserva_logo'), inputDe('mx_cafeteria_conserva_logo'));
+    expect(r.resultado.instrucciones_disenador.join(' ')).toContain('letrero o fachada del local');
   });
 });
 

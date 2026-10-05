@@ -14,6 +14,9 @@ import {
   generarTipsMock,
 } from '../../services/ventas/ventasService';
 import { CASOS_VENTAS } from '../../services/ia/casosPruebaVentas';
+import { generarRiesgosMock, type RiesgosContexto } from '../../services/finanzas/riesgosService';
+import { transparenciaBaseFinanzas } from '../../services/finanzas/transparenciaFinanzas';
+import { generarAnalisisSinIA } from '../../services/brief/logoAnalysisService';
 
 /**
  * Lo que arma el código (no la IA) tampoco puede decir cosas que no son.
@@ -51,6 +54,8 @@ const SIN_RESPALDO = [
   /Alta competencia establecida/i,
   /proveedores mejor evaluados/i,
   /menos de 24 horas/i,
+  /rara vez mueren/i,
+  /25-30 ?%/,
 ];
 
 function sinRespaldo(texto: string): string[] {
@@ -175,5 +180,70 @@ describe('Legal y Ventas: las plantillas tampoco usan frases sin respaldo', () =
       analizarCompetidorMock('La Competencia', 'Video del competidor: La Competencia'),
     ]);
     expect(sinRespaldo(texto)).toEqual([]);
+  });
+});
+
+describe('Finanzas: los riesgos de plantilla hablan de este negocio', () => {
+  const ctxTamales = (extra: Partial<RiesgosContexto> = {}): RiesgosContexto => {
+    const { breakeven } = resumir(inputTamales);
+    return {
+      nombre_producto: 'Tamales Doña Lupe',
+      categoria: 'Alimentos preparados',
+      pais: 'MX',
+      precio_venta: 45,
+      costo_variable_unitario: 17,
+      costos_fijos_mensuales: 14000,
+      margen_neto_promedio: 31,
+      viabilidad: 'alta',
+      meses_para_recuperar_inversion: 1,
+      unidades_breakeven_mes: breakeven.unidades_breakeven_mes,
+      perfil: tamales.perfil,
+      ...extra,
+    };
+  };
+
+  it('a un puesto en la calle le pone primero los días sin vender, con su punto de equilibrio', () => {
+    const ctx = ctxTamales();
+    const r = generarRiesgosMock(ctx);
+    expect(r.riesgos[0].titulo).toBe('Días sin vender por un retiro, un cambio de lugar o el clima');
+    expect(r.riesgos[0].descripcion).toContain(`${ctx.unidades_breakeven_mes} ventas al mes`);
+    expect(sinRespaldo(JSON.stringify(r))).toEqual([]);
+  });
+
+  it('con local no aparece el riesgo de la calle', () => {
+    const r = generarRiesgosMock(ctxTamales({ perfil: { local_fisico: 'local_rentado' } }));
+    expect(r.riesgos.map((x) => x.titulo)).not.toContain('Días sin vender por un retiro, un cambio de lugar o el clima');
+  });
+
+  it('la merma declarada se vuelve un riesgo con su costo; sin dato no se menciona', () => {
+    const con = generarRiesgosMock(ctxTamales({ merma_pct: 12, merma_unitaria: 2.32 }));
+    expect(con.riesgos.find((x) => x.titulo === 'Lo que no se vende encarece cada venta')?.descripcion).toContain('12%');
+    const sin = generarRiesgosMock(ctxTamales());
+    expect(sin.riesgos.map((x) => x.titulo)).not.toContain('Lo que no se vende encarece cada venta');
+  });
+
+  it('el margen de referencia es el del negocio, no uno de manual', () => {
+    const r = generarRiesgosMock(ctxTamales({ perfil: {} }));
+    expect(r.riesgos[0].como_evitarlo).toContain('31%');
+    expect(r.patron_comun).not.toMatch(/rara vez|mueren/);
+  });
+
+  it('la transparencia recuerda contar lo que se paga por el lugar', () => {
+    const input = inputTamales;
+    const proyeccion = generarProyeccion(input);
+    const breakeven = calcularBreakeven(input, proyeccion.meses);
+    const t = transparenciaBaseFinanzas({
+      input, proyeccion, breakeven, origenDatos: 'declarado', estatus: 'idea', perfil: tamales.perfil, categoria: 'Alimentos preparados',
+    });
+    expect(t.supuestos.join(' ')).toContain('lo que pagas por el lugar');
+  });
+});
+
+describe('Logo sin IA: no inventa nada', () => {
+  it('sin puntajes, colores ni frases sin respaldo', () => {
+    const r = generarAnalisisSinIA({ usos_marca: ['uniformes', 'local_letrero'] }, null, 'El análisis con IA no está disponible.');
+    expect(r.score_logo.total).toBeNull();
+    expect(r.colores_extraidos).toEqual([]);
+    expect(sinRespaldo(JSON.stringify(r))).toEqual([]);
   });
 });

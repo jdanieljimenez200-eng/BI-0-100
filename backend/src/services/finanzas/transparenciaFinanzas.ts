@@ -94,6 +94,12 @@ export function transparenciaBaseFinanzas(d: DatosTransparenciaFinanzas): Transp
   if (d.origenDatos !== 'contabilidad' && d.estatus === 'idea') {
     supuestos.push('Las ventas son una estimación tuya: el negocio todavía no vende, así que el resultado depende de que se cumplan.');
   }
+  // En la calle no hay renta de local, pero casi siempre se paga por el lugar.
+  if (d.perfil.local_fisico === 'via_publica') {
+    supuestos.push(
+      'Vendes en la vía pública: se asumió que lo que pagas por el lugar (derecho municipal, renta del puesto o cuotas) ya está en tus costos fijos; si no, tu punto de equilibrio real es más alto.'
+    );
+  }
   if (sinDato(input.sueldo_dueno_mensual)) {
     supuestos.push('Se asumió que tu sueldo como dueño ya está dentro de los costos fijos (o que no te pagas uno).');
   }
