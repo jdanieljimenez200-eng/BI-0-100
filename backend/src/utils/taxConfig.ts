@@ -45,21 +45,13 @@ export function getTaxConfig(pais: string | null | undefined): TaxConfig {
   return CONFIGS[(pais || 'MX').toUpperCase()] ?? CONFIGS['MX'];
 }
 
-export function calcularImpuesto(subtotal: number, pais: string): {
-  subtotal: number;
-  impuesto_monto: number;
-  impuesto_tasa: number;
-  impuesto_nombre: string;
-  total: number;
-} {
-  const cfg = getTaxConfig(pais);
-  const subtotalRedondeado = r2(subtotal);
-  const impuesto = r2(subtotalRedondeado * cfg.consumo.tasa);
-  return {
-    subtotal: subtotalRedondeado,
-    impuesto_monto: impuesto,
-    impuesto_tasa: cfg.consumo.tasa,
-    impuesto_nombre: cfg.consumo.nombre,
-    total: r2(subtotalRedondeado + impuesto),
-  };
+/**
+ * Impuesto que ya viene DENTRO de un precio al público: total − total / (1 + tasa).
+ * Al consumidor se le muestra el precio con impuestos incluidos (ley de
+ * protección al consumidor en México, Colombia, Perú, Chile, Ecuador…), así que
+ * el POS desglosa el impuesto en vez de sumarlo encima.
+ */
+export function impuestoIncluido(total: number, tasa: number): number {
+  if (!(tasa > 0)) return 0;
+  return r2(total - total / (1 + tasa));
 }

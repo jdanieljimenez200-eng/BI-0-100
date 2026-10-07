@@ -110,7 +110,7 @@ describeWithDb('Fase 2 — control interno del dinero', () => {
         venta.id,
       ]);
       expect(aud).toMatchObject({ accion: 'venta_cancelada', actor_id: c.trabajadorId });
-      expect(aud.monto_antes).toBe(116); // 100 + IVA
+      expect(aud.monto_antes).toBe(100); // el precio del catálogo ya incluye el IVA
     });
 
     it('la venta no se borra: queda cancelada con asientos inversos y fuera de reportes', async () => {
@@ -171,6 +171,41 @@ describeWithDb('Fase 2 — control interno del dinero', () => {
 
   // ── Precio del catálogo ─────────────────────────────────────────────────────
 
+  // ── Impuesto al consumo ─────────────────────────────────────────────────────
+
+  describe('Si el negocio cobra IVA lo decide el dueño en el punto de cobro', () => {
+    it('sin IVA se cobra lo mismo y no se registra impuesto; el cajero no lo puede cambiar', async () => {
+      const c = await crearCuenta({ pos: true });
+
+      const inicial = await c.api.get(`/pos/punto-cobro/${c.pid}`);
+      expect(inicial.status).toBe(200);
+      expect(inicial.body).toMatchObject({ cobra_impuesto: true, impuesto: { nombre: 'IVA', tasa: 0.16 }, puede_cambiar: true });
+
+      // El cajero ve la configuración pero no la cambia: es el régimen fiscal del dueño.
+      expect((await c.trabajador!.get(`/pos/punto-cobro/${c.pid}`)).body.puede_cambiar).toBe(false);
+      expect((await c.trabajador!.patch(`/pos/punto-cobro/${c.pid}`, { cobra_impuesto: false })).status).toBe(403);
+
+      // Con IVA: 100 de catálogo = 100 cobrados, 13.79 de IVA dentro.
+      const conIva = (await vender(c.api, c.pid, c.itemId)).body.venta;
+      expect(Number(conIva.total)).toBe(100);
+      expect(Number(conIva.impuesto_monto)).toBe(13.79);
+
+      // Monotributo, Nuevo RUS, no responsable de IVA: se cobra igual, sin impuesto registrado.
+      expect((await c.api.patch(`/pos/punto-cobro/${c.pid}`, { cobra_impuesto: false })).body.cobra_impuesto).toBe(false);
+      const sinIva = (await vender(c.trabajador!, c.pid, c.itemId)).body.venta;
+      expect(Number(sinIva.total)).toBe(100);
+      expect(Number(sinIva.impuesto_monto)).toBe(0);
+      const porPagar = await q(
+        `SELECT COUNT(*)::int AS n FROM movimientos_contables WHERE referencia_id = $1 AND categoria LIKE '% por pagar'`,
+        [sinIva.id],
+      );
+      expect(porPagar[0].n).toBe(0);
+
+      expect((await c.api.patch(`/pos/punto-cobro/${c.pid}`, { cobra_impuesto: 'no' })).status).toBe(400);
+      expect((await c.api.get(`/pos/punto-cobro/${randomUUID()}`)).status).toBe(404);
+    });
+  });
+
   describe('El precio lo pone el catálogo', () => {
     it('un cajero sin permiso no puede cobrar otro precio; con permiso queda registrado', async () => {
       const c = await crearCuenta({ pos: true });
@@ -228,7 +263,7 @@ describeWithDb('Fase 2 — control interno del dinero', () => {
       expect(editar.status).toBe(409);
       expect(editar.body.referencia_tipo).toBe('venta');
       expect((await c.api.delete(`/contabilidad/movimiento/${movId}`)).status).toBe(409);
-      expect((await q(`SELECT monto::float AS monto FROM movimientos_contables WHERE id = $1`, [movId]))[0].monto).toBe(116);
+      expect((await q(`SELECT monto::float AS monto FROM movimientos_contables WHERE id = $1`, [movId]))[0].monto).toBe(100);
     });
 
     it('un asiento manual sí se edita y se borra, y ambas cosas quedan auditadas', async () => {

@@ -125,6 +125,23 @@ function fmtMoney(value: number, simbolo: string, locale: string): string {
   return `${simbolo}${new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
 }
 
+const r2 = (v: number) => Math.round(v * 100) / 100;
+
+/**
+ * Lo que pagó el cliente por la línea (precio del catálogo × cantidad). En la
+ * venta, `subtotal_linea` va sin impuesto (para márgenes); en el ticket se
+ * muestra lo que se cobró.
+ */
+const importeLinea = (it: { precio_unitario: unknown; cantidad: unknown }) => r2(n(it.precio_unitario) * n(it.cantidad));
+
+/** Línea de impuesto del ticket: incluido en el total, o que el negocio no lo cobra. */
+function textoImpuesto(venta: { impuesto_monto: unknown; impuesto_nombre?: string | null }, taxCfg: TaxConfig): string {
+  const monto = n(venta.impuesto_monto);
+  return monto > 0
+    ? `Incluye ${venta.impuesto_nombre || taxCfg.consumo.nombre}: ${fmtMoney(monto, taxCfg.simbolo, taxCfg.locale)}`
+    : `Sin ${taxCfg.consumo.nombre}`;
+}
+
 /** Title-case + trim. "  tacos AL pastor " → "Tacos Al Pastor" */
 function toTitleCase(raw: string): string {
   return raw
@@ -160,7 +177,7 @@ function imprimirTicketTermico(venta: Venta, taxCfg: TaxConfig, negocioNombre: s
           ${Number(it.cantidad)}x ${it.nombre_snapshot}
         </td>
         <td style="text-align:right; padding: 3px 0; font-family: monospace; white-space: nowrap; vertical-align: top;">
-          ${fmtMoney(Number(it.subtotal_linea), taxCfg.simbolo, taxCfg.locale)}
+          ${fmtMoney(importeLinea(it), taxCfg.simbolo, taxCfg.locale)}
         </td>
       </tr>
     `
@@ -226,17 +243,12 @@ function imprimirTicketTermico(venta: Venta, taxCfg: TaxConfig, negocioNombre: s
         <div class="divider"></div>
 
         <table>
-          <tr>
-            <td style="color: #444;">Subtotal:</td>
-            <td class="text-right" style="font-family: monospace;">${fmtMoney(Number(venta.subtotal), taxCfg.simbolo, taxCfg.locale)}</td>
-          </tr>
-          <tr>
-            <td style="color: #444;">${venta.impuesto_nombre || 'Impuesto'}:</td>
-            <td class="text-right" style="font-family: monospace;">${fmtMoney(Number(venta.impuesto_monto), taxCfg.simbolo, taxCfg.locale)}</td>
-          </tr>
           <tr class="total-row">
-            <td style="padding-top: 6px;">TOTAL:</td>
-            <td class="text-right" style="padding-top: 6px; font-family: monospace;">${fmtMoney(Number(venta.total), taxCfg.simbolo, taxCfg.locale)}</td>
+            <td>TOTAL:</td>
+            <td class="text-right" style="font-family: monospace;">${fmtMoney(Number(venta.total), taxCfg.simbolo, taxCfg.locale)}</td>
+          </tr>
+          <tr>
+            <td colspan="2" style="color: #444; font-size: 11px; padding-top: 3px;">${textoImpuesto(venta, taxCfg)}</td>
           </tr>
         </table>
 
@@ -330,7 +342,12 @@ function PosInner({
 
   // Checkout modal
   const [showCheckout, setShowCheckout] = useState(false);
-  const [aplicarImpuesto, setAplicarImpuesto] = useState(true);
+  // Si el negocio cobra el impuesto al consumo (lo guarda el servidor por punto
+  // de cobro y solo lo cambia el dueño). El precio del catálogo siempre lo
+  // incluye: esto solo decide si se desglosa y registra.
+  const [puntoCobro, setPuntoCobro] = useState<{ cobra_impuesto: boolean; puede_cambiar: boolean } | null>(null);
+  const [guardandoPuntoCobro, setGuardandoPuntoCobro] = useState(false);
+  const cobraImpuesto = puntoCobro?.cobra_impuesto ?? true;
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'tarjeta' | 'transferencia' | 'otro'>('efectivo');
   const [montoRecibido, setMontoRecibido] = useState<string>('');
   const [clienteNombre, setClienteNombre] = useState('');
@@ -407,6 +424,30 @@ function PosInner({
       .get(`/pos/canales?producto_id=${producto.id}`)
       .then(({ data }) => setCanalesCobro(Array.isArray(data) ? data.filter((c: CanalCobroMin) => c.activo) : []))
       .catch(() => setCanalesCobro([]));
+  }, [producto.id]);
+
+  // Si el punto de cobro cobra el impuesto. Si no carga, se asume que sí (el
+  // servidor decide con su propia configuración al registrar la venta).
+  useEffect(() => {
+    let vigente = true;
+    api
+      .get(`/pos/punto-cobro/${producto.id}`)
+      .then(({ data }) => { if (vigente) setPuntoCobro({ cobra_impuesto: data.cobra_impuesto !== false, puede_cambiar: Boolean(data.puede_cambiar) }); })
+      .catch(() => { if (vigente) setPuntoCobro(null); });
+    return () => { vigente = false; };
+  }, [producto.id]);
+
+  const cambiarCobroImpuesto = useCallback(async (cobra: boolean) => {
+    setGuardandoPuntoCobro(true);
+    try {
+      const { data } = await api.patch(`/pos/punto-cobro/${producto.id}`, { cobra_impuesto: cobra });
+      setPuntoCobro({ cobra_impuesto: data.cobra_impuesto !== false, puede_cambiar: true });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      alert(e.response?.data?.error ?? 'No se pudo guardar el cambio. Intenta de nuevo.');
+    } finally {
+      setGuardandoPuntoCobro(false);
+    }
   }, [producto.id]);
 
   // Items + ventas del producto activo
@@ -575,20 +616,21 @@ function PosInner({
       }
     }
 
-    const subtotalConDescuento = Math.max(0, subtotalBruto - descuentoMonto);
-    const tasa = aplicarImpuesto ? taxCfg.consumo.tasa : 0;
-    const imp = Math.round(subtotalConDescuento * tasa * 100) / 100;
-    const totalFinal = Math.round((subtotalConDescuento + imp) * 100) / 100;
+    // El precio del catálogo ya incluye el impuesto (así se le muestra al
+    // público): el total es lo de los artículos menos el descuento, y el
+    // impuesto se desglosa dentro. Mismo cálculo que `calcularTotalesVenta`.
+    const totalFinal = r2(Math.max(0, subtotalBruto - descuentoMonto));
+    const tasa = cobraImpuesto ? taxCfg.consumo.tasa : 0;
+    const imp = tasa > 0 ? r2(totalFinal - totalFinal / (1 + tasa)) : 0;
 
     return {
-      subtotalBruto: Math.round(subtotalBruto * 100) / 100,
-      descuentoMonto: Math.round(descuentoMonto * 100) / 100,
-      subtotalConDescuento: Math.round(subtotalConDescuento * 100) / 100,
+      subtotalBruto: r2(subtotalBruto),
+      descuentoMonto: r2(descuentoMonto),
       impuesto: imp,
       total: totalFinal,
       itemsCount: carrito.reduce((s, l) => s + l.cantidad, 0),
     };
-  }, [carrito, descuentoTipo, descuentoCustomMonto, aplicarImpuesto, taxCfg]);
+  }, [carrito, descuentoTipo, descuentoCustomMonto, cobraImpuesto, taxCfg]);
 
   // Cambio en efectivo
   const calculoCambio = useMemo(() => {
@@ -718,7 +760,7 @@ function PosInner({
               ? { nombre: altaCliente.nombre.trim(), telefono: altaCliente.telefono.trim() || undefined }
               : undefined,
           notas: notasFinales || undefined,
-          aplicar_impuesto: aplicarImpuesto,
+          // Si se cobra impuesto lo decide el punto de cobro en el servidor.
           canal_cobro_id: canalCobroId || undefined,
         }, { headers: { 'Idempotency-Key': claveCobro.current } });
         claveCobro.current = nuevaClaveIdempotencia();
@@ -781,7 +823,6 @@ function PosInner({
       altaCliente,
       cargarClientesCRM,
       notas,
-      aplicarImpuesto,
       totales,
       taxCfg,
     ]
@@ -1047,7 +1088,9 @@ function PosInner({
             <div className="min-w-0">
               <p className="text-white text-sm font-bold truncate">{producto.nombre}</p>
               <p className="text-[11px] text-emerald-400/90 font-mono">
-                {producto.pais} · {taxCfg.consumo.nombre} {Math.round(taxCfg.consumo.tasa * 100)}% ({taxCfg.moneda})
+                {producto.pais} · {cobraImpuesto
+                  ? `${taxCfg.consumo.nombre} ${Math.round(taxCfg.consumo.tasa * 1000) / 10}% incluido`
+                  : `sin ${taxCfg.consumo.nombre}`} ({taxCfg.moneda})
               </p>
             </div>
             <button
@@ -1057,6 +1100,24 @@ function PosInner({
               Cambiar
             </button>
           </div>
+          {/* Si el negocio cobra el impuesto: lo decide su régimen, no cada ticket. */}
+          {puntoCobro?.puede_cambiar && (
+            <label className="mt-2.5 flex cursor-pointer select-none items-start gap-2 border-t border-white/[0.06] pt-2.5 text-[11px] text-white/60">
+              <input
+                type="checkbox"
+                checked={cobraImpuesto}
+                disabled={guardandoPuntoCobro}
+                onChange={(e) => void cambiarCobroImpuesto(e.target.checked)}
+                className="mt-0.5 accent-emerald-500"
+              />
+              <span>
+                Cobro {taxCfg.consumo.nombre} en mis ventas
+                <span className="block text-[10px] text-white/35">
+                  Desmárcalo si tu régimen no lo cobra (p. ej. monotributo, Nuevo RUS o no responsable de IVA).
+                </span>
+              </span>
+            </label>
+          )}
         </div>
       </div>
 
@@ -1568,25 +1629,18 @@ function PosInner({
 
                   {/* Totals Summary */}
                   <div className="border-t border-white/10 pt-3 space-y-1.5 shrink-0 text-xs">
-                    <div className="flex justify-between text-white/60">
-                      <span>Subtotal</span>
-                      <span className="font-mono">{fmtMoney(totales.subtotalBruto, taxCfg.simbolo, taxCfg.locale)}</span>
-                    </div>
-
                     {totales.descuentoMonto > 0 && (
-                      <div className="flex justify-between text-amber-400 font-medium">
-                        <span>Descuento aplicado</span>
-                        <span className="font-mono">-{fmtMoney(totales.descuentoMonto, taxCfg.simbolo, taxCfg.locale)}</span>
-                      </div>
+                      <>
+                        <div className="flex justify-between text-white/60">
+                          <span>Artículos</span>
+                          <span className="font-mono">{fmtMoney(totales.subtotalBruto, taxCfg.simbolo, taxCfg.locale)}</span>
+                        </div>
+                        <div className="flex justify-between text-amber-400 font-medium">
+                          <span>Descuento aplicado</span>
+                          <span className="font-mono">-{fmtMoney(totales.descuentoMonto, taxCfg.simbolo, taxCfg.locale)}</span>
+                        </div>
+                      </>
                     )}
-
-                    <div className="flex justify-between text-white/60">
-                      <span>
-                        {taxCfg.consumo.nombre} {Math.round(taxCfg.consumo.tasa * 100)}%
-                        {!aplicarImpuesto && ' (desglosado en 0)'}
-                      </span>
-                      <span className="font-mono">{fmtMoney(totales.impuesto, taxCfg.simbolo, taxCfg.locale)}</span>
-                    </div>
 
                     <div className="flex justify-between text-base font-extrabold text-white pt-2 border-t border-white/10">
                       <span>Total</span>
@@ -1594,18 +1648,24 @@ function PosInner({
                         {fmtMoney(totales.total, taxCfg.simbolo, taxCfg.locale)}
                       </span>
                     </div>
+
+                    {/* El impuesto va dentro del precio: se informa, no se suma. */}
+                    <div className="flex justify-between text-white/45">
+                      <span>
+                        {cobraImpuesto
+                          ? `Incluye ${taxCfg.consumo.nombre} ${Math.round(taxCfg.consumo.tasa * 1000) / 10}%`
+                          : `Sin ${taxCfg.consumo.nombre} (no lo cobras)`}
+                      </span>
+                      {cobraImpuesto && (
+                        <span className="font-mono">{fmtMoney(totales.impuesto, taxCfg.simbolo, taxCfg.locale)}</span>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Tax Checkbox */}
-                  <label className="flex items-center gap-2 text-[11px] text-white/60 my-3 cursor-pointer select-none shrink-0">
-                    <input
-                      type="checkbox"
-                      checked={aplicarImpuesto}
-                      onChange={(e) => setAplicarImpuesto(e.target.checked)}
-                      className="accent-emerald-500 rounded"
-                    />
-                    Aplicar {taxCfg.consumo.nombre} ({Math.round(taxCfg.consumo.tasa * 100)}%)
-                  </label>
+                  <p className="my-3 text-[10px] leading-relaxed text-white/35 shrink-0">
+                    Los precios del catálogo ya incluyen {taxCfg.consumo.nombre}: el cliente paga lo que ve.
+                    {puntoCobro?.puede_cambiar ? ' Si tu régimen no cobra este impuesto, cámbialo arriba en el punto de cobro.' : ''}
+                  </p>
 
                   {/* Dual Action Buttons */}
                   <div className="space-y-2 shrink-0">
@@ -2215,26 +2275,19 @@ function PosInner({
                   {ventaResultado.items?.map((it) => (
                     <div key={it.id} className="flex justify-between text-[11px]">
                       <span className="truncate pr-2">{Number(it.cantidad)}x {it.nombre_snapshot}</span>
-                      <span className="font-bold">{fmtMoney(Number(it.subtotal_linea), taxCfg.simbolo, taxCfg.locale)}</span>
+                      <span className="font-bold">{fmtMoney(importeLinea(it), taxCfg.simbolo, taxCfg.locale)}</span>
                     </div>
                   ))}
                 </div>
 
                 <div className="space-y-1 text-[11px]">
-                  <div className="flex justify-between text-white/50">
-                    <span>Subtotal</span>
-                    <span>{fmtMoney(n(ventaResultado.subtotal), taxCfg.simbolo, taxCfg.locale)}</span>
-                  </div>
-                  <div className="flex justify-between text-white/50">
-                    <span>{ventaResultado.impuesto_nombre || 'Impuesto'}</span>
-                    <span>{fmtMoney(n(ventaResultado.impuesto_monto), taxCfg.simbolo, taxCfg.locale)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm font-bold text-white pt-1.5 border-t border-white/20">
+                  <div className="flex justify-between text-sm font-bold text-white">
                     <span>TOTAL PAGADO</span>
                     <span className="text-emerald-300 font-extrabold">
                       {fmtMoney(n(ventaResultado.total), taxCfg.simbolo, taxCfg.locale)}
                     </span>
                   </div>
+                  <p className="text-white/50">{textoImpuesto(ventaResultado, taxCfg)}</p>
                 </div>
 
                 <div className="mt-3 pt-2 border-t border-dashed border-white/20 flex items-center justify-between text-[10px] text-white/50 uppercase">
@@ -2578,26 +2631,19 @@ function PosInner({
                     <span>
                       {n(i.cantidad)} × {i.nombre_snapshot}
                     </span>
-                    <span className="font-mono">{fmtMoney(n(i.subtotal_linea), taxCfg.simbolo, taxCfg.locale)}</span>
+                    <span className="font-mono">{fmtMoney(importeLinea(i), taxCfg.simbolo, taxCfg.locale)}</span>
                   </div>
                 ))}
               </div>
 
               <div className="space-y-1 text-xs">
-                <div className="flex justify-between text-white/60">
-                  <span>Subtotal</span>
-                  <span className="font-mono">{fmtMoney(n(ventaDetalle.subtotal), taxCfg.simbolo, taxCfg.locale)}</span>
-                </div>
-                <div className="flex justify-between text-white/60">
-                  <span>{ventaDetalle.impuesto_nombre || 'Impuesto'}</span>
-                  <span className="font-mono">{fmtMoney(n(ventaDetalle.impuesto_monto), taxCfg.simbolo, taxCfg.locale)}</span>
-                </div>
-                <div className="flex justify-between text-sm font-bold pt-2 border-t border-white/10">
+                <div className="flex justify-between text-sm font-bold">
                   <span className="text-white">Total</span>
                   <span className="text-emerald-300 font-mono">
                     {fmtMoney(n(ventaDetalle.total), taxCfg.simbolo, taxCfg.locale)}
                   </span>
                 </div>
+                <p className="text-white/50">{textoImpuesto(ventaDetalle, taxCfg)}</p>
 
                 {ventaDetalle.comision_monto !== null && ventaDetalle.comision_monto !== undefined && Number(ventaDetalle.comision_monto) > 0 && (
                   <div className="pt-2 border-t border-white/10 space-y-1 text-xs">

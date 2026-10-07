@@ -49,6 +49,14 @@ export class Producto {
   @Column({ type: 'varchar', length: 2, nullable: true })
   pais?: string;
 
+  /**
+   * Si el POS registra el impuesto al consumo del país dentro del precio. El
+   * precio del catálogo siempre lo incluye; esto solo decide si una parte va a
+   * «… por pagar» (no la cobra el monotributo, el Nuevo RUS, etc.).
+   */
+  @Column({ type: 'boolean', default: true })
+  cobra_impuesto_consumo!: boolean;
+
   @Column({ type: 'varchar', length: 50, nullable: true })
   nse?: string;
 

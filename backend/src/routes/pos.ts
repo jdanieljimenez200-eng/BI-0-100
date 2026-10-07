@@ -35,7 +35,6 @@ import { idempotente } from '../middleware/idempotency';
 import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
 import { cantidad, dinero, MAX_DINERO, MAX_ENTERO } from '../utils/limitesNumericos';
 import { r2 } from '../utils/dinero';
-import { urlApp } from '../utils/urlApp';
 
 // Topes = columnas de `items_pos`, `venta_items`, `ventas` y `clientes`. Un
 // texto más largo pasaba la validación y el INSERT respondía 500.
@@ -92,6 +91,7 @@ class VentaError extends Error {
 
 const router = Router();
 exigirUuid(router, 'id');
+exigirUuid(router, 'productoId');
 router.use(authenticate);
 router.use(requireToolCapability('pos'));
 // Desbloqueo por plan/selección para TODAS las rutas del POS (sin getCount: el
@@ -404,7 +404,7 @@ router.post('/ventas', idempotente('pos_venta'), requireHerramientaAccess('pos',
     cliente_id?: string | null;
     crear_cliente?: { nombre: string; telefono?: string; email?: string };
     notas?: string;
-    aplicar_impuesto?: boolean; // default true
+    aplicar_impuesto?: boolean; // sin él, lo que diga el punto de cobro
     fecha?: string;
   };
 
@@ -461,10 +461,15 @@ router.post('/ventas', idempotente('pos_venta'), requireHerramientaAccess('pos',
     return;
   }
 
-  // 2. Calcular totales — si aplicar_impuesto=false, forzamos tasa 0
+  // 2. Totales. El precio del catálogo es el precio al público con el impuesto
+  // dentro; si el negocio lo cobra (configuración del punto de cobro, o
+  // `aplicar_impuesto` si viene) se desglosa, y si no, el total es el mismo
+  // sin impuesto registrado.
   let totales;
   try {
-    totales = calcularTotalesVenta(lineas, pais);
+    totales = calcularTotalesVenta(lineas, pais, {
+      cobraImpuesto: aplicar_impuesto ?? producto.cobra_impuesto_consumo,
+    });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : 'Carrito inválido' });
     return;
@@ -474,16 +479,6 @@ router.post('/ventas', idempotente('pos_venta'), requireHerramientaAccess('pos',
   if (totales.total > MAX_DINERO) {
     res.status(400).json({ error: 'El total de la venta es demasiado grande' });
     return;
-  }
-
-  const aplicaImpuesto = aplicar_impuesto !== false; // default true
-  if (!aplicaImpuesto) {
-    totales = {
-      ...totales,
-      impuesto_monto: 0,
-      impuesto_tasa: 0,
-      total: totales.subtotal,
-    };
   }
 
   const hoy = await hoyDePeticion(req);
@@ -879,14 +874,55 @@ router.post('/ventas/:id/cancelar', validateBody(CancelarVentaSchema), ah(cancel
 router.delete('/ventas/:id', ah(cancelarVenta));
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TICKET — HTML compartible + WhatsApp link
+// PUNTO DE COBRO — si el negocio cobra el impuesto al consumo
+// ═══════════════════════════════════════════════════════════════════════════
+
+const PuntoCobroSchema = z.object({ cobra_impuesto: z.boolean() });
+
+const puntoCobroDe = (producto: Producto) => {
+  const cfg = getTaxConfig(producto.pais || 'MX');
+  return {
+    producto_id: producto.id,
+    cobra_impuesto: producto.cobra_impuesto_consumo,
+    impuesto: { nombre: cfg.consumo.nombre, tasa: cfg.consumo.tasa },
+  };
+};
+
+// GET /api/pos/punto-cobro/:productoId
+router.get('/punto-cobro/:productoId', ah(async (req: AuthRequest, res: Response) => {
+  const producto = await repoProductos().findOne({ where: { id: req.params.productoId, usuario_id: req.userId! } });
+  if (!producto) {
+    res.status(404).json({ error: 'Producto no encontrado' });
+    return;
+  }
+  res.json({ ...puntoCobroDe(producto), puede_cambiar: !req.trabajadorRealId });
+}));
+
+// PATCH /api/pos/punto-cobro/:productoId — solo el dueño: es su régimen fiscal.
+router.patch('/punto-cobro/:productoId', validateBody(PuntoCobroSchema), ah(async (req: AuthRequest, res: Response) => {
+  if (req.trabajadorRealId) {
+    res.status(403).json({ error: 'Solo el dueño de la cuenta puede cambiar si el negocio cobra impuestos.' });
+    return;
+  }
+  const producto = await repoProductos().findOne({ where: { id: req.params.productoId, usuario_id: req.userId! } });
+  if (!producto) {
+    res.status(404).json({ error: 'Producto no encontrado' });
+    return;
+  }
+  producto.cobra_impuesto_consumo = (req.body as { cobra_impuesto: boolean }).cobra_impuesto;
+  await repoProductos().update(producto.id, { cobra_impuesto_consumo: producto.cobra_impuesto_consumo });
+  res.json({ ...puntoCobroDe(producto), puede_cambiar: true });
+}));
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TICKET — enlace de WhatsApp con el ticket en el texto
 // ═══════════════════════════════════════════════════════════════════════════
 
 // GET /api/pos/ventas/:id/whatsapp — devuelve el wa.me link listo
 router.get('/ventas/:id/whatsapp', ah(async (req: AuthRequest, res: Response) => {
   const venta = await repoVentas().findOne({
     where: { id: req.params.id, usuario_id: req.userId! },
-    relations: ['negocio', 'producto'],
+    relations: ['negocio', 'producto', 'items'],
   });
   if (!venta) {
     res.status(404).json({ error: 'Venta no encontrada' });
@@ -894,20 +930,27 @@ router.get('/ventas/:id/whatsapp', ah(async (req: AuthRequest, res: Response) =>
   }
 
   const cfg = getTaxConfig(venta.producto?.pais || 'MX');
-  const ticketUrl = urlApp(`/ticket/${venta.id}`);
+  const impuesto = Number(venta.impuesto_monto);
 
   const link = buildWhatsAppLink({
     telefono:       venta.cliente_telefono,
     pais:           venta.producto?.pais,
-    nombreNegocio:  venta.negocio?.nombre || 'Mi Negocio',
+    nombreNegocio:  venta.negocio?.nombre || venta.producto?.nombre || '',
     numeroTicket:   venta.numero_ticket,
+    fecha:          venta.fecha,
+    lineas:         (venta.items ?? []).map((it) => ({
+      nombre:   it.nombre_snapshot,
+      cantidad: Number(it.cantidad),
+      importe:  r2(Number(it.precio_unitario) * Number(it.cantidad)),
+    })),
     total:          Number(venta.total),
+    impuesto:       impuesto > 0 ? { nombre: venta.impuesto_nombre || cfg.consumo.nombre, monto: impuesto } : null,
     moneda:         venta.moneda,
     simbolo:        cfg.simbolo,
-    ticketUrl,
+    locale:         cfg.locale,
   });
 
-  res.json({ whatsapp_url: link, ticket_url: ticketUrl });
+  res.json({ whatsapp_url: link });
 }));
 
 export default router;

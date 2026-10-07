@@ -269,7 +269,9 @@ describeWithDb('Fase 1 — escala y control de las herramientas', () => {
       const fino = await c.api.post('/pos/ventas', venta(c.pid, { lineas: [{ nombre: 'Queso', precio_unitario: 10, cantidad: 0.125 }] }));
       expect(fino.status).toBe(201);
       const [it] = await q(`SELECT cantidad::text, subtotal_linea::text FROM venta_items WHERE venta_id = $1`, [fino.body.venta.id]);
-      expect(it).toEqual({ cantidad: '0.125', subtotal_linea: '1.25' });
+      // 10 × 0.125 = 1.25 cobrados; la línea guarda el importe sin el IVA incluido (1.25 / 1.16).
+      expect(it).toEqual({ cantidad: '0.125', subtotal_linea: '1.08' });
+      expect(Number(fino.body.venta.total)).toBe(1.25);
 
       const item = await c.api.post('/pos/catalogo', { nombre: 'Latte', precio: 50 });
       expect((await c.api.patch(`/pos/catalogo/${item.body.id}`, { precio: 'caro' })).status).toBe(400);

@@ -166,11 +166,14 @@ describeWithDb('Flujos entre herramientas', () => {
       const r = await vender({ canal_cobro_id: canalId, crear_cliente: { nombre: 'Cliente POS' } });
       expect(r.status).toBe(201);
       const venta = r.body.venta;
-      expect(Number(venta.total)).toBe(348); // 300 + IVA 16 %
-      // Comisión 3.6 % de 348 = 12.53; IVA de la comisión = 2.00
-      expect(Number(venta.comision_monto)).toBe(12.53);
-      expect(Number(venta.comision_iva)).toBe(2);
-      expect(Number(venta.monto_neto)).toBe(333.47);
+      // El precio del catálogo ya incluye el IVA: 3 × 100 = 300 y el IVA va dentro.
+      expect(Number(venta.total)).toBe(300);
+      expect(Number(venta.impuesto_monto)).toBe(41.38); // 300 − 300 / 1.16
+      expect(Number(venta.subtotal)).toBe(258.62);
+      // Comisión 3.6 % de 300 = 10.80; IVA de la comisión = 1.73
+      expect(Number(venta.comision_monto)).toBe(10.8);
+      expect(Number(venta.comision_iva)).toBe(1.73);
+      expect(Number(venta.monto_neto)).toBe(287.47);
       expect(venta.metodo_pago).toBe('tarjeta');
       expect(venta.cliente_id).toBeTruthy();
 
@@ -180,14 +183,14 @@ describeWithDb('Flujos entre herramientas', () => {
       // Contabilidad: ingreso de la venta (fuente POS, pendiente de depósito) + comisión + IVA de la comisión + IVA de la venta
       const movs = await movimientosDeVenta(venta.id);
       const padre = movs.find((m: { parent_movimiento_id: string | null; tipo: string }) => m.tipo === 'ingreso' && !m.parent_movimiento_id);
-      expect(padre).toMatchObject({ monto: 348, fuente: 'pos', estado_liquidacion: 'pendiente' });
+      expect(padre).toMatchObject({ monto: 300, fuente: 'pos', estado_liquidacion: 'pendiente' });
       const comisiones = movs.filter((m: { categoria: string }) => /Comisi/.test(m.categoria));
-      expect(comisiones.map((m: { monto: number }) => m.monto).sort((a: number, b: number) => a - b)).toEqual([2, 12.53]);
+      expect(comisiones.map((m: { monto: number }) => m.monto).sort((a: number, b: number) => a - b)).toEqual([1.73, 10.8]);
 
       // Liquidaciones: aparece como pendiente y al conciliar se liquidan también las comisiones
       const liq = await api().get(`/contabilidad/${productoId}/liquidaciones`);
       expect(liq.body.kpis.conteo_pendientes).toBe(1);
-      expect(liq.body.kpis.total_pendiente_cobro).toBe(333.47);
+      expect(liq.body.kpis.total_pendiente_cobro).toBe(287.47);
       const movPadreId = r.body.movimiento_contable_id;
       expect((await api().patch(`/contabilidad/liquidaciones/${movPadreId}/conciliar`, { fecha_liquidacion: HOY })).status).toBe(200);
       expect((await api().get(`/contabilidad/${productoId}/liquidaciones`)).body.kpis.conteo_pendientes).toBe(0);
@@ -199,7 +202,7 @@ describeWithDb('Flujos entre herramientas', () => {
       // Reportes: la venta cuenta
       const rep = await api().get(`/reportes/area/ventas?desde=${HOY}&hasta=${HOY}`);
       expect(rep.status).toBe(200);
-      expect(rep.body.totales).toMatchObject({ num_ventas: 1, importe: 348 });
+      expect(rep.body.totales).toMatchObject({ num_ventas: 1, importe: 300 });
 
       // Cancelar: la venta NO se borra. Queda cancelada, el stock vuelve con una
       // entrada de devolución y cada asiento recibe su inverso.
@@ -261,10 +264,10 @@ describeWithDb('Flujos entre herramientas', () => {
       const r = await vender({ metodo_pago: 'efectivo' });
       expect(r.status).toBe(201);
       const durante = await resumen();
-      expect(durante.kpis.ingresos - antes.r.kpis.ingresos).toBeCloseTo(348, 2);
+      expect(durante.kpis.ingresos - antes.r.kpis.ingresos).toBeCloseTo(300, 2);
       // La base de la estimación fiscal no incluye el IVA que ya viene en la venta
-      // (antes le calculaba IVA al IVA): 348 − 48 = 300.
-      expect(durante.fiscal_base.ingresos - antes.r.fiscal_base.ingresos).toBeCloseTo(300, 2);
+      // (antes le calculaba IVA al IVA): 300 − 41.38 = 258.62.
+      expect(durante.fiscal_base.ingresos - antes.r.fiscal_base.ingresos).toBeCloseTo(258.62, 2);
 
       expect((await api().post(`/pos/ventas/${r.body.venta.id}/cancelar`, { motivo: 'prueba' })).status).toBe(200);
       // Cada inverso apunta al asiento que revierte.
@@ -275,8 +278,8 @@ describeWithDb('Flujos entre herramientas', () => {
       );
       expect(sinEnlace[0].n).toBe(0);
 
-      // Antes: ingresos +348 +48 (IVA devuelto) y egresos +348 +48; base fiscal +396;
-      // gasto operativo +348 en el P&L; «Compras» con la devolución al almacén.
+      // Antes: ingresos +300 +41.38 (IVA devuelto) y egresos igual; base fiscal de más;
+      // gasto operativo +300 en el P&L; «Compras» con la devolución al almacén.
       const despues = { r: await resumen(), p: await pnl(), c: await area('contabilidad'), i: await area('inventario') };
       expect(despues.r.kpis.ingresos).toBeCloseTo(antes.r.kpis.ingresos, 2);
       expect(despues.r.kpis.egresos).toBeCloseTo(antes.r.kpis.egresos, 2);
