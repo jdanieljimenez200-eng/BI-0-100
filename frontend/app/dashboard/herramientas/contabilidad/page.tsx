@@ -1208,7 +1208,7 @@ function ContabilidadInner({
                 </div>
                 <div className="space-y-1 text-xs text-white/70">
                   <div className="flex justify-between gap-3">
-                    <span>Ingresos registrados</span>
+                    <span>Ingresos sin {taxCfg.consumo.nombre}</span>
                     <span className="font-semibold text-white tabular-nums">{money(fiscal.ingresos)}</span>
                   </div>
                   <div className="flex justify-between gap-3">
@@ -1246,7 +1246,7 @@ function ContabilidadInner({
                 <p className="text-[11px] text-white/50">{taxCfg.renta.descripcion}</p>
                 <div className="space-y-1 text-xs text-white/70">
                   <div className="flex justify-between gap-3">
-                    <span>Utilidad estimada (ingresos − egresos)</span>
+                    <span>Utilidad estimada (ingresos − gastos, nómina incluida)</span>
                     <span className={`font-semibold tabular-nums ${fiscal.utilidad >= 0 ? 'text-white' : 'text-rose-300'}`}>{money(fiscal.utilidad)}</span>
                   </div>
                   <div className="flex justify-between gap-3 font-bold pt-1 border-t border-blue-500/20 text-blue-300">

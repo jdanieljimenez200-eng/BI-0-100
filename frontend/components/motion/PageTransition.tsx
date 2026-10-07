@@ -19,7 +19,11 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
       initial="initial"
       animate="animate"
       exit="exit"
-      className="w-full flex-1 flex flex-col"
+      // Bloque, no flex: dentro de un flex-col, una página con `max-w-* mx-auto`
+      // no se estira y toma el ancho de su contenido; en pantallas medianas
+      // quedaba más ancha que la ventana y se cortaba a la derecha. Con
+      // movimiento reducido este envoltorio no existe, así que nadie dependía de él.
+      className="w-full min-w-0 flex-1"
     >
       {children}
     </motion.div>

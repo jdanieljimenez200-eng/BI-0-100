@@ -198,7 +198,12 @@ export async function resumenContable(f: FiltrosMovimientos) {
               ${sumaNeta('ingreso')} AS ingresos,
               ${sumaNeta('egreso')} AS egresos,
               ${sumaNeta('egreso', esImpuestoTrasladado('m'))} AS impuesto_trasladado,
-              COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'egreso' AND m.es_auto_generado = false), 0) AS egresos_no_auto,
+              -- Gastos de la estimación fiscal: los capturados y la nómina (es un gasto
+              -- real aunque se genere sola; sin ella el ISR estimado salía inflado).
+              -- El IVA por pagar, las comisiones automáticas y los reversos no cuentan.
+              COALESCE(SUM(m.monto) FILTER (
+                WHERE m.tipo = 'egreso' AND m.revierte_movimiento_id IS NULL
+                  AND (m.es_auto_generado = false OR m.fuente = 'nomina')), 0) AS egresos_no_auto,
               COALESCE(SUM(m.monto) FILTER (WHERE m.tipo = 'egreso' AND m.es_auto_generado = false AND m.tiene_cfdi), 0) AS egresos_con_comprobante
          FROM movimientos_contables m ${JOIN_ORIGINAL} WHERE ${w.sql}`,
       w.params

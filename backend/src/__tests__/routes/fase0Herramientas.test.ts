@@ -150,8 +150,9 @@ describeWithDb('Fase 0 — correcciones críticas de las herramientas', () => {
       expect(r.body.categorias).toEqual(expect.arrayContaining(['Renta', 'Ventas', 'Nómina']));
       // Calibración: solo movimientos capturados (no auto-generados), 3 meses
       expect(r.body.calibracion).toMatchObject({ meses_analizados: 3, confianza: 'media' });
-      // Base fiscal: egresos no auto-generados y con comprobante
-      expect(r.body.fiscal_base.egresos_no_auto).toBe(400 + 150 + 90);
+      // Base fiscal: egresos capturados más la nómina (300), que es gasto deducible
+      // aunque se genere sola; y los que tienen comprobante.
+      expect(r.body.fiscal_base.egresos_no_auto).toBe(400 + 150 + 90 + 300);
       expect(r.body.fiscal_base.egresos_con_comprobante).toBe(400 + 90);
     });
 

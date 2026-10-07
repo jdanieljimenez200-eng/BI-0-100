@@ -497,8 +497,8 @@ function InventarioInner({
         })}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-6 border-b border-white/8">
+      {/* Tabs (con scroll horizontal: en un teléfono las tres no caben) */}
+      <div className="flex gap-2 mb-6 border-b border-white/8 overflow-x-auto no-scrollbar">
         {[
           { key: 'stock', label: `Stock (${insumos.length})`, icon: Package },
           { key: 'movimientos', label: `Movimientos (${movimientosFiltrados.length})`, icon: RefreshCw },
@@ -510,7 +510,7 @@ function InventarioInner({
             <button
               key={t.key}
               onClick={() => setTab(t.key as typeof tab)}
-              className={`text-sm px-4 py-3 font-semibold transition-colors border-b-2 -mb-px flex items-center gap-2 ${
+              className={`text-sm px-4 py-3 font-semibold transition-colors border-b-2 -mb-px flex shrink-0 items-center gap-2 whitespace-nowrap ${
                 active ? 'text-amber-300 border-amber-400' : 'text-white/40 border-transparent hover:text-white/70'
               }`}
             >

@@ -326,22 +326,25 @@ function ItemRow({ item, onChange, onRemove }: {
         placeholder="Descripción del producto o servicio"
         className="w-full bg-white/5 border border-white/10 rounded-xl px-3 h-9 text-sm text-white placeholder-white/20 focus:outline-none focus:border-blue-500/40"
       />
+      {/* min-w-0 y w-full: un input numérico tiene ~180 px de ancho natural y con
+          sm:w-auto desbordaba su columna de 60 px; Cantidad quedaba debajo de
+          Precio y lo que se escribía como cantidad terminaba en el precio. */}
       <div className="flex items-center gap-2 sm:contents">
-        <div className="flex-1 sm:flex-initial">
+        <div className="flex-1 min-w-0 sm:flex-initial">
           <span className="text-[10px] text-white/40 sm:hidden block mb-0.5">Cant.</span>
-          <input type="number" min="1" value={item.cantidad}
+          <input type="number" min="1" value={item.cantidad} aria-label="Cantidad"
             onChange={e => onChange(calcItem({ ...item, cantidad: Math.max(1, Number(e.target.value) || 1) }))}
-            className="w-full sm:w-auto bg-white/5 border border-white/10 rounded-xl px-2 h-9 text-sm text-white text-center focus:outline-none focus:border-blue-500/40"
+            className="w-full min-w-0 bg-white/5 border border-white/10 rounded-xl px-2 h-9 text-sm text-white text-center focus:outline-none focus:border-blue-500/40"
           />
         </div>
-        <div className="flex-1 sm:flex-initial">
+        <div className="flex-1 min-w-0 sm:flex-initial">
           <span className="text-[10px] text-white/40 sm:hidden block mb-0.5">Precio</span>
-          <input type="number" min="0" step="0.01" value={item.precio_unitario}
+          <input type="number" min="0" step="0.01" value={item.precio_unitario} aria-label="Precio unitario"
             onChange={e => onChange(calcItem({ ...item, precio_unitario: Math.max(0, Number(e.target.value) || 0) }))}
-            className="w-full sm:w-auto bg-white/5 border border-white/10 rounded-xl px-2 h-9 text-sm text-white text-right focus:outline-none focus:border-blue-500/40 font-mono"
+            className="w-full min-w-0 bg-white/5 border border-white/10 rounded-xl px-2 h-9 text-sm text-white text-right focus:outline-none focus:border-blue-500/40 font-mono"
           />
         </div>
-        <div className="flex-1 sm:flex-initial">
+        <div className="flex-1 min-w-0 sm:flex-initial">
           <span className="text-[10px] text-white/40 sm:hidden block mb-0.5">Subtotal</span>
           <div className="h-9 rounded-xl bg-blue-500/8 border border-blue-500/15 flex items-center justify-end px-3 text-sm text-blue-300 font-medium font-mono">
             {item.subtotal.toFixed(2)}
