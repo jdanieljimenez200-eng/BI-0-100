@@ -1,0 +1,12 @@
+# Servicio «respaldo» en Railway (raíz del servicio: scripts/respaldo).
+# Corre una vez al día, respalda y termina. Variables: ver
+# docs/deployment/RESPALDOS.md.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# 09:00 UTC = 03:00 en Ciudad de México: la hora de menos ventas.
+cronSchedule = "0 9 * * *"
+restartPolicyType = "NEVER"

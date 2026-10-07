@@ -65,6 +65,7 @@ Este documento es la **fuente única de verdad técnica** para Claude, Antigravi
 - **Red**: Red puente dedicada `bi0a100-network`.
 - **Init System**: `dumb-init` en todas las imágenes de desarrollo y producción para propagación instantánea de señales `SIGTERM`/`SIGINT`.
 - **Seguridad de Contenedores**: Usuarios no privilegiados (`nodejs` / `nextjs`, uid 1001) y archivos `.dockerignore` estrictos en la raíz, `/backend` y `/frontend`.
+- **Respaldos**: servicio aparte (`scripts/respaldo/`, imagen `postgres:<PG_MAJOR>-alpine` + age + aws-cli; en Railway con `cronSchedule`) que a diario hace `pg_dump`, lo verifica (tablas clave y tamaño mínimo), lo cifra con la llave **pública** de age (la privada nunca va al servidor) y lo sube a un bucket S3 propio con su SHA-256; `restaurar.sh` solo restaura en una base vacía y distinta de `DATABASE_URL`. `PG_MAJOR` ≥ versión de producción. Guía, configuración y registro del simulacro mensual: `docs/deployment/RESPALDOS.md`. Si añades una tabla imprescindible, súmala a la verificación de `respaldar.sh`.
 
 ---
 
