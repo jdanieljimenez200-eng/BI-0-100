@@ -6,7 +6,7 @@ Plataforma SaaS B2B que valida la viabilidad comercial, financiera, técnica y l
 
 ## 🚀 Tech Stack
 
-- **Backend:** Node.js 20 (LTS) + Express + TypeORM + PostgreSQL 15 + Redis 7 + BullMQ 5 + Anthropic Claude (Haiku 4.5 / Sonnet 5 / Opus 5 según la tarea).
+- **Backend:** Node.js 24 (LTS) + Express + TypeORM + PostgreSQL 15 + Redis 7 + BullMQ 5 + Anthropic Claude (Sonnet 5.5 / Opus 5.5 según la tarea).
 - **Frontend:** Next.js 16 (App Router, Turbopack, standalone) + React 19 + Tailwind CSS + GSAP 3 + Framer Motion.
 - **DevOps & Contenedores:** Docker Compose v2, dumb-init, Prometheus + Alertmanager, Sentry.
 
@@ -56,14 +56,14 @@ npm run up
 ## 💻 Desarrollo Local (Sin Docker)
 
 ### Requisitos
-- Node.js `>= 20.9.0`
+- Node.js `>= 24`
 - PostgreSQL 15 y Redis 7 corriendo en local
 
 ### Backend
 ```bash
 cd backend
 npm install
-npm run dev           # ts-node-dev con recarga automática en puerto 3001
+npm run dev           # node --watch con recarga automática en puerto 3001
 npm run typecheck     # Verificación de tipos TypeScript
 npm test              # Ejecutar suite de pruebas Jest
 ```
