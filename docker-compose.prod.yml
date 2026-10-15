@@ -100,8 +100,11 @@ services:
     networks:
       - bi0a100-network
 
+  # Solo para servidor propio: en Railway no se despliega (con <100 negocios
+  # bastan Sentry y un monitor de disponibilidad sobre /health). Versión fija
+  # LTS: `latest` cambiaba de versión mayor sin ningún commit.
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.5.0
     container_name: bi0a100-prometheus
     restart: always
     ports:

@@ -17,7 +17,7 @@ Usuario sube datos de producto → Recibe 5 análisis independientes (Mercado, M
 | Database | PostgreSQL 15 |
 | Cache/Queue | Redis 7 + BullMQ |
 | Auth | JWT (15m access + 7d refresh) |
-| Deployment | Vercel (frontend) + Railway (backend) |
+| Deployment | Railway: frontend, backend (con los workers), Postgres, Redis y respaldo diario ([guía](../deployment/RAILWAY.md)) |
 | Monitoring | Prometheus + Grafana + Sentry |
 
 ## Flujo de Alto Nivel

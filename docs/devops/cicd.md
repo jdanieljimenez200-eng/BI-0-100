@@ -1,5 +1,8 @@
 # CI/CD — GitHub Actions
 
+> [!NOTE]
+> Desde el 2026-10-14 `deploy.yml` despliega backend y frontend en Railway (antes el frontend iba a Vercel) y el CI corre en Node 24. Guía: [`docs/deployment/RAILWAY.md`](../deployment/RAILWAY.md).
+
 Pipeline de integración continua y deploy.
 
 ## Workflow

@@ -13,5 +13,9 @@
   restartPolicyType = "ON_FAILURE"
   restartPolicyMaxRetries = 5
 
-[[mounts]]
-  mountPath = "/app/uploads"
+# Sin volumen: en producción los archivos van a S3 (services/StorageService.ts);
+# /app/uploads solo se usa en desarrollo. El volumen se cobraba sin usarse.
+#
+# Worker: con menos de ~100 negocios los análisis corren dentro de este mismo
+# proceso (RUN_WORKER sin definir). Para separarlos, crear un servicio «worker»
+# con el comando `npm run worker:prod` y poner RUN_WORKER=false aquí.

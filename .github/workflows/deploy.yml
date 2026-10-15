@@ -2,7 +2,12 @@ name: Deploy
 
 # El deploy NO se dispara con el push: espera a que el workflow "CI" termine
 # en verde sobre main. Así un commit que rompe typecheck, tests o el build de
-# Docker nunca llega a Railway ni a Vercel.
+# Docker nunca llega a producción. Backend y frontend viven en el mismo
+# proyecto de Railway (servicios «backend» y «frontend»).
+#
+# Si se conecta además la integración GitHub de Railway, desactiva su
+# auto-deploy en cada servicio para que este workflow sea la única vía y el
+# gate de CI no se salte.
 on:
   workflow_run:
     workflows: ['CI']
@@ -53,12 +58,12 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: railway up --service backend --detach
 
-  # ─── Deploy Frontend → Vercel ────────────────────────────────────────────────
-  # NOTA: si la integración GitHub de Vercel está activa, desactiva su
-  # auto-deploy (vercel.json → "git": { "deploymentEnabled": false } o en el
-  # dashboard) para que este job sea la única vía y el gate de CI no se salte.
+  # ─── Deploy Frontend → Railway ───────────────────────────────────────────────
+  # Va después del backend: una versión nueva del frontend puede llamar a rutas
+  # que solo existen en la versión nueva del API. Las NEXT_PUBLIC_* se toman de
+  # las variables del servicio «frontend» en Railway (ver frontend/railway.toml).
   deploy-frontend:
-    name: Deploy Frontend → Vercel
+    name: Deploy Frontend → Railway
     runs-on: ubuntu-latest
     environment: production
     needs: deploy-backend
@@ -68,32 +73,11 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@3
 
-      # Versión fijada: `@latest` cambiaba el comportamiento del deploy sin ningún commit.
-      - name: Install Vercel CLI
-        run: npm install -g vercel@59.17.0
-
-      - name: Pull Vercel environment (production)
+      - name: Deploy to Railway
         working-directory: frontend
         env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
-
-      - name: Build (Vercel)
-        working-directory: frontend
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: vercel build --prod --token="${{ secrets.VERCEL_TOKEN }}"
-
-      - name: Deploy prebuilt output
-        working-directory: frontend
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: vercel deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}" --yes
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service frontend --detach

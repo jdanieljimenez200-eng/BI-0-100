@@ -1,5 +1,8 @@
 # Deployment — Railway + Vercel
 
+> [!WARNING]
+> **Histórico.** Desde el 2026-10-14 el despliegue es todo en Railway, frontend incluido: ver [`docs/deployment/RAILWAY.md`](../deployment/RAILWAY.md). Lo de Vercel de este documento ya no aplica.
+
 Guía de deploy a producción.
 
 ## Backend (Railway)
