@@ -52,7 +52,7 @@ const CONFIGS: Record<string, TaxConfig> = {
   BR: {
     pais: 'BR', nombre: 'Brasil', moneda: 'BRL', simbolo: 'R$', locale: 'pt-BR',
     autoridad: 'Receita Federal', modo: 'simplificado', comprobante: 'Nota Fiscal',
-    consumo: { nombre: 'ICMS + ISS + PIS/COFINS', tasa: 0.12, acreditable: false, periodicidad: 'Mensal', nota: 'Varia por estado y tipo de actividad' },
+    consumo: { nombre: 'ICMS+ISS+PIS/COFINS', tasa: 0.12, acreditable: false, periodicidad: 'Mensal', nota: 'Varia por estado y tipo de actividad' },
     renta: { nombre: 'IRPJ / CSLL', descripcion: 'Imposto de Renda Pessoa Jurídica + Contribuição Social', tasa_estimada: 0.15, periodicidad: 'Trimestral' },
     laboral: { nombre: 'INSS Patronal', tasa_patron: 0.20, periodicidad: 'Mensal', autoridad: 'Previdência Social' },
     notas: ['La carga tributaria real varía significativamente por régimen: Simples Nacional, Lucro Presumido o Lucro Real.', 'Simples Nacional puede reducir la carga total para pequeños negocios (ME/EPP).', 'Consulta un contador certificado (contabilista) para tu situación específica.'],

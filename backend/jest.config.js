@@ -11,6 +11,11 @@ module.exports = {
   // Los beforeAll de integración crean usuarios con bcrypt (12 rondas): con la
   // suite en paralelo superaban los 5 s por defecto y fallaban sin motivo real.
   testTimeout: 30_000,
+  // La prueba de paridad (__tests__/contratos/gemelosFrontend.test.ts) importa los
+  // gemelos de frontend/lib, que usan el alias de Next `@/` → raíz del frontend.
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/../frontend/$1',
+  },
   transform: {
     '^.+\\.ts$': ['ts-jest', {
       // isolatedModules moved out of the ts-jest option namespace (deprecated, removed in
