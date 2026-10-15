@@ -210,7 +210,11 @@ export default function AmbientBackground() {
 
     const handleResize = () => {
       if (!canvas) return;
-      dpr = window.devicePixelRatio || 1;
+      const prevWidth = width;
+      const prevHeight = height;
+      // Resolución máxima 2×: en un teléfono 3× el canvas pintaba 9 píxeles por
+      // punto en cada cuadro; a 2× son 4 y los puntos siguen nítidos.
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
       width = window.innerWidth;
       height = window.innerHeight;
 
@@ -219,13 +223,22 @@ export default function AmbientBackground() {
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
 
-      ctx.scale(dpr, dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      initStars();
-      initBuildings();
+      // En el celular la barra del navegador aparece y se esconde al hacer
+      // scroll y solo cambia la ALTURA: regenerar ahí (al azar) hacía saltar la
+      // ciudad. Se regenera solo si cambia el ancho; si no, las estrellas se
+      // reacomodan a la nueva altura.
+      if (width !== prevWidth || stars.length === 0) {
+        initStars();
+        initBuildings();
+      } else if (height !== prevHeight && prevHeight > 0) {
+        const escala = height / prevHeight;
+        for (const s of stars) s.y *= escala;
+      }
+      if (shouldReduce) render();
     };
 
-    handleResize();
     window.addEventListener("resize", handleResize);
 
     // ── Bucle de Renderizado ────────────────────────────────────────────────
@@ -462,14 +475,29 @@ export default function AmbientBackground() {
       }
     };
 
-    if (shouldReduce) {
-      render();
-    } else {
+    handleResize();
+
+    // Con «reducir movimiento» no hay animación continua, pero la escena sigue
+    // al scroll (si no, la ciudad nunca aparecía): un cuadro por cambio.
+    let pendiente = false;
+    const unsubscribe = shouldReduce
+      ? smoothProgress.on("change", () => {
+          if (pendiente) return;
+          pendiente = true;
+          animId = requestAnimationFrame(() => {
+            pendiente = false;
+            render();
+          });
+        })
+      : undefined;
+
+    if (!shouldReduce) {
       animId = requestAnimationFrame(render);
     }
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      unsubscribe?.();
       if (animId) cancelAnimationFrame(animId);
     };
   }, [shouldReduce, smoothProgress]);
