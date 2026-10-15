@@ -1,9 +1,8 @@
 /**
  * Seed DEMO completo — SOLO desarrollo local.
  *
- * Crea la cuenta demo@bi0a100.com (plan pro_plus: los 6 análisis y 4
- * herramientas a elegir en /dashboard/herramientas; para probar TODAS las
- * herramientas, `src/seeds/seed-demo-business.ts` crea una cuenta business) con
+ * Crea la cuenta demo@bi0a100.com (plan enterprise: los 6 análisis y todas las
+ * herramientas sin elegir, 600 créditos de IA al mes) con
  * 2 productos y análisis COMPLETADOS en los 6 módulos. No encola jobs: invoca
  * los orquestadores reales directamente, así que los datos tienen EXACTAMENTE
  * el mismo shape que produce producción (sin ANTHROPIC_API_KEY usan los mocks
@@ -83,7 +82,7 @@ async function ensureUsuario(): Promise<Usuario> {
       password_hash,
       nombre: NOMBRE,
       account_role: 'owner',
-      plan: 'pro_plus',
+      plan: 'enterprise',
       es_admin: false,
       activo: true,
     });
@@ -91,7 +90,7 @@ async function ensureUsuario(): Promise<Usuario> {
     console.log(`✔ Usuario creado: ${EMAIL}`);
   } else {
     usuario.password_hash = password_hash;
-    usuario.plan = 'pro_plus';
+    usuario.plan = 'enterprise';
     usuario.activo = true;
     usuario.es_admin = false;
     await repo.save(usuario);
@@ -314,7 +313,7 @@ async function main() {
   console.log('✅ DEMO LISTA');
   console.log(`   Correo:     ${EMAIL}`);
   console.log(`   Contraseña: ${PASSWORD}`);
-  console.log('   Plan:       pro_plus (6 análisis + 4 herramientas a elegir)');
+  console.log('   Plan:       enterprise (6 análisis + todas las herramientas)');
   console.log('   URL login:  http://localhost:3000/auth/login');
   console.log('────────────────────────────────────────────────────');
 

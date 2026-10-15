@@ -5,7 +5,7 @@
  * panel /dashboard/alertas muestre alertas reales y el resumen ejecutivo IA
  * tenga contexto con qué trabajar.
  *
- * Diseñado para demo@bi0a100.com (plan pro_plus).
+ * Diseñado para demo@bi0a100.com (plan enterprise).
  * Idempotente: no duplica si ya existen filas con mismos nombres/tickets.
  *
  * Uso:
@@ -405,7 +405,7 @@ async function main() {
   console.log('   🟡 Metas de ingresos y pedidos sin cumplir');
   console.log('   🟢 Meta de referidos superada');
   console.log('   📊 Comparativa ingresos 30d vs. 30d anterior');
-  console.log('   ✨ Resumen ejecutivo IA (plan pro_plus activo)');
+  console.log('   ✨ Resumen ejecutivo IA (plan enterprise activo)');
   console.log('────────────────────────────────────────────────────');
 
   await AppDataSource.destroy();
