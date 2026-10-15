@@ -25,7 +25,8 @@ import { hoyDePeticion } from '../utils/fechaLocal';
 import { idempotente } from '../middleware/idempotency';
 import { leerLimite, paginar, responderPagina } from '../utils/paginacion';
 import { r2 } from '../utils/dinero';
-import { cantidad, dinero } from '../utils/limitesNumericos';
+import { cantidad, dinero, MAX_DINERO } from '../utils/limitesNumericos';
+import { getTaxConfig } from '../utils/taxConfig';
 
 // Los items viven en `cotizaciones.items` (jsonb), pero al convertir en venta
 // cada uno pasa a `venta_items` (nombre_snapshot varchar(255), cantidad
@@ -57,8 +58,11 @@ const CrearCotizacionSchema = z.object({
   impuesto_tasa: z.number().min(0).max(100).optional().default(0),
   impuesto_nombre: z.string().max(20).optional().default('IVA'),
   // Código ISO de 3 letras. La columna admite 10, pero al convertir en venta
-  // se copia a `ventas.moneda`, que es varchar(3).
-  moneda: z.string().trim().max(3).optional(), // sin valor: la del país del producto (monedaDeCuenta)
+  // se copia a `ventas.moneda`, que es varchar(3). Vacío = la del país del
+  // producto (monedaDeCuenta); «mx» o «$» no son monedas y rompían el formato.
+  moneda: z.string().trim().toUpperCase()
+    .refine((m) => m === '' || /^[A-Z]{3}$/.test(m), 'moneda: código de 3 letras (MXN, USD, COP…)')
+    .optional(),
   estado: z.enum(['borrador', 'enviada', 'aceptada', 'rechazada', 'vencida']).optional().default('borrador'),
   fecha_vencimiento: fechaISOOpcional('fecha_vencimiento inválida (YYYY-MM-DD)'),
   notas: textoOpcional(5000),
@@ -95,6 +99,24 @@ async function ventasVigentes(ids: string[]): Promise<Map<string, { id: string; 
   return new Map(filas.map((f) => [f.cotizacion_id, { id: f.id, numero_ticket: f.numero_ticket }]));
 }
 
+/** Folio de cualquier venta (también cancelada) hecha desde la cotización. */
+async function ventaDeCotizacion(id: string): Promise<string | null> {
+  const [fila]: { numero_ticket: string }[] = await AppDataSource.query(
+    `SELECT numero_ticket FROM ventas WHERE cotizacion_id = $1 ORDER BY fecha_creacion DESC LIMIT 1`,
+    [id]
+  );
+  return fila?.numero_ticket ?? null;
+}
+
+/** Importe con la moneda en el formato del país, para el mensaje al cliente. */
+function dineroTexto(valor: number, moneda: string, locale: string): string {
+  try {
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: moneda }).format(valor);
+  } catch {
+    return `${moneda} ${valor.toFixed(2)}`;
+  }
+}
+
 /** La cotización con su venta vigente, para que la interfaz sepa si falta convertirla. */
 function conVenta(cot: Cotizacion, ventas: Map<string, { id: string; numero_ticket: string }>) {
   const v = ventas.get(cot.id);
@@ -109,8 +131,19 @@ function validateItems(items: CotizacionItem[]): string | null {
     if (!isFinite(it.precio_unitario) || it.precio_unitario < 0) return `Item ${i + 1}: precio_unitario debe ser >= 0`;
     // Recalculate subtotal server-side — never trust the client
     it.subtotal = r2(it.cantidad * it.precio_unitario);
+    if (it.subtotal > MAX_DINERO) return `Item ${i + 1}: el importe (cantidad × precio) es demasiado grande`;
   }
   return null;
+}
+
+/**
+ * La venta y su asiento son numeric(12,2): un total que no cabe ahí se podía
+ * cotizar y luego no había forma de convertirlo en venta (500 al guardar).
+ */
+function totalFueraDeRango(t: { subtotal: number; total: number }): string | null {
+  return t.subtotal > MAX_DINERO || t.total > MAX_DINERO
+    ? 'El total de la cotización es demasiado grande para registrarse como venta'
+    : null;
 }
 
 function calcTotales(
@@ -118,12 +151,41 @@ function calcTotales(
   descuentoPct: number,
   impuestoTasa: number,
 ): { subtotal: number; descuento_monto: number; impuesto_monto: number; total: number } {
-  const subtotal = items.reduce((s, i) => s + i.subtotal, 0);
+  // Redondeado: sumar 0.1 + 0.2 en coma flotante deja 0.30000000000000004.
+  const subtotal = r2(items.reduce((s, i) => s + i.subtotal, 0));
   const descuento_monto = r2(subtotal * (descuentoPct / 100));
   const baseImponible = subtotal - descuento_monto;
   const impuesto_monto = r2(baseImponible * (impuestoTasa / 100));
   const total = r2(baseImponible + impuesto_monto);
   return { subtotal, descuento_monto, impuesto_monto, total };
+}
+
+/**
+ * Líneas de la venta que sale de una cotización: precio unitario y subtotal con
+ * el descuento ya aplicado y sin impuesto. El centavo que deja el redondeo va a
+ * la línea más grande para que sumen exactamente subtotal − descuento.
+ */
+export function lineasDeVenta(cot: Pick<Cotizacion, 'items' | 'subtotal' | 'descuento_monto'>) {
+  const items = Array.isArray(cot.items) ? cot.items : [];
+  const base = Number(cot.subtotal) || 0;
+  const neto = r2(base - (Number(cot.descuento_monto) || 0));
+  const factor = base > 0 ? neto / base : 1;
+  const lineas = items.map((it) => {
+    const bruto = r2(Number(it.subtotal ?? Number(it.precio_unitario) * Number(it.cantidad)));
+    return {
+      descripcion: it.descripcion,
+      cantidad: Number(it.cantidad),
+      precio_unitario: r2(Number(it.precio_unitario) * factor),
+      subtotal_linea: r2(bruto * factor),
+      bruto,
+    };
+  });
+  const resto = r2(neto - lineas.reduce((s, l) => s + l.subtotal_linea, 0));
+  if (resto !== 0 && lineas.length) {
+    const mayor = lineas.reduce((iMax, l, i, arr) => (l.bruto > arr[iMax].bruto ? i : iMax), 0);
+    lineas[mayor].subtotal_linea = r2(lineas[mayor].subtotal_linea + resto);
+  }
+  return lineas.map(({ bruto: _bruto, ...l }) => l);
 }
 
 /** Siguiente COT-###### de la cuenta (contador O(1), ver utils/folios.ts). */
@@ -237,6 +299,8 @@ router.post('/', idempotente('cotizacion'), requireHerramientaAccess('cotizacion
   }
 
   const { subtotal, descuento_monto, impuesto_monto, total } = calcTotales(items, descuento_pct, impuesto_tasa);
+  const fuera = totalFueraDeRango({ subtotal, total });
+  if (fuera) { res.status(400).json({ error: fuera }); return; }
   const plan = (await getPlanFromDB(req.cuentaEfectivaId ?? req.userId!)) as Plan;
   const marcaSnap = await getMarcaSnapshot(req.userId!, plan);
 
@@ -281,6 +345,18 @@ router.patch('/:id', validateBody(EditarCotizacionSchema), ah(async (req: AuthRe
   const cot = await repo().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
   if (!cot) { res.status(404).json({ error: 'Cotización no encontrada' }); return; }
 
+  // Ya vendida, sus importes son los de la venta y su asiento: cambiarlos aquí
+  // dejaba la cotización diciendo una cosa y la venta y la contabilidad otra.
+  // Solo se pueden cambiar las notas; para otra propuesta se duplica.
+  const vendida = (await ventasVigentes([cot.id])).get(cot.id);
+  if (vendida && Object.keys(req.body ?? {}).some((campo) => campo !== 'notas')) {
+    res.status(409).json({
+      error: `Esta cotización ya se vendió (${vendida.numero_ticket}): solo puedes cambiar sus notas. Para otra propuesta, duplícala.`,
+      venta_id: vendida.id,
+    });
+    return;
+  }
+
   const {
     cliente_nombre, cliente_empresa, cliente_email, cliente_telefono,
     items, descuento_pct, impuesto_tasa, impuesto_nombre,
@@ -291,7 +367,7 @@ router.patch('/:id', validateBody(EditarCotizacionSchema), ah(async (req: AuthRe
   if (cliente_empresa !== undefined) cot.cliente_empresa = cliente_empresa || null;
   if (cliente_email !== undefined)   cot.cliente_email   = cliente_email || null;
   if (cliente_telefono !== undefined) cot.cliente_telefono = cliente_telefono || null;
-  if (moneda !== undefined)           cot.moneda          = moneda;
+  if (moneda)                         cot.moneda          = moneda;
   if (estado !== undefined)           cot.estado          = estado;
   if (fecha_vencimiento !== undefined) cot.fecha_vencimiento = fecha_vencimiento || null;
   if (notas !== undefined)            cot.notas           = notas || null;
@@ -306,6 +382,8 @@ router.patch('/:id', validateBody(EditarCotizacionSchema), ah(async (req: AuthRe
   if (impuesto_tasa !== undefined)  cot.impuesto_tasa = impuesto_tasa;
 
   const recalc = calcTotales(cot.items, Number(cot.descuento_pct), Number(cot.impuesto_tasa));
+  const fuera = totalFueraDeRango(recalc);
+  if (fuera) { res.status(400).json({ error: fuera }); return; }
   Object.assign(cot, recalc);
 
   await repo().save(cot);
@@ -316,21 +394,55 @@ router.patch('/:id', validateBody(EditarCotizacionSchema), ah(async (req: AuthRe
 router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
     const cot = await repo().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
     if (!cot) { res.status(404).json({ error: 'Cotización no encontrada' }); return; }
+    // Con una venta (aunque se haya cancelado) es parte del historial de dinero:
+    // la venta y sus asientos la citan. Antes se borraba y la venta perdía su
+    // origen en silencio (la FK pone NULL).
+    const ticket = await ventaDeCotizacion(cot.id);
+    if (ticket) {
+      res.status(409).json({
+        error: `Esta cotización tiene la venta ${ticket} y no se puede eliminar: es parte del historial de ventas.`,
+      });
+      return;
+    }
     await repo().remove(cot);
     res.json({ ok: true });
   }));
 
   // ─── POST /api/cotizaciones/:id/whatsapp ─────────────────────────────────────
-  router.post('/:id/whatsapp', ah(async (req: AuthRequest, res: Response) => {
+  const WhatsAppSchema = z.object({ mensaje: z.string().max(4000).nullable().optional() });
+
+  router.post('/:id/whatsapp', validateBody(WhatsAppSchema), ah(async (req: AuthRequest, res: Response) => {
     const cot = await repo().findOne({ where: { id: req.params.id, usuario_id: req.userId! } });
     if (!cot) { res.status(404).json({ error: 'Cotización no encontrada' }); return; }
 
     const { mensaje } = req.body as { mensaje?: string };
-    const tel = cot.cliente_telefono
-      ? telefonoWhatsApp(cot.cliente_telefono, await paisDeCuenta(req.userId!, cot.producto_id))
-      : '';
+    const pais = await paisDeCuenta(req.userId!, cot.producto_id);
+    const tel = cot.cliente_telefono ? telefonoWhatsApp(cot.cliente_telefono, pais) : '';
     const base = tel ? `https://wa.me/${tel}` : 'https://wa.me/';
-    const msgDefault = `Hola ${cot.cliente_nombre.split(' ')[0]}, te envío la cotización *${cot.numero}* por *${cot.moneda} $${Number(cot.total).toFixed(2)}*. ¿Tienes alguna pregunta?`;
+
+    // El detalle va en el mensaje: antes decía «te envío la cotización» sin
+    // nada adjunto y el cliente no veía qué se le cotizaba.
+    const locale = getTaxConfig(pais).locale;
+    const d = (v: unknown) => dineroTexto(Number(v), cot.moneda, locale);
+    const items = Array.isArray(cot.items) ? cot.items : [];
+    const visibles = items.slice(0, 20);
+    const vigencia = cot.fecha_vencimiento
+      ? new Date(`${cot.fecha_vencimiento}T12:00:00`).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })
+      : null;
+    const msgDefault = [
+      `Hola ${cot.cliente_nombre.split(' ')[0]}, te comparto la cotización *${cot.numero}*:`,
+      '',
+      ...visibles.map((it) => `• ${Number(it.cantidad)} × ${it.descripcion} — ${d(it.subtotal ?? Number(it.cantidad) * Number(it.precio_unitario))}`),
+      items.length > visibles.length ? `…y ${items.length - visibles.length} concepto(s) más` : null,
+      '',
+      `Subtotal: ${d(cot.subtotal)}`,
+      Number(cot.descuento_monto) > 0 ? `Descuento (${Number(cot.descuento_pct)}%): -${d(cot.descuento_monto)}` : null,
+      Number(cot.impuesto_monto) > 0 ? `${cot.impuesto_nombre} (${Number(cot.impuesto_tasa)}%): ${d(cot.impuesto_monto)}` : null,
+      `*Total: ${d(cot.total)}*`,
+      vigencia ? `Válida hasta el ${vigencia}.` : null,
+      '',
+      '¿Tienes alguna pregunta?',
+    ].filter((linea): linea is string => linea !== null).join('\n');
     const url = `${base}?text=${encodeURIComponent(mensaje?.trim() || msgDefault)}`;
 
     // Marcar como enviada si era borrador
@@ -395,6 +507,16 @@ router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
     });
     if (!producto) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
+    // La contabilidad del producto va en su moneda: una cotización en dólares
+    // entraba como 928 «pesos» y mezclaba monedas en los reportes.
+    const monedaProducto = getTaxConfig(producto.pais || 'MX').moneda;
+    if (cot.moneda && cot.moneda !== monedaProducto) {
+      res.status(409).json({
+        error: `La cotización está en ${cot.moneda} y la contabilidad de ${producto.nombre} en ${monedaProducto}. Duplícala en ${monedaProducto} para registrar la venta.`,
+      });
+      return;
+    }
+
     const hoy = await hoyDePeticion(req);
     const venta = await AppDataSource.transaction(async manager => {
       // Primero se "toma" la cotización: el UPDATE bloquea la fila, así que dos
@@ -425,7 +547,7 @@ router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
         negocio_id:       cot.negocio_id ?? null,
         numero_ticket:    numeroTicket,
         fecha:            hoy,
-        subtotal:         Number(cot.subtotal) - Number(cot.descuento_monto),
+        subtotal:         r2(Number(cot.subtotal) - Number(cot.descuento_monto)),
         impuesto_monto:   Number(cot.impuesto_monto),
         impuesto_tasa:    Number(cot.impuesto_tasa) / 100, // la cotizacion la guarda en %
         impuesto_nombre:  cot.impuesto_nombre,
@@ -444,13 +566,17 @@ router.delete('/:id', ah(async (req: AuthRequest, res: Response) => {
       // Los items de la cotizacion son texto libre (jsonb), no items del catalogo
       // POS: no hay item_pos_id que enlazar y por tanto tampoco receta ni
       // descuento de almacen. Queda como snapshot, igual que un item borrado.
-      await manager.save(VentaItem, cot.items.map((it) => manager.create(VentaItem, {
+      //
+      // Como en el POS, cada línea va SIN impuesto y con el descuento ya
+      // repartido, así que las líneas suman el subtotal de la venta (antes iban
+      // antes del descuento y el margen por producto salía inflado).
+      await manager.save(VentaItem, lineasDeVenta(cot).map((l) => manager.create(VentaItem, {
         venta_id:        v.id,
         item_pos_id:     null,
-        nombre_snapshot: it.descripcion,
-        precio_unitario: Number(it.precio_unitario),
-        cantidad:        Number(it.cantidad),
-        subtotal_linea:  Number(it.subtotal ?? Number(it.precio_unitario) * Number(it.cantidad)),
+        nombre_snapshot: l.descripcion,
+        precio_unitario: l.precio_unitario,
+        cantidad:        l.cantidad,
+        subtotal_linea:  l.subtotal_linea,
       })));
 
       const mov = manager.create(MovimientoContable, {

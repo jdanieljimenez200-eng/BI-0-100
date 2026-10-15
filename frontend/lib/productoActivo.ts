@@ -17,6 +17,12 @@ export interface ProductoActivo {
    * el backend (fuente de verdad). undefined se trata como operable.
    */
   dentro_del_plan?: boolean;
+  /**
+   * false = su régimen no traslada el impuesto al consumo (monotributo, Nuevo
+   * RUS, no responsable de IVA): el POS no lo desglosa y una cotización nueva
+   * arranca sin impuesto. Lo cambia el dueño en el Punto de Venta.
+   */
+  cobra_impuesto_consumo?: boolean;
 }
 
 // Clave única y compartida por TODAS las herramientas: al elegir el

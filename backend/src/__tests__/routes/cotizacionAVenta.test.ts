@@ -122,6 +122,105 @@ describeWithDb('Cotización aceptada → venta', () => {
     expect(ok.body.venta.metodo_pago).toBe('tarjeta');
   });
 
+  it('vendida, solo se cambian sus notas y no se puede eliminar (ni con la venta cancelada)', async () => {
+    const cot = await api().post('/cotizaciones', {
+      cliente_nombre: 'Bloqueo', producto_id: productoId, moneda: 'MXN',
+      items: [{ descripcion: 'Servicio', cantidad: 2, precio_unitario: 300 }],
+    });
+    const conv = await api().post(`/cotizaciones/${cot.body.id}/convertir-venta`);
+    expect(conv.status).toBe(201);
+
+    const cambiarImporte = await api().patch(`/cotizaciones/${cot.body.id}`, { items: [{ descripcion: 'Servicio', cantidad: 1, precio_unitario: 1 }] });
+    expect(cambiarImporte.status).toBe(409);
+    expect(cambiarImporte.body.venta_id).toBe(conv.body.venta.id);
+    expect((await api().patch(`/cotizaciones/${cot.body.id}`, { estado: 'rechazada' })).status).toBe(409);
+
+    const notas = await api().patch(`/cotizaciones/${cot.body.id}`, { notas: 'Entregado el lunes' });
+    expect(notas.status).toBe(200);
+    expect(Number(notas.body.total)).toBe(600);
+
+    const a = request.default(app);
+    const borrar = () => a.delete(`/api/cotizaciones/${cot.body.id}`).set({ Authorization: `Bearer ${tok}` });
+    expect((await borrar()).status).toBe(409);
+    await api().post(`/pos/ventas/${conv.body.venta.id}/cancelar`, { motivo: 'Prueba de borrado' });
+    expect((await borrar()).status).toBe(409);
+    const [{ n }] = await q(`SELECT COUNT(*)::int AS n FROM cotizaciones WHERE id = $1`, [cot.body.id]);
+    expect(n).toBe(1);
+  });
+
+  it('el descuento se reparte en las líneas: suman el subtotal de la venta', async () => {
+    const cot = await api().post('/cotizaciones', {
+      cliente_nombre: 'Descuento', producto_id: productoId, moneda: 'MXN',
+      items: [
+        { descripcion: 'Pieza A', cantidad: 3, precio_unitario: 33.33 },
+        { descripcion: 'Pieza B', cantidad: 1, precio_unitario: 10 },
+        { descripcion: 'Pieza C', cantidad: 0.5, precio_unitario: 7.77 },
+      ],
+      descuento_pct: 12.5,
+      impuesto_tasa: 16,
+    });
+    expect(cot.status).toBe(201);
+    const conv = await api().post(`/cotizaciones/${cot.body.id}/convertir-venta`);
+    expect(conv.status).toBe(201);
+    const venta = conv.body.venta;
+    expect(Number(venta.subtotal)).toBeCloseTo(Number(cot.body.subtotal) - Number(cot.body.descuento_monto), 2);
+
+    const [{ suma }] = await q(`SELECT SUM(subtotal_linea)::text AS suma FROM venta_items WHERE venta_id = $1`, [venta.id]);
+    expect(Number(suma)).toBe(Number(venta.subtotal));
+    const [linea] = await q(`SELECT precio_unitario::text AS p FROM venta_items WHERE venta_id = $1 AND nombre_snapshot = 'Pieza B'`, [venta.id]);
+    expect(Number(linea.p)).toBe(8.75);
+  });
+
+  it('no registra en pesos una cotización hecha en dólares', async () => {
+    const cot = await api().post('/cotizaciones', {
+      cliente_nombre: 'Importadora', producto_id: productoId, moneda: 'usd',
+      items: [{ descripcion: 'Servicio', cantidad: 1, precio_unitario: 100 }],
+    });
+    expect(cot.status).toBe(201);
+    expect(cot.body.moneda).toBe('USD');
+    const conv = await api().post(`/cotizaciones/${cot.body.id}/convertir-venta`);
+    expect(conv.status).toBe(409);
+    expect(conv.body.error).toMatch(/MXN/);
+    const [{ n }] = await q(`SELECT COUNT(*)::int AS n FROM ventas WHERE cotizacion_id = $1`, [cot.body.id]);
+    expect(n).toBe(0);
+  });
+
+  it('moneda que no es un código ISO y totales que no caben en una venta → 400', async () => {
+    const base = { cliente_nombre: 'Validación', producto_id: productoId, items: [{ descripcion: 'A', cantidad: 1, precio_unitario: 1 }] };
+    expect((await api().post('/cotizaciones', { ...base, moneda: '$' })).status).toBe(400);
+    expect((await api().post('/cotizaciones', { ...base, moneda: 'MX' })).status).toBe(400);
+    const sinMoneda = await api().post('/cotizaciones', { ...base, moneda: '' });
+    expect(sinMoneda.status).toBe(201);
+    expect(sinMoneda.body.moneda).toBe('MXN');
+
+    const enorme = await api().post('/cotizaciones', {
+      ...base, moneda: 'MXN',
+      items: [{ descripcion: 'Flota', cantidad: 1000, precio_unitario: 9_999_999_999 }],
+    });
+    expect(enorme.status).toBe(400);
+  });
+
+  it('el mensaje de WhatsApp lleva los conceptos, el total y la vigencia', async () => {
+    const cot = await api().post('/cotizaciones', {
+      cliente_nombre: 'Laura Pérez', cliente_telefono: '3312345678', producto_id: productoId, moneda: 'MXN',
+      items: [{ descripcion: 'Mantenimiento de clima', cantidad: 2, precio_unitario: 850 }],
+      impuesto_tasa: 16,
+      fecha_vencimiento: '2026-12-31',
+    });
+    const wa = await api().post(`/cotizaciones/${cot.body.id}/whatsapp`);
+    expect(wa.status).toBe(200);
+    expect(wa.body.whatsapp_url).toMatch(/^https:\/\/wa\.me\/523312345678\?text=/);
+    const texto = decodeURIComponent(wa.body.whatsapp_url.split('?text=')[1]);
+    expect(texto).toContain('Hola Laura');
+    expect(texto).toContain('2 × Mantenimiento de clima');
+    expect(texto).toContain('$1,700.00');
+    expect(texto).toMatch(/Total: \$1,972\.00/);
+    expect(texto).toContain('31 de diciembre de 2026');
+    expect(wa.body.cotizacion.estado).toBe('enviada');
+
+    expect((await api().post(`/cotizaciones/${cot.body.id}/whatsapp`, { mensaje: 123 })).status).toBe(400);
+  });
+
   it('no acepta cliente ni producto de otra cuenta', async () => {
     const [otra] = await q(
       `INSERT INTO usuarios (email, password_hash, nombre) VALUES ($1, 'x', 'Otra') RETURNING id`,

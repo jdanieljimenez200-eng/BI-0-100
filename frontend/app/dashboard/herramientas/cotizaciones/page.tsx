@@ -1,10 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import {
-  Search,
   Plus,
   Copy,
   Printer,
@@ -12,7 +9,6 @@ import {
   Trash2,
   Edit3,
   CheckCircle2,
-  TrendingUp,
   DollarSign,
   Clock,
   FileText,
@@ -21,6 +17,7 @@ import {
   Send,
   Download,
   ShoppingCart,
+  XCircle,
 } from 'lucide-react';
 import api, { hayRespuestaDelServidor, nuevaClaveIdempotencia } from '../../../../lib/api';
 import CustomSelect from '../../../../components/ui/CustomSelect';
@@ -29,6 +26,8 @@ import HerramientaGate from '@/components/herramientas/HerramientaGate';
 import { ProductoActivo } from '@/lib/productoActivo';
 import { getTaxConfig } from '@/lib/taxConfig';
 import { enlaceWhatsApp } from '@/lib/whatsapp';
+import { formatoDinero, formatoPct, r2 } from '@/lib/dinero';
+import { hoyLocal } from '@/lib/fechaLocal';
 import { MotionModal } from '@/components/motion/MotionModal';
 import { Breadcrumbs, SearchInput, Toast } from '@/components/ui';
 
@@ -57,7 +56,7 @@ interface Cotizacion {
   impuesto_monto: number;
   total: number;
   moneda: string;
-  estado: 'borrador' | 'enviada' | 'aceptada' | 'rechazada';
+  estado: 'borrador' | 'enviada' | 'aceptada' | 'rechazada' | 'vencida';
   fecha_vencimiento: string | null;
   notas: string | null;
   negocio_id: string | null;
@@ -79,30 +78,70 @@ const ESTADOS = [
   { value: 'enviada',   label: 'Enviada',   cls: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
   { value: 'aceptada',  label: 'Aceptada',  cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
   { value: 'rechazada', label: 'Rechazada', cls: 'bg-red-500/20 text-red-300 border-red-500/30' },
-];
+  // El backend admite 'vencida' y antes faltaba aquí: una sola cotización en
+  // ese estado tumbaba la lista entera (estadoChip leía .cls de undefined).
+  { value: 'vencida',   label: 'Vencida',   cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
+] as const;
 const MONEDAS = ['USD', 'MXN', 'COP', 'PEN', 'ARS', 'CLP', 'BRL', 'EUR'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmtDate(s: string | null) {
-  if (!s) return '—';
-  try { return new Date(s).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }); }
-  catch { return s; }
+/**
+ * Fecha a mostrar. Una fecha sola («2026-12-31») se lee como día local: con
+ * `new Date('2026-12-31')` es medianoche UTC y en México salía el 30.
+ */
+function aFecha(s: string): Date {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T12:00:00`) : new Date(s);
 }
 
-function fmtDateLong(s: string | null) {
+function fmtDate(s: string | null, locale = 'es-MX') {
   if (!s) return '—';
-  try { return new Date(s).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' }); }
-  catch { return s; }
+  const d = aFecha(s);
+  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function fmtDateLong(s: string | null, locale = 'es-MX') {
+  if (!s) return '—';
+  const d = aFecha(s);
+  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(locale, { day: '2-digit', month: 'long', year: 'numeric' });
+}
+
+/**
+ * Estado que se muestra: una propuesta sin vender cuya vigencia ya pasó se ve
+ * como vencida aunque nadie la haya marcado (no se escribe en la base al leer).
+ */
+function estadoVisible(c: Cotizacion, hoy: string): Cotizacion['estado'] {
+  if (!c.venta_id && (c.estado === 'borrador' || c.estado === 'enviada') && c.fecha_vencimiento && c.fecha_vencimiento < hoy) {
+    return 'vencida';
+  }
+  return c.estado;
 }
 
 function estadoChip(estado: Cotizacion['estado']) {
-  const e = ESTADOS.find(s => s.value === estado)!;
+  const e = ESTADOS.find(s => s.value === estado) ?? ESTADOS[0];
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs border ${e.cls}`}>{e.label}</span>;
 }
 
+/** Mismo cálculo que el servidor (validateItems): cantidad × precio a 2 decimales. */
 function calcItem(item: Omit<Item, 'subtotal'>): Item {
-  return { ...item, subtotal: Math.round(item.cantidad * item.precio_unitario * 100) / 100 };
+  return { ...item, subtotal: r2((Number(item.cantidad) || 0) * (Number(item.precio_unitario) || 0)) };
+}
+
+/** Totales con el redondeo del servidor (calcTotales): lo que se ve es lo que se guarda. */
+function calcTotales(items: Item[], descuentoPct: number, impuestoTasa: number) {
+  const subtotal = r2(items.reduce((s, i) => s + i.subtotal, 0));
+  const descMonto = r2(subtotal * (descuentoPct / 100));
+  const baseImp = subtotal - descMonto;
+  const impMonto = r2(baseImp * (impuestoTasa / 100));
+  return { subtotal, descMonto, impMonto, total: r2(baseImp + impMonto) };
+}
+
+/** Clave estable de cada fila del formulario (no viaja al servidor). */
+let ultimaClaveFila = 0;
+const conClave = (item: Item) => ({ k: ++ultimaClaveFila, item });
+
+function mensajeDeError(err: unknown, porDefecto: string): string {
+  return (err as { response?: { data?: { error?: string } } }).response?.data?.error || porDefecto;
 }
 
 function clamp(n: number, min: number, max: number): number {
@@ -114,15 +153,26 @@ function clamp(n: number, min: number, max: number): number {
 
 // ─── Print Modal (PDF via window.print) ───────────────────────────────────────
 
-function PrintModal({ cot, onClose }: { cot: Cotizacion; onClose: () => void }) {
+function PrintModal({ cot, emisor, locale, onClose }: {
+  cot: Cotizacion;
+  /** Quién cotiza cuando no hay marca propia: el negocio o el producto, nunca «Mi Negocio». */
+  emisor: string;
+  locale: string;
+  onClose: () => void;
+}) {
   const printRef = useRef<HTMLDivElement>(null);
   const acento = cot.marca_color || '#3B82F6';
+  const [bloqueada, setBloqueada] = useState(false);
+  const nombre = cot.marca_nombre || emisor;
+  const d = (v: number) => formatoDinero(v, cot.moneda, locale);
 
   function handlePrint() {
     const content = printRef.current?.innerHTML;
     if (!content) return;
     const win = window.open('', '_blank');
-    if (!win) return;
+    // Con las ventanas emergentes bloqueadas no pasaba nada y parecía roto.
+    if (!win) { setBloqueada(true); return; }
+    setBloqueada(false);
     // Validate accent color to prevent CSS injection — only allow hex colors
     const safeAcento = /^#[0-9A-Fa-f]{3,8}$/.test(acento) ? acento : '#3B82F6';
     // Set title via property, not innerHTML, to avoid XSS
@@ -167,9 +217,12 @@ function PrintModal({ cot, onClose }: { cot: Cotizacion; onClose: () => void }) 
     win.document.title = cot.numero;
     win.document.body.innerHTML = content;
     win.focus();
-    win.addEventListener('load', () => { win.print(); }, { once: true });
-    // Fallback for already-loaded windows
-    setTimeout(() => { if (win.document.readyState === 'complete') { win.print(); } }, 400);
+    // Una sola vez: el evento load y el respaldo por tiempo podían disparar los
+    // dos y abrir el diálogo de impresión dos veces.
+    let impreso = false;
+    const imprimir = () => { if (!impreso) { impreso = true; win.print(); } };
+    win.addEventListener('load', imprimir, { once: true });
+    setTimeout(() => { if (win.document.readyState === 'complete') imprimir(); }, 400);
   }
 
   const subtotal = Number(cot.subtotal);
@@ -200,6 +253,11 @@ function PrintModal({ cot, onClose }: { cot: Cotizacion; onClose: () => void }) 
             </button>
           </div>
         </div>
+        {bloqueada && (
+          <p role="alert" className="px-5 py-2 text-xs text-amber-800 bg-amber-50 border-b border-amber-200">
+            El navegador bloqueó la ventana de impresión. Permite las ventanas emergentes de este sitio y vuelve a intentarlo.
+          </p>
+        )}
 
         {/* Preview */}
         <div className="overflow-y-auto flex-1 p-6 bg-gray-100">
@@ -208,7 +266,7 @@ function PrintModal({ cot, onClose }: { cot: Cotizacion; onClose: () => void }) 
             {/* Header */}
             <div className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
               <div>
-                <div className="brand-name" style={{ fontSize: 24, fontWeight: 700, color: acento }}>{cot.marca_nombre || 'Mi Negocio'}</div>
+                <div className="brand-name" style={{ fontSize: 24, fontWeight: 700, color: acento }}>{nombre}</div>
                 <div className="brand-sub" style={{ fontSize: 11, color: '#999', marginTop: 3 }}>Cotización Comercial</div>
               </div>
               <div className="cot-num" style={{ textAlign: 'right' }}>
@@ -230,19 +288,18 @@ function PrintModal({ cot, onClose }: { cot: Cotizacion; onClose: () => void }) 
               </div>
               <div>
                 <div style={{ fontSize: 10, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 4 }}>Fecha de emisión</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{fmtDateLong(cot.fecha_creacion)}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{fmtDateLong(cot.fecha_creacion, locale)}</div>
                 {cot.fecha_vencimiento && (
                   <>
                     <div style={{ fontSize: 10, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.7px', marginTop: 10, marginBottom: 4 }}>Válida hasta</div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{fmtDateLong(cot.fecha_vencimiento)}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{fmtDateLong(cot.fecha_vencimiento, locale)}</div>
                   </>
                 )}
               </div>
+              {/* Sin «Estado»: el cliente recibía un PDF que decía «Borrador». */}
               <div>
                 <div style={{ fontSize: 10, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 4 }}>Moneda</div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{cot.moneda}</div>
-                <div style={{ fontSize: 10, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.7px', marginTop: 10, marginBottom: 4 }}>Estado</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{cot.estado.charAt(0).toUpperCase() + cot.estado.slice(1)}</div>
               </div>
             </div>
 
@@ -259,9 +316,9 @@ function PrintModal({ cot, onClose }: { cot: Cotizacion; onClose: () => void }) 
                 {cot.items.map((item, i) => (
                   <tr key={i} style={{ background: i % 2 === 1 ? '#f9f9fc' : '#fff' }}>
                     <td style={{ padding: '8px 10px', fontSize: 12, color: '#333' }}>{item.descripcion}</td>
-                    <td style={{ padding: '8px 10px', fontSize: 12, color: '#333', textAlign: 'right' }}>{item.cantidad}</td>
-                    <td style={{ padding: '8px 10px', fontSize: 12, color: '#333', textAlign: 'right' }}>{cot.moneda} ${Number(item.precio_unitario).toFixed(2)}</td>
-                    <td style={{ padding: '8px 10px', fontSize: 12, color: '#333', textAlign: 'right' }}>{cot.moneda} ${Number(item.subtotal).toFixed(2)}</td>
+                    <td style={{ padding: '8px 10px', fontSize: 12, color: '#333', textAlign: 'right' }}>{Number(item.cantidad).toLocaleString(locale, { maximumFractionDigits: 3 })}</td>
+                    <td style={{ padding: '8px 10px', fontSize: 12, color: '#333', textAlign: 'right' }}>{d(Number(item.precio_unitario))}</td>
+                    <td style={{ padding: '8px 10px', fontSize: 12, color: '#333', textAlign: 'right' }}>{d(Number(item.subtotal))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -271,23 +328,24 @@ function PrintModal({ cot, onClose }: { cot: Cotizacion; onClose: () => void }) 
             <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
               <div style={{ width: 220 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, color: '#666' }}>
-                  <span>Subtotal</span><span>{cot.moneda} ${subtotal.toFixed(2)}</span>
+                  <span>Subtotal</span><span>{d(subtotal)}</span>
                 </div>
+                {/* Con 2 decimales: un descuento de 12.5 % salía como «13 %». */}
                 {Number(cot.descuento_pct) > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, color: '#666' }}>
-                    <span>Descuento ({Number(cot.descuento_pct).toFixed(0)}%)</span>
-                    <span>- {cot.moneda} ${descMonto.toFixed(2)}</span>
+                    <span>Descuento ({formatoPct(Number(cot.descuento_pct), locale)})</span>
+                    <span>- {d(descMonto)}</span>
                   </div>
                 )}
                 {Number(cot.impuesto_tasa) > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, color: '#666' }}>
-                    <span>{cot.impuesto_nombre} ({Number(cot.impuesto_tasa).toFixed(0)}%)</span>
-                    <span>{cot.moneda} ${impMonto.toFixed(2)}</span>
+                    <span>{cot.impuesto_nombre} ({formatoPct(Number(cot.impuesto_tasa), locale)})</span>
+                    <span>{d(impMonto)}</span>
                   </div>
                 )}
                 <div style={{ background: acento, borderRadius: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
                   <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>TOTAL</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{cot.moneda} ${total.toFixed(2)}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{d(total)}</span>
                 </div>
               </div>
             </div>
@@ -302,8 +360,9 @@ function PrintModal({ cot, onClose }: { cot: Cotizacion; onClose: () => void }) 
 
             {/* Footer */}
             <div style={{ marginTop: 40, display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#ccc', borderTop: '1px solid #eee', paddingTop: 12 }}>
-              <span>{cot.marca_nombre || 'Mi Negocio'} · {cot.numero}</span>
-              <span>Generado con BI 0 A 100</span>
+              <span>{nombre} · {cot.numero}</span>
+              {/* Con marca propia (white label) el PDF no lleva la nuestra. */}
+              {!cot.marca_nombre && <span>Generado con BI 0 A 100</span>}
             </div>
           </div>
         </div>
@@ -314,11 +373,23 @@ function PrintModal({ cot, onClose }: { cot: Cotizacion; onClose: () => void }) 
 
 // ─── Item Row ─────────────────────────────────────────────────────────────────
 
-function ItemRow({ item, onChange, onRemove }: {
+/** «1,5» o «1.5» → 1.5; vacío o texto → 0 (el envío lo rechaza con su mensaje). */
+function leerNumero(texto: string): number {
+  const n = Number(texto.replace(',', '.'));
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+function ItemRow({ item, moneda, locale, onChange, onRemove }: {
   item: Item;
+  moneda: string;
+  locale: string;
   onChange: (updated: Item) => void;
   onRemove: () => void;
 }) {
+  // El texto se guarda tal cual se escribe: antes la cantidad volvía a 1 al
+  // borrarla (para poner 3 quedaba 13) y no admitía 1.5 horas ni 0.250 kg.
+  const [cantidadTxt, setCantidadTxt] = useState(String(item.cantidad));
+  const [precioTxt, setPrecioTxt] = useState(String(item.precio_unitario));
   return (
     <div className="flex flex-col sm:grid sm:grid-cols-[1fr_60px_88px_88px_32px] gap-2 items-stretch sm:items-center bg-white/[0.02] sm:bg-transparent p-2.5 sm:p-0 rounded-xl sm:rounded-none border border-white/5 sm:border-0">
       <input value={item.descripcion}
@@ -332,22 +403,22 @@ function ItemRow({ item, onChange, onRemove }: {
       <div className="flex items-center gap-2 sm:contents">
         <div className="flex-1 min-w-0 sm:flex-initial">
           <span className="text-[10px] text-white/40 sm:hidden block mb-0.5">Cant.</span>
-          <input type="number" min="1" value={item.cantidad} aria-label="Cantidad"
-            onChange={e => onChange(calcItem({ ...item, cantidad: Math.max(1, Number(e.target.value) || 1) }))}
+          <input type="text" inputMode="decimal" value={cantidadTxt} aria-label="Cantidad"
+            onChange={e => { setCantidadTxt(e.target.value); onChange(calcItem({ ...item, cantidad: leerNumero(e.target.value) })); }}
             className="w-full min-w-0 bg-white/5 border border-white/10 rounded-xl px-2 h-9 text-sm text-white text-center focus:outline-none focus:border-blue-500/40"
           />
         </div>
         <div className="flex-1 min-w-0 sm:flex-initial">
           <span className="text-[10px] text-white/40 sm:hidden block mb-0.5">Precio</span>
-          <input type="number" min="0" step="0.01" value={item.precio_unitario} aria-label="Precio unitario"
-            onChange={e => onChange(calcItem({ ...item, precio_unitario: Math.max(0, Number(e.target.value) || 0) }))}
+          <input type="text" inputMode="decimal" value={precioTxt} aria-label="Precio unitario"
+            onChange={e => { setPrecioTxt(e.target.value); onChange(calcItem({ ...item, precio_unitario: leerNumero(e.target.value) })); }}
             className="w-full min-w-0 bg-white/5 border border-white/10 rounded-xl px-2 h-9 text-sm text-white text-right focus:outline-none focus:border-blue-500/40 font-mono"
           />
         </div>
         <div className="flex-1 min-w-0 sm:flex-initial">
           <span className="text-[10px] text-white/40 sm:hidden block mb-0.5">Subtotal</span>
-          <div className="h-9 rounded-xl bg-blue-500/8 border border-blue-500/15 flex items-center justify-end px-3 text-sm text-blue-300 font-medium font-mono">
-            {item.subtotal.toFixed(2)}
+          <div className="h-9 rounded-xl bg-blue-500/8 border border-blue-500/15 flex items-center justify-end px-2 text-xs text-blue-300 font-medium font-mono truncate" title={formatoDinero(item.subtotal, moneda, locale)}>
+            {formatoDinero(item.subtotal, moneda, locale)}
           </div>
         </div>
         <button type="button" onClick={onRemove} aria-label="Eliminar ítem" className="shrink-0 text-white/40 hover:text-red-400 transition-colors text-lg leading-none p-2 sm:p-0">×</button>
@@ -367,7 +438,7 @@ interface ClientePrefill {
   telefono: string | null;
 }
 
-function CotizacionModal({ cotizacion, clientePrefill, negocioId, productoId, monedaCuenta, impuestoCuenta, onClose, onSaved }: {
+function CotizacionModal({ cotizacion, clientePrefill, negocioId, productoId, monedaCuenta, impuestoCuenta, locale, onClose, onSaved }: {
   /** Con `id` vacío es un duplicado: se crea una cotización nueva a partir de ella. */
   cotizacion: Cotizacion | null;
   clientePrefill?: ClientePrefill | null;
@@ -375,23 +446,34 @@ function CotizacionModal({ cotizacion, clientePrefill, negocioId, productoId, mo
   productoId: string;
   /** Moneda del país del producto (MXN en México). */
   monedaCuenta: string;
-  /** Impuesto al consumo del país (IVA 16 % en México), en porcentaje. */
-  impuestoCuenta: { nombre: string; tasaPct: number };
+  /**
+   * Impuesto al consumo del país (IVA 16 % en México), en porcentaje, y si el
+   * régimen del negocio lo traslada (`productos.cobra_impuesto_consumo`).
+   */
+  impuestoCuenta: { nombre: string; tasaPct: number; cobra: boolean };
+  locale: string;
   onClose: () => void;
   onSaved: (c: Cotizacion) => void;
 }) {
   const emptyItem = (): Item => ({ descripcion: '', cantidad: 1, precio_unitario: 0, subtotal: 0 });
   const esEdicion = Boolean(cotizacion?.id);
+  // Ya vendida, sus importes son los de la venta: el servidor solo deja
+  // cambiar las notas (409 en lo demás), así que el formulario lo dice antes.
+  const soloNotas = esEdicion && Boolean(cotizacion?.venta_id);
 
   const [clienteNombre,  setClienteNombre]  = useState(cotizacion?.cliente_nombre ?? clientePrefill?.nombre ?? '');
   const [clienteEmpresa, setClienteEmpresa] = useState(cotizacion?.cliente_empresa ?? clientePrefill?.empresa ?? '');
   const [clienteEmail,   setClienteEmail]   = useState(cotizacion?.cliente_email ?? clientePrefill?.email ?? '');
   const [clienteTel,     setClienteTel]     = useState(cotizacion?.cliente_telefono ?? clientePrefill?.telefono ?? '');
-  const [items,          setItems]          = useState<Item[]>(cotizacion?.items?.length ? cotizacion.items : [emptyItem()]);
+  // Cada fila con su clave: con el índice como key, al quitar una fila la de
+  // abajo heredaba la cantidad y el precio escritos en la que se quitó.
+  const [filas,          setFilas]          = useState(() => (cotizacion?.items?.length ? cotizacion.items : [emptyItem()]).map(conClave));
+  const items = filas.map((f) => f.item);
   const [descuentoPct,   setDescuentoPct]   = useState(Number(cotizacion?.descuento_pct ?? 0));
   // Una cotización nueva arranca con el impuesto del país, como el POS: con 0 %
-  // el total salía sin IVA y el negocio cotizaba de menos si no lo notaba.
-  const [impuestoTasa,   setImpuestoTasa]   = useState(Number(cotizacion?.impuesto_tasa ?? impuestoCuenta.tasaPct));
+  // el total salía sin IVA y el negocio cotizaba de menos si no lo notaba. Si
+  // su régimen no traslada el impuesto (monotributo, Nuevo RUS…), arranca en 0.
+  const [impuestoTasa,   setImpuestoTasa]   = useState(Number(cotizacion?.impuesto_tasa ?? (impuestoCuenta.cobra ? impuestoCuenta.tasaPct : 0)));
   const [impuestoNombre, setImpuestoNombre] = useState(cotizacion?.impuesto_nombre ?? impuestoCuenta.nombre);
   // La del país del producto, no 'USD' fijo: el formulario siempre manda la
   // moneda, así que el backend nunca llegaba a aplicar monedaDeCuenta() y una
@@ -402,32 +484,46 @@ function CotizacionModal({ cotizacion, clientePrefill, negocioId, productoId, mo
   const [notas,          setNotas]          = useState(cotizacion?.notas ?? '');
   const [saving,         setSaving]         = useState(false);
   const [error,          setError]          = useState('');
+  // Una clave por intento de alta: si la red se corta después de guardar, el
+  // reintento no crea una segunda cotización con otro folio.
+  const claveAlta = useRef(nuevaClaveIdempotencia());
 
-  const subtotal  = items.reduce((s, i) => s + i.subtotal, 0);
-  const descMonto = Math.round(subtotal * (descuentoPct / 100) * 100) / 100;
-  const baseImp   = subtotal - descMonto;
-  const impMonto  = Math.round(baseImp * (impuestoTasa / 100) * 100) / 100;
-  const total     = Math.round((baseImp + impMonto) * 100) / 100;
+  const { subtotal, descMonto, impMonto, total } = calcTotales(items, descuentoPct, impuestoTasa);
+  const d = (v: number) => formatoDinero(v, moneda, locale);
 
-  function updateItem(i: number, updated: Item) {
-    setItems(prev => { const next = [...prev]; next[i] = updated; return next; });
+  function updateItem(k: number, updated: Item) {
+    setFilas(prev => prev.map(f => (f.k === k ? { k, item: updated } : f)));
+  }
+
+  /** Lo mismo que rechazaría el servidor, dicho antes y con el número de fila. */
+  function errorDeItems(): string | null {
+    if (items.length === 0) return 'Agrega al menos un concepto';
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it.descripcion.trim()) return `Concepto ${i + 1}: escribe la descripción`;
+      if (!(it.cantidad > 0)) return `Concepto ${i + 1}: la cantidad debe ser mayor que 0`;
+    }
+    return null;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!clienteNombre.trim()) { setError('El nombre del cliente es requerido'); return; }
-    if (items.length === 0)    { setError('Agrega al menos un ítem'); return; }
+    if (!soloNotas) {
+      if (!clienteNombre.trim()) { setError('El nombre del cliente es requerido'); return; }
+      const errItems = errorDeItems();
+      if (errItems) { setError(errItems); return; }
+    }
     setSaving(true); setError('');
     try {
-      const payload = {
+      const payload = soloNotas ? { notas: notas.trim() || null } : {
         cliente_nombre:   clienteNombre.trim(),
         cliente_empresa:  clienteEmpresa.trim() || null,
         cliente_email:    clienteEmail.trim() || null,
         cliente_telefono: clienteTel.trim() || null,
-        items,
+        items: items.map((it) => ({ ...it, descripcion: it.descripcion.trim() })),
         descuento_pct:    descuentoPct,
         impuesto_tasa:    impuestoTasa,
-        impuesto_nombre:  impuestoNombre,
+        impuesto_nombre:  impuestoNombre.trim() || impuestoCuenta.nombre,
         moneda, estado,
         fecha_vencimiento: fechaVenc || null,
         notas: notas.trim() || null,
@@ -439,11 +535,11 @@ function CotizacionModal({ cotizacion, clientePrefill, negocioId, productoId, mo
       // Un duplicado trae los datos de otra cotización pero sin id: se crea.
       const r = esEdicion
         ? await api.patch(`/cotizaciones/${cotizacion!.id}`, payload)
-        : await api.post('/cotizaciones', payload);
+        : await api.post('/cotizaciones', payload, { headers: { 'Idempotency-Key': claveAlta.current } });
       onSaved(r.data);
     } catch (err) {
-      const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
-      setError(msg || 'No se pudo guardar la cotización. Revisa tu conexión e inténtalo de nuevo.');
+      if (!esEdicion && hayRespuestaDelServidor(err)) claveAlta.current = nuevaClaveIdempotencia();
+      setError(mensajeDeError(err, 'No se pudo guardar la cotización. Revisa tu conexión e inténtalo de nuevo.'));
     }
     finally   { setSaving(false); }
   }
@@ -463,6 +559,14 @@ function CotizacionModal({ cotizacion, clientePrefill, negocioId, productoId, mo
         </div>
 
         <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+          {soloNotas && (
+            <p role="status" className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+              Esta cotización ya se vendió ({cotizacion?.venta_ticket}). Sus importes son los de la venta y su registro en Contabilidad,
+              así que solo puedes cambiar las notas. Para otra propuesta, duplícala.
+            </p>
+          )}
+          {/* fieldset disabled bloquea de una vez cada campo (y los botones de CustomSelect). */}
+          <fieldset disabled={soloNotas} className="space-y-5 disabled:opacity-60 min-w-0">
           {/* Cliente */}
           <div>
             <p className="text-xs text-white/40 uppercase tracking-wide mb-3">Datos del cliente</p>
@@ -499,11 +603,13 @@ function CotizacionModal({ cotizacion, clientePrefill, negocioId, productoId, mo
               ))}
             </div>
             <div className="space-y-2">
-              {items.map((item, i) => (
-                <ItemRow key={i} item={item} onChange={u => updateItem(i, u)} onRemove={() => setItems(p => p.filter((_, idx) => idx !== i))} />
+              {filas.map(({ k, item }) => (
+                <ItemRow key={k} item={item} moneda={moneda} locale={locale}
+                  onChange={u => updateItem(k, u)}
+                  onRemove={() => setFilas(p => p.filter(f => f.k !== k))} />
               ))}
             </div>
-            <button type="button" onClick={() => setItems(p => [...p, emptyItem()])}
+            <button type="button" onClick={() => setFilas(p => [...p, conClave(emptyItem())])}
               className="mt-3 flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 transition-colors">
               <span className="text-lg leading-none">+</span> Agregar ítem
             </button>
@@ -523,25 +629,35 @@ function CotizacionModal({ cotizacion, clientePrefill, negocioId, productoId, mo
             </div>
             <div>
               <label className="text-xs text-white/40 mb-1 block">Nombre impuesto</label>
-              <input value={impuestoNombre} onChange={e => setImpuestoNombre(e.target.value)} placeholder="IVA"
+              <input value={impuestoNombre} onChange={e => setImpuestoNombre(e.target.value)} placeholder="IVA" maxLength={20}
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-3 h-10 text-sm text-white placeholder-white/25 focus:outline-none focus:border-blue-500/40" />
             </div>
           </div>
+          {!esEdicion && !impuestoCuenta.cobra && (
+            <p className="text-[11px] text-white/40 -mt-2">
+              Arranca sin {impuestoCuenta.nombre}: en el Punto de Venta indicaste que tu régimen no lo cobra. Si en esta venta sí lo trasladas, ponle la tasa.
+            </p>
+          )}
 
           {/* Resumen vivo */}
           <div className="rounded-2xl bg-white/3 border border-white/8 p-4 space-y-2">
             {[
-              { label: 'Subtotal', value: subtotal.toFixed(2) },
-              ...(descuentoPct > 0 ? [{ label: `Descuento ${descuentoPct}%`, value: `-${descMonto.toFixed(2)}` }] : []),
-              ...(impuestoTasa > 0 ? [{ label: `${impuestoNombre} ${impuestoTasa}%`, value: impMonto.toFixed(2) }] : []),
+              { label: 'Subtotal', value: d(subtotal) },
+              ...(descuentoPct > 0 ? [{ label: `Descuento ${formatoPct(descuentoPct, locale)}`, value: `-${d(descMonto)}` }] : []),
+              ...(impuestoTasa > 0 ? [{ label: `${impuestoNombre} ${formatoPct(impuestoTasa, locale)}`, value: d(impMonto) }] : []),
             ].map(row => (
               <div key={row.label} className="flex justify-between text-sm text-white/50">
-                <span>{row.label}</span><span>{moneda} ${row.value}</span>
+                <span>{row.label}</span><span className="font-mono tabular-nums">{row.value}</span>
               </div>
             ))}
             <div className="flex justify-between text-base font-bold text-white pt-2 border-t border-white/10">
-              <span>Total</span><span>{moneda} ${total.toFixed(2)}</span>
+              <span>Total</span><span className="font-mono tabular-nums">{d(total)}</span>
             </div>
+            {moneda !== monedaCuenta && (
+              <p className="text-[11px] text-amber-300/80 pt-1">
+                Está en {moneda} y tu contabilidad en {monedaCuenta}: podrás enviarla, pero para registrarla como venta tendrás que duplicarla en {monedaCuenta}.
+              </p>
+            )}
           </div>
 
           {/* Config */}
@@ -568,10 +684,11 @@ function CotizacionModal({ cotizacion, clientePrefill, negocioId, productoId, mo
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-3 h-10 text-sm text-white/70 focus:outline-none" style={{ colorScheme: 'dark' }} />
             </div>
           </div>
+          </fieldset>
 
           <div>
             <label className="text-xs text-white/40 mb-1 block">Notas / Condiciones</label>
-            <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={3}
+            <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={3} maxLength={5000}
               placeholder="Vigencia de la cotización, términos de pago, garantías…"
               className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none resize-none" />
           </div>
@@ -586,7 +703,7 @@ function CotizacionModal({ cotizacion, clientePrefill, negocioId, productoId, mo
           </button>
           <button onClick={handleSubmit as unknown as React.MouseEventHandler} disabled={saving}
             className="flex-1 h-10 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
-            {saving ? 'Guardando…' : esEdicion ? 'Guardar cambios' : 'Crear cotización'}
+            {saving ? 'Guardando…' : soloNotas ? 'Guardar notas' : esEdicion ? 'Guardar cambios' : 'Crear cotización'}
           </button>
         </div>
       </div>
@@ -605,8 +722,11 @@ const METODOS_PAGO = [
 
 type MetodoPago = typeof METODOS_PAGO[number]['value'];
 
-function ConvertirVentaModal({ cot, onClose, onConvertida }: {
+function ConvertirVentaModal({ cot, monedaCuenta, locale, onClose, onConvertida }: {
   cot: Cotizacion;
+  /** Moneda de la contabilidad del producto: la venta solo se registra en esa. */
+  monedaCuenta: string;
+  locale: string;
   onClose: () => void;
   onConvertida: (venta: { id: string; numero_ticket: string }) => void;
 }) {
@@ -648,9 +768,14 @@ function ConvertirVentaModal({ cot, onClose, onConvertida }: {
         <div className="px-6 py-5 space-y-4">
           <p className="text-sm text-white/70">
             Se registra la venta a <span className="text-white font-semibold">{cot.cliente_nombre}</span> por{' '}
-            <span className="text-white font-semibold font-mono">{cot.moneda} ${Number(cot.total).toFixed(2)}</span> con fecha de hoy:
+            <span className="text-white font-semibold font-mono">{formatoDinero(Number(cot.total), cot.moneda, locale)}</span> con fecha de hoy:
             el ticket aparece en el Punto de Venta y el ingreso en Contabilidad.
           </p>
+          {cot.moneda !== monedaCuenta && (
+            <p className="text-xs text-amber-300 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2" role="alert">
+              Esta cotización está en {cot.moneda} y tu contabilidad en {monedaCuenta}. Duplícala en {monedaCuenta} para registrar la venta.
+            </p>
+          )}
           <p className="text-xs text-white/40">
             Los conceptos de la cotización no son artículos del catálogo, así que no descuentan almacén.
           </p>
@@ -685,7 +810,7 @@ function ConvertirVentaModal({ cot, onClose, onConvertida }: {
             className="flex-1 h-10 rounded-xl border border-white/15 text-sm text-white/60 hover:bg-white/5 transition-colors">
             Cancelar
           </button>
-          <button type="button" onClick={convertir} disabled={guardando}
+          <button type="button" onClick={convertir} disabled={guardando || cot.moneda !== monedaCuenta}
             className="flex-1 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">
             {guardando ? 'Registrando…' : 'Registrar venta'}
           </button>
@@ -698,7 +823,6 @@ function ConvertirVentaModal({ cot, onClose, onConvertida }: {
 // ─── Inner (con producto global) ──────────────────────────────────────────────
 
 function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoActivo; cambiarProducto: () => void }) {
-  const router = useRouter();
   const [allCots, setAllCots] = useState<Cotizacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroEstado, setFiltroEstado] = useState('');
@@ -709,6 +833,16 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
   const [convirtiendo, setConvirtiendo] = useState<Cotizacion | null>(null);
   const [clientePrefill, setClientePrefill] = useState<ClientePrefill | null>(null);
   const [toast, setToast] = useState('');
+  // Cursor de la página siguiente (cabecera X-Siguiente). Antes solo se leían
+  // las primeras 200 y los indicadores de arriba no contaban el resto.
+  const [siguiente, setSiguiente] = useState<string | null>(null);
+  const [cargandoMas, setCargandoMas] = useState(false);
+
+  const tax = getTaxConfig(producto.pais);
+  const locale = tax.locale;
+  const monedaCuenta = tax.moneda;
+  const hoy = hoyLocal();
+  const dinero = (v: number, moneda = monedaCuenta) => formatoDinero(v, moneda, locale);
 
   // Solo las del producto activo: sin filtro, la página de 200 se llenaba con
   // las de otros productos y las de este dejaban de verse.
@@ -716,11 +850,32 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
   useEffect(() => {
     let vigente = true;
     api.get('/cotizaciones', { params: { producto_id: producto.id } })
-      .then((r) => { if (vigente) setAllCots(r.data); })
+      .then((r) => {
+        if (!vigente) return;
+        setAllCots(r.data);
+        setSiguiente((r.headers as Record<string, string | undefined>)['x-siguiente'] ?? null);
+      })
       .catch(() => { if (vigente) setToast('Error al cargar cotizaciones'); })
       .finally(() => { if (vigente) setLoading(false); });
     return () => { vigente = false; };
   }, [producto.id]);
+
+  async function cargarMas() {
+    if (!siguiente) return;
+    setCargandoMas(true);
+    try {
+      const r = await api.get('/cotizaciones', { params: { producto_id: producto.id, antes: siguiente } });
+      setAllCots((prev) => {
+        const vistos = new Set(prev.map((c) => c.id));
+        return [...prev, ...(r.data as Cotizacion[]).filter((c) => !vistos.has(c.id))];
+      });
+      setSiguiente((r.headers as Record<string, string | undefined>)['x-siguiente'] ?? null);
+    } catch {
+      setToast('No se pudieron cargar más cotizaciones');
+    } finally {
+      setCargandoMas(false);
+    }
+  }
 
   // «Crear cotización» desde la ficha de un cliente llega con ?cliente=<id>: se
   // abre el formulario con sus datos y la cotización queda ligada al expediente.
@@ -759,20 +914,29 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
       await api.delete(`/cotizaciones/${id}`);
       setAllCots((prev) => prev.filter((c) => c.id !== id));
       setToast('Cotización eliminada');
-    } catch {
-      setToast('Error al eliminar');
+    } catch (err) {
+      // 409 si ya tiene una venta: el mensaje dice cuál.
+      setToast(mensajeDeError(err, 'No se pudo eliminar la cotización'));
     }
   }
 
   async function handleWhatsApp(cot: Cotizacion) {
+    // La ventana se abre en el clic: abierta después de esperar al servidor, el
+    // bloqueador de ventanas emergentes (Safari, Chrome en móvil) la cancelaba.
+    const ventana = window.open('about:blank', '_blank');
+    const abrir = (url: string) => {
+      if (ventana) { ventana.opener = null; ventana.location.href = url; }
+      else window.location.href = url;
+    };
     try {
       const r = await api.post(`/cotizaciones/${cot.id}/whatsapp`, {});
       const { whatsapp_url, cotizacion: updated } = r.data;
       setAllCots((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-      window.open(whatsapp_url, '_blank', 'noopener');
+      abrir(whatsapp_url);
     } catch {
-      const msg = `Hola ${cot.cliente_nombre || ''}. Te comparto los detalles de tu cotización *${cot.numero}* por un monto de *${cot.moneda} $${Number(cot.total).toFixed(2)}*.\n\nQuedo a tu disposición para confirmar el inicio de tu proyecto.`;
-      window.open(enlaceWhatsApp(cot.cliente_telefono, producto.pais, msg), '_blank', 'noopener');
+      // Sin servidor, al menos el folio y el total, con el formato del país.
+      const msg = `Hola ${cot.cliente_nombre.split(' ')[0] || ''}, te comparto la cotización *${cot.numero}* por *${dinero(Number(cot.total), cot.moneda)}*. ¿Tienes alguna pregunta?`;
+      abrir(enlaceWhatsApp(cot.cliente_telefono, producto.pais, msg));
     }
   }
 
@@ -784,6 +948,8 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
       estado: 'borrador',
       venta_id: null,
       venta_ticket: null,
+      // La vigencia de la original casi siempre ya pasó: se pone de nuevo.
+      fecha_vencimiento: null,
       fecha_creacion: new Date().toISOString(),
       fecha_actualizacion: new Date().toISOString(),
     });
@@ -793,9 +959,10 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
     try {
       const { data } = await api.patch(`/cotizaciones/${cot.id}`, { estado: nuevoEstado });
       setAllCots((prev) => prev.map((c) => (c.id === cot.id ? (data as Cotizacion) : c)));
-      setToast(`Cotización actualizada a "${nuevoEstado}"`);
-    } catch {
-      setToast('No se pudo actualizar el estado');
+      const etiqueta = ESTADOS.find((e) => e.value === nuevoEstado)?.label ?? nuevoEstado;
+      setToast(`${cot.numero}: ${etiqueta.toLowerCase()}`);
+    } catch (err) {
+      setToast(mensajeDeError(err, 'No se pudo actualizar el estado'));
     }
   }
 
@@ -803,7 +970,7 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
 
   const visibles = useMemo(() => {
     return cotizaciones.filter((c) => {
-      if (filtroEstado && c.estado !== filtroEstado) return false;
+      if (filtroEstado && estadoVisible(c, hoy) !== filtroEstado) return false;
       const q = searchCotizaciones.toLowerCase().trim();
       if (!q) return true;
       return (
@@ -813,24 +980,37 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
         (c.cliente_email && c.cliente_email.toLowerCase().includes(q))
       );
     });
-  }, [cotizaciones, filtroEstado, searchCotizaciones]);
+  }, [cotizaciones, filtroEstado, searchCotizaciones, hoy]);
 
-  const stats = useMemo(() => {
+  // Sin useMemo: es barato y el compilador de React lo memoriza solo.
+  const stats = (() => {
+    const porEstado = (e: Cotizacion['estado']) => cotizaciones.filter((c) => estadoVisible(c, hoy) === e).length;
     const total = cotizaciones.length;
-    const enviadas = cotizaciones.filter((c) => c.estado === 'enviada').length;
-    const aceptadas = cotizaciones.filter((c) => c.estado === 'aceptada').length;
-    const rechazadas = cotizaciones.filter((c) => c.estado === 'rechazada').length;
-    const borradores = cotizaciones.filter((c) => c.estado === 'borrador').length;
-    const valorTotal = cotizaciones.reduce((s, c) => s + Number(c.total || 0), 0);
-    const valorGanado = cotizaciones.filter((c) => c.estado === 'aceptada').reduce((s, c) => s + Number(c.total || 0), 0);
-    const tasaConversion = total > 0 ? Math.round((aceptadas / total) * 100) : 0;
+    const enviadas = porEstado('enviada');
+    const aceptadas = porEstado('aceptada');
+    const rechazadas = porEstado('rechazada');
+    const borradores = porEstado('borrador');
+    const vencidas = porEstado('vencida');
+    // Ganada = la aceptó o ya se vendió. Los importes se suman solo en la
+    // moneda de la contabilidad: antes 100 USD + 100 MXN se mostraban como «$200».
+    const ganadas = cotizaciones.filter((c) => c.venta_id || c.estado === 'aceptada');
+    const enMoneda = (lista: Cotizacion[]) => lista.filter((c) => c.moneda === monedaCuenta);
+    const suma = (lista: Cotizacion[]) => r2(enMoneda(lista).reduce((s, c) => s + Number(c.total || 0), 0));
+    const valorTotal = suma(cotizaciones);
+    const valorGanado = suma(ganadas);
+    const otraMoneda = cotizaciones.length - enMoneda(cotizaciones).length;
+    const vendidas = cotizaciones.filter((c) => c.venta_id).length;
+    // La tasa de cierre se mide sobre lo que el cliente ya vio: un borrador
+    // todavía no se ha propuesto y bajaba la tasa sin motivo.
+    const propuestas = total - borradores;
+    const tasaConversion = propuestas > 0 ? Math.round((ganadas.length / propuestas) * 100) : 0;
 
-    return { total, enviadas, aceptadas, rechazadas, borradores, valorTotal, valorGanado, tasaConversion };
-  }, [cotizaciones]);
+    return { total, enviadas, aceptadas, rechazadas, borradores, vencidas, ganadas: ganadas.length, vendidas, propuestas, valorTotal, valorGanado, otraMoneda, tasaConversion };
+  })();
 
   const exportarCotizacionesCsv = () => {
     if (visibles.length === 0) {
-      alert('No hay cotizaciones para exportar con los filtros actuales.');
+      setToast('No hay cotizaciones para exportar con los filtros actuales.');
       return;
     }
 
@@ -849,6 +1029,7 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
       'Total',
       'Moneda',
       'Estado',
+      'Venta',
       'Vencimiento',
       'Fecha Creacion',
       'Notas',
@@ -867,8 +1048,9 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
       Number(c.impuesto_tasa || 0).toFixed(2),
       Number(c.impuesto_monto || 0).toFixed(2),
       Number(c.total || 0).toFixed(2),
-      `"${c.moneda || 'USD'}"`,
-      `"${c.estado}"`,
+      `"${c.moneda || monedaCuenta}"`,
+      `"${estadoVisible(c, hoy)}"`,
+      `"${c.venta_ticket || ''}"`,
       `"${c.fecha_vencimiento || ''}"`,
       `"${c.fecha_creacion || ''}"`,
       `"${(c.notas || '').replace(/"/g, '""')}"`,
@@ -881,7 +1063,7 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
     link.href = url;
     link.setAttribute(
       'download',
-      `cotizaciones-${(producto.nombre || 'catalogo').toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.csv`
+      `cotizaciones-${(producto.nombre || 'catalogo').toLowerCase().replace(/\s+/g, '-')}-${hoy}.csv`
     );
     document.body.appendChild(link);
     link.click();
@@ -960,10 +1142,12 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
             <span className="text-[10px] font-bold uppercase tracking-wider">Total Cotizado</span>
             <FileText className="w-4 h-4 text-white/30" />
           </div>
-          <p className="text-2xl font-bold text-white my-1 font-mono tabular-nums">
-            ${stats.valorTotal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+          <p className="text-2xl font-bold text-white my-1 font-mono tabular-nums truncate" title={dinero(stats.valorTotal)}>
+            {dinero(stats.valorTotal)}
           </p>
-          <p className="text-[10px] text-white/40">{stats.total} propuestas generadas</p>
+          <p className="text-[10px] text-white/40">
+            {stats.total} cotizaciones{stats.otraMoneda > 0 ? ` · ${stats.otraMoneda} en otra moneda, no sumadas` : ''}
+          </p>
         </div>
 
         <div className="bg-[#0F1C2A] border border-white/10 rounded-2xl p-4 flex flex-col justify-between">
@@ -971,10 +1155,10 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
             <span className="text-[10px] font-bold uppercase tracking-wider">Total Ganado</span>
             <DollarSign className="w-4 h-4 text-emerald-400" />
           </div>
-          <p className="text-2xl font-bold text-emerald-300 my-1 font-mono tabular-nums">
-            ${stats.valorGanado.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+          <p className="text-2xl font-bold text-emerald-300 my-1 font-mono tabular-nums truncate" title={dinero(stats.valorGanado)}>
+            {dinero(stats.valorGanado)}
           </p>
-          <p className="text-[10px] text-emerald-400/80">{stats.aceptadas} cotizaciones aceptadas</p>
+          <p className="text-[10px] text-emerald-400/80">{stats.ganadas} aceptadas · {stats.vendidas} ya vendidas</p>
         </div>
 
         <div className="bg-[#0F1C2A] border border-white/10 rounded-2xl p-4 flex flex-col justify-between">
@@ -983,7 +1167,9 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
             <Percent className="w-4 h-4 text-blue-400" />
           </div>
           <p className="text-2xl font-bold text-blue-300 my-1 font-mono tabular-nums">{stats.tasaConversion}%</p>
-          <p className="text-[10px] text-white/40">Conversión sobre total</p>
+          <p className="text-[10px] text-white/40">
+            {stats.propuestas > 0 ? `${stats.ganadas} de ${stats.propuestas} enviadas al cliente` : 'Aún no envías ninguna'}
+          </p>
         </div>
 
         <div className="bg-[#0F1C2A] border border-white/10 rounded-2xl p-4 flex flex-col justify-between">
@@ -1014,6 +1200,7 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
             { value: 'enviada', label: 'Enviada', count: stats.enviadas },
             { value: 'aceptada', label: 'Aceptada', count: stats.aceptadas },
             { value: 'rechazada', label: 'Rechazada', count: stats.rechazadas },
+            { value: 'vencida', label: 'Vencida', count: stats.vencidas },
           ].map((s) => (
             <button
               key={s.value}
@@ -1075,37 +1262,43 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
           {visibles.map((cot) => (
             <div
               key={cot.id}
-              className="relative flex flex-col sm:flex-row sm:items-center gap-3 bg-[#0F1C2A] border border-white/8 rounded-2xl px-5 py-4 hover:border-blue-500/30 transition-all group overflow-hidden before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/[0.08] before:to-transparent"
+              className="relative flex flex-col 2xl:flex-row 2xl:items-center gap-3 bg-[#0F1C2A] border border-white/8 rounded-2xl px-5 py-4 hover:border-blue-500/30 transition-all group overflow-hidden before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/[0.08] before:to-transparent"
             >
-              <div className="flex-shrink-0 sm:w-32">
-                <p className="text-sm font-mono font-bold text-white">{cot.numero}</p>
-                <div className="mt-1">{estadoChip(cot.estado)}</div>
-                {cot.venta_ticket && (
-                  <p className="mt-1 text-[11px] text-emerald-300/80 font-mono" title="Venta registrada en el Punto de Venta">
-                    Vendida · {cot.venta_ticket}
+              {/* Folio, cliente y total siempre en una línea; los botones van debajo
+                  salvo en pantallas muy anchas. Antes compartían la fila y, con el
+                  menú lateral abierto, el nombre del cliente quedaba en «L…». */}
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="flex-shrink-0 w-28 sm:w-32">
+                  <p className="text-sm font-mono font-bold text-white">{cot.numero}</p>
+                  <div className="mt-1">{estadoChip(estadoVisible(cot, hoy))}</div>
+                  {cot.venta_ticket && (
+                    <p className="mt-1 text-[11px] leading-tight text-emerald-300/80 font-mono" title="Venta registrada en el Punto de Venta">
+                      <span className="block">Vendida</span>
+                      <span className="block">{cot.venta_ticket}</span>
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{cot.cliente_nombre}</p>
+                  <p className="text-xs text-white/40 truncate">
+                    {cot.cliente_empresa ? `${cot.cliente_empresa} · ` : ''}
+                    {cot.items?.length ?? 0} concepto(s)
+                    {cot.fecha_vencimiento && ` · Vence: ${fmtDate(cot.fecha_vencimiento, locale)}`}
                   </p>
-                )}
-              </div>
+                </div>
 
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">{cot.cliente_nombre}</p>
-                <p className="text-xs text-white/40 truncate">
-                  {cot.cliente_empresa ? `${cot.cliente_empresa} · ` : ''}
-                  {cot.items?.length ?? 0} concepto(s)
-                  {cot.fecha_vencimiento && ` · Vence: ${fmtDate(cot.fecha_vencimiento)}`}
-                </p>
-              </div>
-
-              <div className="text-left sm:text-right flex-shrink-0">
-                <p className="text-base font-bold text-white font-mono tabular-nums">
-                  {cot.moneda} ${Number(cot.total).toFixed(2)}
-                </p>
-                <p className="text-[11px] text-white/40 font-mono tabular-nums">{fmtDate(cot.fecha_creacion)}</p>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-base font-bold text-white font-mono tabular-nums">
+                    {dinero(Number(cot.total), cot.moneda)}
+                  </p>
+                  <p className="text-[11px] text-white/40 font-mono tabular-nums">{fmtDate(cot.fecha_creacion, locale)}</p>
+                </div>
               </div>
 
               {/* Actions */}
-              <div className="flex items-center gap-1.5 flex-wrap pt-2 sm:pt-0 border-t sm:border-t-0 border-white/8">
-                {cot.estado !== 'aceptada' && (
+              <div className="flex items-center gap-1.5 flex-wrap pt-2 2xl:pt-0 border-t 2xl:border-t-0 border-white/8">
+                {!cot.venta_id && cot.estado !== 'aceptada' && (
                   <button
                     onClick={() => handleQuickStatus(cot, 'aceptada')}
                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-300 hover:bg-emerald-500/25 transition-colors font-semibold"
@@ -1139,6 +1332,19 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
                   </button>
                 )}
 
+                {/* Sin esto, una propuesta perdida solo se podía marcar editándola. */}
+                {!cot.venta_id && (cot.estado === 'enviada' || cot.estado === 'vencida') && (
+                  <button
+                    onClick={() => handleQuickStatus(cot, 'rechazada')}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-red-500/10 border border-red-500/25 text-xs text-red-300 hover:bg-red-500/20 transition-colors font-semibold"
+                    title="El cliente no la aceptó"
+                    aria-label={`Marcar ${cot.numero} como rechazada`}
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Rechazada</span>
+                  </button>
+                )}
+
                 <button
                   onClick={() => setPrintTarget(cot)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white/70 hover:text-white hover:bg-white/10 transition-colors"
@@ -1168,35 +1374,72 @@ function CotizacionesInner({ producto, cambiarProducto }: { producto: ProductoAc
                 <button
                   onClick={() => setEditando(cot)}
                   className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/50 hover:text-white hover:bg-white/10 transition-colors"
-                  title="Editar cotización"
+                  title={cot.venta_id ? 'Ya vendida: solo se cambian las notas' : 'Editar cotización'}
+                  aria-label={cot.venta_id ? `Notas de ${cot.numero}` : `Editar ${cot.numero}`}
                 >
                   <Edit3 className="w-3.5 h-3.5" />
                 </button>
 
-                <button
-                  onClick={() => handleDelete(cot.id)}
-                  className="p-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-colors"
-                  title="Eliminar cotización"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {/* Vendida es parte del historial de ventas: el servidor no la deja borrar. */}
+                {!cot.venta_id && (
+                  <button
+                    onClick={() => handleDelete(cot.id)}
+                    className="p-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-colors"
+                    title="Eliminar cotización"
+                    aria-label={`Eliminar ${cot.numero}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
           ))}
+          {siguiente && (
+            <div className="pt-2 flex justify-center">
+              <button
+                onClick={cargarMas}
+                disabled={cargandoMas}
+                className="px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-xs text-white/70 hover:bg-white/10 transition-colors disabled:opacity-50"
+              >
+                {cargandoMas ? 'Cargando…' : 'Cargar más cotizaciones'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {(modalNuevo || editando) && (
-        <CotizacionModal cotizacion={editando} clientePrefill={editando ? null : clientePrefill} negocioId={producto.negocio_id} productoId={producto.id} monedaCuenta={getTaxConfig(producto.pais).moneda} impuestoCuenta={{ nombre: getTaxConfig(producto.pais).consumo.nombre, tasaPct: Math.round(getTaxConfig(producto.pais).consumo.tasa * 10000) / 100 }} onClose={() => { setModalNuevo(false); setEditando(null); setClientePrefill(null); }} onSaved={handleSaved} />
+        <CotizacionModal
+          cotizacion={editando}
+          clientePrefill={editando ? null : clientePrefill}
+          negocioId={producto.negocio_id}
+          productoId={producto.id}
+          monedaCuenta={monedaCuenta}
+          impuestoCuenta={{
+            nombre: tax.consumo.nombre,
+            tasaPct: r2(tax.consumo.tasa * 100),
+            cobra: producto.cobra_impuesto_consumo !== false,
+          }}
+          locale={locale}
+          onClose={() => { setModalNuevo(false); setEditando(null); setClientePrefill(null); }}
+          onSaved={handleSaved}
+        />
       )}
 
       {printTarget && (
-        <PrintModal cot={printTarget} onClose={() => setPrintTarget(null)} />
+        <PrintModal
+          cot={printTarget}
+          emisor={producto.negocio_nombre || producto.nombre}
+          locale={locale}
+          onClose={() => setPrintTarget(null)}
+        />
       )}
 
       {convirtiendo && (
         <ConvertirVentaModal
           cot={convirtiendo}
+          monedaCuenta={monedaCuenta}
+          locale={locale}
           onClose={() => setConvirtiendo(null)}
           onConvertida={(venta) => {
             const id = convirtiendo.id;
