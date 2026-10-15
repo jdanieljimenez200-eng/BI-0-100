@@ -1,7 +1,7 @@
 import './guardiaSeeds';
 import 'reflect-metadata';
 import { AppDataSource } from '../config/database';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'crypto';
 
 const USUARIO_ID = '80b339a3-5176-4b92-9786-9e95f26f64c9'; // Demo user
 const PRODUCTO_ID = 'e91ba309-3a99-43e6-90db-2485fe8ad835'; // Saas Platform

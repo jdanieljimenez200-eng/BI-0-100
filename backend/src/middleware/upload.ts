@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import path from 'path';
+import { campoConFirmaInvalida, MENSAJE_FIRMA_INVALIDA } from '../utils/firmaArchivo';
 
 // ─── Whitelists por tipo de media ───────────────────────────────────────────
 // Extensiones permitidas — SVG excluido explícitamente (stored-XSS al servirse)
@@ -57,11 +58,43 @@ interface OpcionesUploader {
 }
 
 /**
+ * Tras recibir el archivo, sus primeros bytes tienen que ser de la familia que
+ * declara (utils/firmaArchivo.ts). Los filtros de multer corren ANTES de leer el
+ * contenido y solo ven nombre y tipo, que el cliente controla.
+ */
+function rechazarSiFirmaInvalida(req: Request, res: Response): boolean {
+  if (!campoConFirmaInvalida(req)) return false;
+  res.status(400).json({ error: MENSAJE_FIRMA_INVALIDA });
+  return true;
+}
+
+type SubidaSimple = { single(campo: string): (req: Request, res: Response, next: NextFunction) => void };
+
+/**
  * Subida efímera en memoria RAM: el buffer se pasa tal cual a StorageService,
  * que decide destino (S3 en prod / disco emulado en dev). Nunca se escribe un
- * temporal en disco.
+ * temporal en disco. Solo expone `.single()`, que valida además la firma.
  */
-function crearUploader({ tipoBase, extensiones, maxBytes, mensajeError }: OpcionesUploader) {
+function crearUploader(opciones: OpcionesUploader): SubidaSimple {
+  const m = crearMulter(opciones);
+  return {
+    single(campo: string) {
+      const recibir = m.single(campo);
+      return (req, res, next) => {
+        recibir(req, res, (err?: unknown) => {
+          if (err) {
+            next(err);
+            return;
+          }
+          if (rechazarSiFirmaInvalida(req, res)) return;
+          next();
+        });
+      };
+    },
+  };
+}
+
+function crearMulter({ tipoBase, extensiones, maxBytes, mensajeError }: OpcionesUploader) {
   return multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: maxBytes },
@@ -279,6 +312,7 @@ export function recibirGuionArchivos(req: Request, res: Response, next: NextFunc
   if (!reservarCupoSubidaPesada(req, res)) return;
   uploadGuion(req, res, (err: unknown) => {
     if (!err) {
+      if (rechazarSiFirmaInvalida(req, res)) return;
       next();
       return;
     }
@@ -323,6 +357,7 @@ export function recibirCompetidorArchivos(req: Request, res: Response, next: Nex
   if (!reservarCupoSubidaPesada(req, res)) return;
   uploadCompetidor(req, res, (err: unknown) => {
     if (!err) {
+      if (rechazarSiFirmaInvalida(req, res)) return;
       next();
       return;
     }
@@ -432,6 +467,7 @@ const subirDocumentoSingle = uploadDocumentoExperto.single('documento');
 export function recibirDocumentoExperto(req: Request, res: Response, next: NextFunction): void {
   subirDocumentoSingle(req, res, (err: unknown) => {
     if (!err) {
+      if (rechazarSiFirmaInvalida(req, res)) return;
       next();
       return;
     }
@@ -545,6 +581,7 @@ function recibirMultimediaGaleriaMiddleware(maxMbImagen = 5, maxMbVideo = 40) {
       const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
       const archivo = req.file || files?.['imagen']?.[0] || files?.['archivo']?.[0] || files?.['video']?.[0];
       req.file = archivo;
+      if (rechazarSiFirmaInvalida(req, res)) return;
 
       if (req.file) {
         const mime = req.file.mimetype.split(';')[0].trim().toLowerCase();

@@ -20,7 +20,8 @@ export function initSentry(): void {
   Sentry.init({
     dsn,
     environment: process.env.NODE_ENV,
-    tracesSampleRate: 0,
+    // Sin tracesSampleRate: desde el SDK 8, ponerlo en 0 deja el rastreo de
+    // rendimiento encendido (sin enviar nada). Solo queremos errores.
     // Los mensajes pasan por el mismo redactor que los logs: nunca claves ni tokens.
     beforeSend(event) {
       for (const ex of event.exception?.values ?? []) {

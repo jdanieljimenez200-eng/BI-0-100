@@ -1,6 +1,6 @@
 # ─── Stage 1: Build ──────────────────────────────────────────────────────────
-# Next.js 16 exige Node >= 20.9: node:18 hace fallar el build.
-FROM node:20-alpine AS builder
+# Node 24 LTS: Node 20 dejó de recibir parches de seguridad en abril de 2026.
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
@@ -29,11 +29,15 @@ ARG NEXT_PUBLIC_SENTRY_DSN
 ENV NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
 ARG NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+# Las cabeceras de seguridad se calculan al compilar (next.config.js). Con
+# CSP_ENFORCE=true la CSP bloquea; sin ella solo reporta en la consola.
+ARG CSP_ENFORCE
+ENV CSP_ENFORCE=${CSP_ENFORCE}
 
 RUN npm run build
 
 # ─── Stage 2: Production runtime ─────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

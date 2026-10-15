@@ -15,7 +15,7 @@ import '../scripts/guardiaSeeds';
 import 'reflect-metadata';
 import { AppDataSource } from '../config/database';
 import * as bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'crypto';
 import { generarProyeccion } from '../services/finanzas/proyeccionService';
 import { calcularBreakeven } from '../services/finanzas/breakevenService';
 import { generarResumen } from '../services/finanzas/resumenService';

@@ -20,7 +20,7 @@ import '../scripts/guardiaSeeds';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'crypto';
 
 // Reutiliza la misma lógica de conexión que database.ts: si DATABASE_URL está
 // definida se usa directamente; si no, cae a las variables individuales.

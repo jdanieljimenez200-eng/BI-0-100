@@ -474,7 +474,7 @@ import type {
 import { recibirGuionArchivos, recibirCompetidorArchivos } from '../middleware/upload';
 import { extraerFrames } from '../services/media/frameExtractionService';
 import type { FrameExtraida } from '../services/media/frameExtractionService';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'crypto';
 
 /**
  * PATCH /api/ventas/:id/perfil

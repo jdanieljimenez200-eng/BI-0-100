@@ -6,7 +6,7 @@
 # arranca `npm run dev`. Cualquier artefacto compilado dentro de la imagen queda
 # tapado por esos montajes, así que construirlo solo alarga el build sin que
 # nada lo llegue a usar.
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 
 # dumb-init para propagar señales de apagado rápido en desarrollo

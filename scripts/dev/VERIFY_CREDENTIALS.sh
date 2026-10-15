@@ -6,10 +6,12 @@ echo "🔐 VERIFICANDO CREDENCIALES — BI 0 A 100"
 echo "=========================================="
 echo ""
 
-# Variables
-EMAIL="jorge@bi0a100.com"
-PASSWORD="password123"
-API_URL="http://localhost:3001"
+# Variables. La contraseña no se escribe aquí: este archivo está en git.
+# Uso: VERIFY_EMAIL=… VERIFY_PASSWORD=… bash scripts/dev/VERIFY_CREDENTIALS.sh
+# (la de la cuenta demo está en backend/src/scripts/seed-demo-completo.ts)
+EMAIL="${VERIFY_EMAIL:?Define VERIFY_EMAIL con una cuenta de prueba local}"
+PASSWORD="${VERIFY_PASSWORD:?Define VERIFY_PASSWORD; no la escribas en este archivo}"
+API_URL="${VERIFY_API_URL:-http://localhost:3001}"
 
 # 1. Health Check
 echo "1️⃣  Health Check..."
@@ -81,6 +83,4 @@ echo "   TOTAL: $TOTAL análisis completados"
 echo ""
 echo "✅ TODAS LAS VERIFICACIONES EXITOSAS"
 echo ""
-echo "Credenciales funcionales:"
-echo "  Email: $EMAIL"
-echo "  Password: $PASSWORD"
+echo "Credenciales funcionales para: $EMAIL"
