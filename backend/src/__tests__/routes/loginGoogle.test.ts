@@ -103,10 +103,38 @@ describeWithDb('Entrar y registrarse con Google', () => {
     expect(galleta).toMatch(/^bi_google=/);
   });
 
+  it('sin la casilla de Términos no crea la cuenta, ni desde registro ni desde login', async () => {
+    configurar();
+    for (const modo of ['registro', 'login']) {
+      const email = nuevoEmail();
+      const v = await iniciar(`?modo=${modo}`);
+      googleResponde(claims(v.nonce, email));
+      expect(destino(await volver(v.state, v.galleta)).error).toBe('aceptacion_requerida');
+      expect((await q(`SELECT 1 FROM usuarios WHERE email = $1`, [email])).length).toBe(0);
+    }
+  });
+
+  it('el alta con Google guarda la aceptación con su versión y la vía', async () => {
+    configurar();
+    const email = nuevoEmail();
+    const v = await iniciar('?modo=registro&acepta=1');
+    googleResponde(claims(v.nonce, email));
+    expect(destino(await volver(v.state, v.galleta)).nuevo).toBe('1');
+    const filas = await q(
+      `SELECT a.documento, a.version, a.metodo FROM aceptaciones_legales a JOIN usuarios u ON u.id = a.usuario_id
+        WHERE u.email = $1 ORDER BY a.documento`,
+      [email],
+    );
+    expect(filas).toEqual([
+      { documento: 'privacidad', version: '1.0', metodo: 'google' },
+      { documento: 'terminos', version: '1.0', metodo: 'google' },
+    ]);
+  });
+
   it('registra una cuenta nueva, deja la sesión en la cookie y el refresh la canjea', async () => {
     configurar();
     const email = nuevoEmail();
-    const { state, nonce, galleta } = await iniciar('?modo=registro&tipo=experto');
+    const { state, nonce, galleta } = await iniciar('?modo=registro&tipo=experto&acepta=1');
     googleResponde(claims(nonce, email));
 
     const r = await volver(state, galleta);
@@ -126,8 +154,8 @@ describeWithDb('Entrar y registrarse con Google', () => {
     configurar();
     const email = nuevoEmail();
     const sub = randomUUID().replace(/-/g, '');
-    for (const esperado of ['1', null]) {
-      const { state, nonce, galleta } = await iniciar('?modo=login');
+    for (const [modo, esperado] of [['registro&acepta=1', '1'], ['login', null]] as const) {
+      const { state, nonce, galleta } = await iniciar(`?modo=${modo}`);
       googleResponde(claims(nonce, email, sub));
       expect(destino(await volver(state, galleta)).nuevo).toBe(esperado);
     }
@@ -138,7 +166,7 @@ describeWithDb('Entrar y registrarse con Google', () => {
   it('una cuenta con contraseña del mismo email se enlaza y sigue entrando con contraseña', async () => {
     configurar();
     const email = nuevoEmail();
-    const alta = await request.default(app).post('/api/auth/signup').send({ name: 'Ana', email, password: 'Segura#2026' });
+    const alta = await request.default(app).post('/api/auth/signup').send({ name: 'Ana', email, password: 'Segura#2026', acepta_terminos: true });
     expect(alta.status).toBe(201);
 
     const { state, nonce, galleta } = await iniciar('?modo=login');
@@ -159,14 +187,14 @@ describeWithDb('Entrar y registrarse con Google', () => {
     expect((await q(`SELECT 1 FROM usuarios WHERE email = $1`, [sinVerificar])).length).toBe(0);
 
     const desactivada = nuevoEmail();
-    await request.default(app).post('/api/auth/signup').send({ name: 'B', email: desactivada, password: 'Segura#2026' });
+    await request.default(app).post('/api/auth/signup').send({ name: 'B', email: desactivada, password: 'Segura#2026', acepta_terminos: true });
     await q(`UPDATE usuarios SET activo = false WHERE email = $1`, [desactivada]);
     v = await iniciar('?modo=login');
     googleResponde(claims(v.nonce, desactivada));
     expect(destino(await volver(v.state, v.galleta)).error).toBe('cuenta_desactivada');
 
     const enlazada = nuevoEmail();
-    v = await iniciar('?modo=login');
+    v = await iniciar('?modo=registro&acepta=1');
     googleResponde(claims(v.nonce, enlazada, 'sub-original'));
     await volver(v.state, v.galleta);
     v = await iniciar('?modo=login');
@@ -177,7 +205,7 @@ describeWithDb('Entrar y registrarse con Google', () => {
   it('sin la cookie del navegador, con el state reutilizado o alterado no entra nadie', async () => {
     configurar();
     const email = nuevoEmail();
-    const v = await iniciar('?modo=login');
+    const v = await iniciar('?modo=registro&acepta=1');
     expect(destino(await volver(v.state, '')).error).toBe('session_expired');
     expect(destino(await volver(v.state.slice(0, -2) + 'xx', v.galleta)).error).toBe('session_expired');
 
@@ -212,7 +240,7 @@ describeWithDb('Entrar y registrarse con Google', () => {
     await q(`INSERT INTO invitaciones_trabajador (cuenta_id, codigo, expira_en) VALUES ($1, $2, NOW() + interval '1 day')`, [d.id, codigo]);
 
     const email = nuevoEmail();
-    const v = await iniciar(`?modo=registro&codigo=${codigo}`);
+    const v = await iniciar(`?modo=registro&acepta=1&codigo=${codigo}`);
     googleResponde(claims(v.nonce, email));
     expect(destino(await volver(v.state, v.galleta)).nuevo).toBe('1');
 

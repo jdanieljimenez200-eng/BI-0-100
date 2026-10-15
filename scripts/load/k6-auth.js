@@ -29,6 +29,7 @@ export default function () {
     nombre: `K6 User ${__VU}`,
     email: email,
     password: 'Password123!',
+    acepta_terminos: true,
   });
 
   const params = {

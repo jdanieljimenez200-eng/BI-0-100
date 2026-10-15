@@ -31,6 +31,7 @@ import api from '@/lib/api';
 import { cn } from '@/lib/utils';
 import ThemeProvider, { useTema } from '@/components/ThemeProvider';
 import UpsellSlot from '@/components/ui/UpsellSlot';
+import AceptacionPendienteModal from '@/components/legal/AceptacionPendienteModal';
 import { MotionDrawer } from '@/components/motion/MotionDrawer';
 import { MOTION_DURATIONS, MOTION_EASINGS, MOTION_SPRINGS } from '@/lib/motion/tokens';
 import { ICON } from '@/components/ui/icons';
@@ -327,6 +328,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   const [herramientasExpanded, setHerramientasExpanded] = useState(false);
   const [productos, setProductos] = useState<ProductoResumen[]>([]);
   const [collapsed, setCollapsed] = useState(false);
+  const [aceptacionPendiente, setAceptacionPendiente] = useState(false);
 
   const { tema } = useTema();
 
@@ -373,6 +375,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
         };
         localStorage.setItem('usuario', JSON.stringify(updated));
         setUsuario(updated);
+        setAceptacionPendiente(Array.isArray(data.aceptaciones_pendientes) && data.aceptaciones_pendientes.length > 0);
       })
       .catch(() => {});
 
@@ -954,6 +957,10 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
       {/* Floating Bottom Scoop Dock for Mobile Viewports (exact to reference image) */}
       <MobileCurvedBottomDock onOpenDrawer={() => setSidebarOpen(true)} />
+
+      {aceptacionPendiente && (
+        <AceptacionPendienteModal onAceptado={() => setAceptacionPendiente(false)} onSalir={handleLogout} />
+      )}
     </div>
   );
 }

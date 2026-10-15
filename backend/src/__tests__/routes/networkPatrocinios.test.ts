@@ -122,22 +122,49 @@ describeWithDb('Patrocinios de expertos', () => {
         jest.spyOn(stripeService, 'getPriceIdPatrocinio').mockReturnValue('price_test_patrocinio'),
         jest.spyOn(stripeService, 'getOrCreateCustomer').mockResolvedValue(CUSTOMER),
         jest.spyOn(stripeService, 'createSponsorshipCheckoutSession').mockResolvedValue('https://checkout.stripe.test/cs'),
+        jest.spyOn(stripeService, 'describirPrecio').mockResolvedValue({
+          priceId: 'price_test_patrocinio',
+          montoMinimo: 29900,
+          moneda: 'MXN',
+          intervalo: 'month',
+          intervaloCantidad: 1,
+        }),
       ];
       // El patrocinio exige la ficha aprobada; se aprueba solo para esta prueba.
       await AppDataSource.getRepository(Experto).update(expertoId, { estado: 'aprobado' });
       try {
-        const res = await request
+        // Sin la autorización expresa del cargo recurrente no se abre el pago.
+        const sinAutorizar = await request
           .default(app)
           .post('/api/network/patrocinios/checkout')
           .set(auth(profesional))
           .send({ experto_id: expertoId });
+        expect(sinAutorizar.status).toBe(400);
+        expect(sinAutorizar.body.codigo).toBe('autorizacion_requerida');
+        expect(stripeService.createSponsorshipCheckoutSession).not.toHaveBeenCalled();
+
+        const res = await request
+          .default(app)
+          .post('/api/network/patrocinios/checkout')
+          .set(auth(profesional))
+          .send({ experto_id: expertoId, autoriza_cargo_recurrente: true });
         expect(res.status).toBe(200);
         expect(stripeService.createSponsorshipCheckoutSession).toHaveBeenCalledWith(
           expect.objectContaining({
             successUrl: expect.stringMatching(/^https?:\/\/[^,\s]+\/net0\/mis-fichas\?patrocinio=ok$/),
             cancelUrl: expect.stringMatching(/^https?:\/\/[^,\s]+\/net0\/mis-fichas\?patrocinio=cancelado$/),
+            textoAutorizacion: expect.stringContaining('$299.00 MXN cada mes'),
           })
         );
+        const [autorizacion] = await AppDataSource.query(
+          `SELECT metodo, detalle FROM aceptaciones_legales
+            WHERE usuario_id = $1 AND documento = 'cargo_recurrente' ORDER BY aceptado_en DESC LIMIT 1`,
+          [profesional.userId]
+        );
+        expect(autorizacion).toMatchObject({
+          metodo: 'checkout',
+          detalle: expect.objectContaining({ monto: 29900, moneda: 'MXN', intervalo: 'month' }),
+        });
       } finally {
         await AppDataSource.getRepository(Experto).update(expertoId, { estado: 'pendiente' });
         espias.forEach((espia) => espia.mockRestore());

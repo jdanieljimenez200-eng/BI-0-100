@@ -24,6 +24,7 @@ import AuthBackground from '@/components/auth/AuthBackground';
 import BotonGoogle, { ERRORES_GOOGLE } from '@/components/auth/BotonGoogle';
 import { validateEmail, getPasswordStrength, getEmailError, getPasswordError } from '@/components/auth/AuthValidation';
 import { destinoSeguro } from '@/lib/rutaSegura';
+import { camposAceptacion } from '@/lib/documentosLegales';
 import { ENTRADA_SEGURA, MOTION_DURATIONS, MOTION_EASINGS } from '@/lib/motion/tokens';
 
 const PROGRAM_AREAS = [
@@ -103,6 +104,10 @@ export default function SignupPage() {
   const [touched, setTouched] = useState({ name: false, email: false, password: false });
   const [activeArea, setActiveArea] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  // Consentimiento expreso: la casilla empieza sin marcar y sin ella no hay alta
+  // (ni con correo ni con Google). El servidor guarda versión, fecha, IP y navegador.
+  const [acepta, setAcepta] = useState(false);
+  const [faltaAceptacion, setFaltaAceptacion] = useState(false);
 
   const passwordStrength = getPasswordStrength(form.password);
   const emailError = getEmailError(form.email, touched.email);
@@ -147,6 +152,10 @@ export default function SignupPage() {
       setTouched({ name: true, email: true, password: true });
       return;
     }
+    if (!acepta) {
+      setFaltaAceptacion(true);
+      return;
+    }
 
     setLoading(true);
 
@@ -156,6 +165,7 @@ export default function SignupPage() {
         email: form.email,
         password: form.password,
         tipo_cuenta: tipoCuenta,
+        ...camposAceptacion(),
         ...(form.codigo_invitacion ? { codigo_invitacion: form.codigo_invitacion } : {}),
       });
 
@@ -441,6 +451,49 @@ export default function SignupPage() {
               </div>
             </div>
 
+            {/* Aceptación expresa, antes de Google y del formulario: vale para los dos caminos. */}
+            <div>
+              <label
+                htmlFor="signup-acepta"
+                className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors duration-150 ${
+                  faltaAceptacion && !acepta
+                    ? 'border-red-500/40 bg-red-500/[0.06]'
+                    : 'border-white/[0.07] bg-[#141416] hover:border-white/15'
+                }`}
+              >
+                <input
+                  id="signup-acepta"
+                  name="acepta-terminos"
+                  type="checkbox"
+                  checked={acepta}
+                  onChange={(e) => {
+                    setAcepta(e.target.checked);
+                    if (e.target.checked) setFaltaAceptacion(false);
+                  }}
+                  disabled={loading}
+                  aria-invalid={faltaAceptacion && !acepta}
+                  aria-describedby={faltaAceptacion && !acepta ? 'signup-acepta-error' : undefined}
+                  className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-red-500"
+                />
+                <span className="text-[11px] font-sans leading-relaxed text-slate-300">
+                  He leído y acepto los{' '}
+                  <Link href="/terminos" target="_blank" rel="noopener noreferrer" className="text-white underline underline-offset-2 hover:text-slate-200">
+                    Términos y Condiciones
+                  </Link>{' '}
+                  y el{' '}
+                  <Link href="/privacidad" target="_blank" rel="noopener noreferrer" className="text-white underline underline-offset-2 hover:text-slate-200">
+                    Aviso de Privacidad
+                  </Link>
+                  , y declaro ser mayor de edad.
+                </span>
+              </label>
+              {faltaAceptacion && !acepta && (
+                <p id="signup-acepta-error" role="alert" className="mt-1.5 text-[11px] font-sans text-red-300">
+                  Marca la casilla para crear tu cuenta.
+                </p>
+              )}
+            </div>
+
             {/* Google usa el tipo de cuenta elegido arriba y el código de invitación, si lo hay. */}
             <BotonGoogle
               modo="registro"
@@ -448,6 +501,8 @@ export default function SignupPage() {
               codigoInvitacion={form.codigo_invitacion || undefined}
               forma="pastilla"
               deshabilitado={loading}
+              aceptaTerminos={acepta}
+              alFaltarAceptacion={() => setFaltaAceptacion(true)}
             />
 
             <InputField
@@ -566,18 +621,6 @@ export default function SignupPage() {
               >
                 Iniciar sesión
               </Link>
-            </p>
-
-            <p className="text-[11px] font-sans text-slate-400 leading-relaxed">
-              Al registrarte aceptas nuestros{' '}
-              <Link href="/terminos" className="text-slate-400 hover:text-slate-300 underline underline-offset-2">
-                Términos
-              </Link>{' '}
-              y nuestra{' '}
-              <Link href="/privacidad" className="text-slate-400 hover:text-slate-300 underline underline-offset-2">
-                Política de privacidad
-              </Link>
-              .
             </p>
           </div>
         </motion.div>

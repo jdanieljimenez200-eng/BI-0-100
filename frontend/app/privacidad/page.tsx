@@ -34,6 +34,17 @@ export default function PrivacidadPage() {
               Toda la comunicación está protegida mediante encriptación SSL/TLS y las contraseñas se almacenan mediante algoritmos seguros.
             </p>
           </div>
+          <div>
+            <h2 className="text-lg font-bold text-white mb-2">3. Tus derechos ARCO</h2>
+            <p>
+              Puedes pedir acceso, rectificación, cancelación u oposición sobre tus datos, revocar tu consentimiento o
+              limitar su uso desde{' '}
+              <Link href="/arco" className="text-[#10B981] hover:underline">
+                el formulario de derechos ARCO
+              </Link>
+              . Te daremos un folio y responderemos en un máximo de 20 días.
+            </p>
+          </div>
         </section>
 
         <div className="pt-8 border-t border-white/10 flex justify-between items-center text-xs text-white/40">

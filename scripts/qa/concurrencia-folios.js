@@ -70,6 +70,7 @@ async function run() {
     nombre: 'QA Concurrencia',
     email,
     password,
+    acepta_terminos: true,
   });
 
   if (signupRes.status !== 201) {

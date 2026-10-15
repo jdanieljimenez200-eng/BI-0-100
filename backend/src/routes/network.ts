@@ -34,8 +34,11 @@ import {
   getOrCreateCustomer,
   getPriceIdPatrocinio,
   createSponsorshipCheckoutSession,
+  describirPrecio,
+  textoCargoRecurrente,
   createImpulsoCheckoutSession,
 } from '../services/billing/stripeService';
+import { aceptoExpresamente, origenDePeticion, registrarAutorizacionCargo } from '../services/cumplimiento/aceptaciones';
 
 /**
  * Red de expertos: directorio de profesionales que los usuarios consultan desde
@@ -1158,11 +1161,28 @@ router.post(
       });
     }
 
+    // LFPC art. 76 Bis fr. VIII: un patrocinio se renueva solo, así que el cargo
+    // recurrente necesita autorización expresa, registrada antes de pagar.
+    if (!aceptoExpresamente(req.body?.autoriza_cargo_recurrente)) {
+      return res.status(400).json({
+        error: 'Para patrocinar tu ficha autoriza el cargo automático recurrente',
+        codigo: 'autorizacion_requerida',
+      });
+    }
+
     const usuario = await AppDataSource.getRepository(Usuario).findOne({
       where: { id: req.userId! },
       select: ['id', 'email', 'stripe_customer_id'],
     });
     if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    const precio = await describirPrecio(getPriceIdPatrocinio(categoriaPatrocinio)!);
+    await registrarAutorizacionCargo(
+      AppDataSource.manager,
+      usuario.id,
+      { concepto: `patrocinio:${categoriaPatrocinio}:${experto.id}`, ...precio },
+      origenDePeticion(req)
+    );
 
     const customerId = await getOrCreateCustomer(
       usuario.id,
@@ -1182,6 +1202,7 @@ router.post(
       categoria: categoriaPatrocinio,
       successUrl: `${urlApp()}/net0/mis-fichas?patrocinio=ok`,
       cancelUrl: `${urlApp()}/net0/mis-fichas?patrocinio=cancelado`,
+      textoAutorizacion: textoCargoRecurrente(precio),
     });
 
     res.json({ url });

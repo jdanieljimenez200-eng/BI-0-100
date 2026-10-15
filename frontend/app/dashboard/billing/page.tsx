@@ -1,5 +1,6 @@
 'use client';
 
+import { toast } from 'sonner';
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
@@ -28,6 +29,7 @@ interface BillingStatus {
   };
   stripe_disponible: boolean;
   plan_expires_at: string | null;
+  suscripcion?: { estado: string; cancelacion_programada: boolean; fin_periodo: string | null } | null;
   todos_planes: Record<string, PlanLimites>;
   planes_comprables?: string[];
 }
@@ -156,6 +158,79 @@ const PLAN_ICON: Record<string, IconName> = {
 };
 
 const PLAN_ORDER = ['freemium', 'pro', 'pro_plus', 'business', 'enterprise'] as const;
+
+const fechaLarga = (iso: string) =>
+  new Date(iso).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
+
+/**
+ * Confirmación antes de mandar a pagar una suscripción (LFPC art. 76 Bis fr. VIII):
+ * importe, periodicidad, renovación automática y casilla de autorización expresa
+ * del cargo recurrente, sin marcar por defecto. El servidor registra la
+ * autorización con el importe real del Price de Stripe.
+ */
+function ConfirmarSuscripcion({
+  plan,
+  onConfirmar,
+  onCerrar,
+  cargando,
+}: {
+  plan: PlanLimites;
+  onConfirmar: () => void;
+  onCerrar: () => void;
+  cargando: boolean;
+}) {
+  const [autoriza, setAutoriza] = useState(false);
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="confirmar-suscripcion" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-md rounded-[24px] bg-[#111827] ring-1 ring-white/10 p-6 shadow-[0_24px_64px_rgba(0,0,0,0.7)]">
+        <h2 id="confirmar-suscripcion" className="text-[20px] font-bold tracking-tight text-white">
+          Suscribirte a {plan.nombre}
+        </h2>
+        <div className="mt-4 rounded-2xl bg-white/[.05] ring-1 ring-white/[.08] p-4">
+          <p className="text-[28px] font-bold leading-none text-white">
+            ${pesos(plan.precio_mxn)} <span className="text-[13px] font-medium text-white/50">MXN al mes · IVA incluido</span>
+          </p>
+          <ul className="mt-3 space-y-1.5 text-[13px] text-white/65">
+            <li>· Se cobra hoy y se renueva automáticamente cada mes.</li>
+            <li>· Te avisamos por correo al menos 5 días antes de cada renovación.</li>
+            <li>· Cancelas cuando quieras desde esta página, sin penalización.</li>
+          </ul>
+        </div>
+        <label htmlFor="autoriza-cargo" className="mt-4 flex cursor-pointer items-start gap-3">
+          <input
+            id="autoriza-cargo"
+            type="checkbox"
+            checked={autoriza}
+            onChange={(e) => setAutoriza(e.target.checked)}
+            disabled={cargando}
+            className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-emerald-500"
+          />
+          <span className="text-[13px] leading-relaxed text-white/75">
+            Autorizo el cargo automático de ${pesos(plan.precio_mxn)} MXN cada mes a mi método de pago hasta que cancele,
+            conforme a los{' '}
+            <a href="/terminos" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+              Términos y Condiciones
+            </a>
+            .
+          </span>
+        </label>
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button type="button" onClick={onCerrar} disabled={cargando} className="px-4 py-2 text-[14px] font-medium text-white/60 hover:text-white disabled:opacity-40">
+            Volver
+          </button>
+          <button
+            type="button"
+            onClick={onConfirmar}
+            disabled={!autoriza || cargando}
+            className="rounded-full bg-finanzas px-5 py-2.5 text-[14px] font-semibold text-[#070E17] transition-all active:scale-[0.97] disabled:opacity-40"
+          >
+            {cargando ? 'Redirigiendo…' : 'Ir a pagar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function UsageRow({
   label, iconName, iconColor, used, max, color, isLast,
@@ -326,6 +401,9 @@ function BillingContent() {
   const [loading, setLoading]               = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading]   = useState(false);
+  const [confirmando, setConfirmando]       = useState<string | null>(null);
+  const [cancelando, setCancelando]         = useState(false);
+  const [renovacionLoading, setRenovacionLoading] = useState(false);
 
   const sessionResult = searchParams.get('session');
 
@@ -347,15 +425,36 @@ function BillingContent() {
     return () => { vigente = false; };
   }, [router, sessionResult]);
 
+  const recargarEstado = () =>
+    api.get('/billing/status').then(({ data }) => setStatus(data)).catch(console.error);
+
   const handleUpgrade = async (plan: string) => {
     setCheckoutLoading(plan);
     try {
-      const { data } = await api.post('/billing/checkout', { plan });
+      const { data } = await api.post('/billing/checkout', { plan, autoriza_cargo_recurrente: true });
       window.location.href = data.checkout_url;
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string; mensaje?: string } } };
       alert(e.response?.data?.mensaje ?? e.response?.data?.error ?? 'Error al iniciar pago');
     } finally { setCheckoutLoading(null); }
+  };
+
+  /** Cancelar (o deshacer la cancelación de) la renovación, sin pasar por Stripe. */
+  const cambiarRenovacion = async (cancelar: boolean) => {
+    setRenovacionLoading(true);
+    try {
+      const { data } = await api.post(cancelar ? '/billing/cancelar' : '/billing/reanudar');
+      setCancelando(false);
+      toast.success(
+        cancelar
+          ? `Suscripción cancelada. No habrá más cargos; conservas tu plan hasta el ${data.fin_periodo ? fechaLarga(data.fin_periodo) : 'fin del periodo pagado'}.`
+          : 'Listo: tu suscripción se renovará normalmente.',
+      );
+      await recargarEstado();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e.response?.data?.error ?? 'No se pudo completar. Inténtalo de nuevo.');
+    } finally { setRenovacionLoading(false); }
   };
 
   const handlePortal = async () => {
@@ -431,7 +530,12 @@ function BillingContent() {
               <p className="text-[11px] font-semibold text-white/40 uppercase tracking-widest mb-1">Plan actual</p>
               <p className={`text-[22px] font-bold tracking-tight ${a.text}`}>{status.limites.nombre}</p>
               <p className="text-[14px] text-white/55 mt-0.5">{status.limites.descripcion}</p>
-              {status.plan_expires_at && (
+              {status.suscripcion?.cancelacion_programada ? (
+                <p className="text-[12px] text-amber-400 mt-1.5">
+                  Cancelada: no se renovará. Tu plan sigue activo hasta el{' '}
+                  {status.suscripcion.fin_periodo ? fechaLarga(status.suscripcion.fin_periodo) : 'fin del periodo pagado'}.
+                </p>
+              ) : status.plan_expires_at && (
                 <p className="text-[12px] text-white/40 mt-1.5">
                   Renueva el {new Date(status.plan_expires_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })}
                 </p>
@@ -546,7 +650,7 @@ function BillingContent() {
                 isPopular={!isCurrent && !esInferior && !sinPrecio && planKey === 'pro_plus'}
                 isCurrent={isCurrent}
                 ctaLabel={ctaLabel}
-                onUpgrade={() => handleUpgrade(planKey)}
+                onUpgrade={() => setConfirmando(planKey)}
                 loading={checkoutLoading === planKey}
                 disabled={isCurrent || esInferior || sinPrecio || !!checkoutLoading || !status.stripe_disponible}
               />
@@ -573,11 +677,71 @@ function BillingContent() {
         </div>
       </div>
 
+      {hasPaidPlan && status.stripe_disponible && (
+        <div className="rounded-[22px] ring-1 ring-white/[.08] bg-white/[.04] backdrop-blur-xl p-5">
+          {status.suscripcion?.cancelacion_programada ? (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <p className="text-[15px] font-semibold text-white">Tu suscripción no se renovará</p>
+                <p className="text-[13px] text-white/50 mt-0.5">
+                  No habrá más cargos. Si cambias de opinión, puedes reanudarla antes de que termine el periodo.
+                </p>
+              </div>
+              <button
+                onClick={() => cambiarRenovacion(false)}
+                disabled={renovacionLoading}
+                className="text-[14px] font-semibold text-white bg-white/10 hover:bg-white/15 px-4 py-2.5 rounded-full transition-all active:scale-[0.97] disabled:opacity-40 flex-shrink-0"
+              >
+                {renovacionLoading ? 'Un momento…' : 'Reanudar suscripción'}
+              </button>
+            </div>
+          ) : cancelando ? (
+            <div>
+              <p className="text-[15px] font-semibold text-white">¿Cancelar tu suscripción?</p>
+              <p className="text-[13px] text-white/55 mt-1">
+                No se harán más cargos. Conservas tu plan hasta el{' '}
+                {status.plan_expires_at ? fechaLarga(status.plan_expires_at) : 'fin del periodo pagado'} y después tu cuenta pasa
+                al plan Gratis. Tus datos se conservan.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  onClick={() => cambiarRenovacion(true)}
+                  disabled={renovacionLoading}
+                  className="text-[14px] font-semibold text-white bg-brand-accent/80 hover:bg-brand-accent px-4 py-2.5 rounded-full transition-all active:scale-[0.97] disabled:opacity-40"
+                >
+                  {renovacionLoading ? 'Cancelando…' : 'Sí, cancelar'}
+                </button>
+                <button
+                  onClick={() => setCancelando(false)}
+                  disabled={renovacionLoading}
+                  className="text-[14px] font-medium text-white/60 hover:text-white px-4 py-2.5 disabled:opacity-40"
+                >
+                  No, mantenerla
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <p className="text-[15px] font-semibold text-white">Cancelar suscripción</p>
+                <p className="text-[13px] text-white/50 mt-0.5">En un clic, sin llamadas ni penalización. No habrá más cargos.</p>
+              </div>
+              <button
+                onClick={() => setCancelando(true)}
+                className="text-[14px] font-semibold text-white/80 ring-1 ring-white/15 hover:bg-white/5 px-4 py-2.5 rounded-full transition-all active:scale-[0.97] flex-shrink-0"
+              >
+                Cancelar suscripción
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {hasPaidPlan && (
         <div className="rounded-[22px] ring-1 ring-white/[.08] bg-white/[.04] backdrop-blur-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <p className="text-[15px] font-semibold text-white">¿Necesitas cambiar tu plan?</p>
-            <p className="text-[13px] text-white/50 mt-0.5">Desde el portal puedes actualizar, cambiar tarjeta o cancelar cuando quieras.</p>
+            <p className="text-[13px] text-white/50 mt-0.5">Desde el portal de pagos puedes cambiar de plan, actualizar tu tarjeta y ver tus recibos.</p>
           </div>
           <button
             onClick={handlePortal}
@@ -589,6 +753,14 @@ function BillingContent() {
         </div>
       )}
 
+      {confirmando && status.todos_planes[confirmando] && (
+        <ConfirmarSuscripcion
+          plan={status.todos_planes[confirmando]}
+          cargando={checkoutLoading === confirmando}
+          onCerrar={() => setConfirmando(null)}
+          onConfirmar={() => handleUpgrade(confirmando)}
+        />
+      )}
     </div>
   );
 }

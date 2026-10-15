@@ -24,7 +24,7 @@ describeWithDb('Auth routes', () => {
       const res = await request
         .default(app)
         .post('/api/auth/signup')
-        .send({ email, password: 'Password123!', name: 'Nuevo Usuario' });
+        .send({ email, password: 'Password123!', name: 'Nuevo Usuario', acepta_terminos: true });
 
       expect(res.status).toBe(201);
       expect(res.body.accessToken).toBeDefined();
@@ -50,7 +50,7 @@ describeWithDb('Auth routes', () => {
         request
           .default(app)
           .post('/api/auth/signup')
-          .send({ email: `inv-${randomUUID()}@example.com`, password: 'Password123!', name: 'Invitado', codigo_invitacion: codigo });
+          .send({ email: `inv-${randomUUID()}@example.com`, password: 'Password123!', name: 'Invitado', codigo_invitacion: codigo, acepta_terminos: true });
       const respuestas = await Promise.all([alta(), alta(), alta()]);
 
       expect(respuestas.filter((r) => r.status === 201)).toHaveLength(1);
@@ -66,7 +66,7 @@ describeWithDb('Auth routes', () => {
       const res = await request
         .default(app)
         .post('/api/auth/signup')
-        .send({ email: sharedUser.email, password: 'otraPassword1!', name: 'Otro Nombre' });
+        .send({ email: sharedUser.email, password: 'otraPassword1!', name: 'Otro Nombre', acepta_terminos: true });
 
       expect(res.status).toBe(409);
     });
@@ -75,7 +75,7 @@ describeWithDb('Auth routes', () => {
       const res = await request
         .default(app)
         .post('/api/auth/signup')
-        .send({ email: `short-${randomUUID()}@example.com`, password: '123', name: 'X' });
+        .send({ email: `short-${randomUUID()}@example.com`, password: '123', name: 'X', acepta_terminos: true });
 
       expect(res.status).toBe(400);
     });
@@ -84,9 +84,83 @@ describeWithDb('Auth routes', () => {
       const res = await request
         .default(app)
         .post('/api/auth/signup')
-        .send({ email: `weak-${randomUUID()}@example.com`, password: 'Password123', name: 'X' });
+        .send({ email: `weak-${randomUUID()}@example.com`, password: 'Password123', name: 'X', acepta_terminos: true });
 
       expect(res.status).toBe(400);
+    });
+
+    it('sin la casilla de Términos no crea la cuenta', async () => {
+      for (const acepta of [undefined, false, 'false', '']) {
+        const email = `sin-acepta-${randomUUID()}@example.com`;
+        const res = await request
+          .default(app)
+          .post('/api/auth/signup')
+          .send({ email, password: 'Password123!', name: 'X', ...(acepta === undefined ? {} : { acepta_terminos: acepta }) });
+        expect(res.status).toBe(400);
+        expect(res.body.codigo).toBe('aceptacion_requerida');
+        expect(await AppDataSource.query(`SELECT 1 FROM usuarios WHERE email = $1`, [email])).toHaveLength(0);
+      }
+    });
+
+    it('si el formulario mostró otra versión de los documentos responde 409 y no crea la cuenta', async () => {
+      const email = `version-${randomUUID()}@example.com`;
+      const res = await request
+        .default(app)
+        .post('/api/auth/signup')
+        .send({ email, password: 'Password123!', name: 'X', acepta_terminos: true, version_terminos: '0.9' });
+      expect(res.status).toBe(409);
+      expect(res.body.codigo).toBe('documentos_actualizados');
+      expect(await AppDataSource.query(`SELECT 1 FROM usuarios WHERE email = $1`, [email])).toHaveLength(0);
+    });
+
+    it('guarda la evidencia de la aceptación: documento, versión, vía, IP y navegador', async () => {
+      const email = `evidencia-${randomUUID()}@example.com`;
+      const res = await request
+        .default(app)
+        .post('/api/auth/signup')
+        .set('User-Agent', 'NavegadorDePrueba/1.0')
+        .send({ email, password: 'Password123!', name: 'X', acepta_terminos: true, version_terminos: '1.0', version_privacidad: '1.0' });
+      expect(res.status).toBe(201);
+      const filas = await AppDataSource.query(
+        `SELECT documento, version, metodo, user_agent, ip IS NOT NULL AS con_ip, detalle
+           FROM aceptaciones_legales WHERE usuario_id = $1 ORDER BY documento`,
+        [res.body.user.id]
+      );
+      expect(filas).toEqual([
+        { documento: 'privacidad', version: '1.0', metodo: 'registro', user_agent: 'NavegadorDePrueba/1.0', con_ip: true, detalle: { mayor_de_edad: true } },
+        { documento: 'terminos', version: '1.0', metodo: 'registro', user_agent: 'NavegadorDePrueba/1.0', con_ip: true, detalle: { mayor_de_edad: true } },
+      ]);
+    });
+  });
+
+  describe('Aceptaciones pendientes', () => {
+    it('una cuenta sin aceptación registrada la ve pendiente en /me y la acepta una sola vez', async () => {
+      const u = await signupTestUser();
+      await AppDataSource.query(`DELETE FROM aceptaciones_legales WHERE usuario_id = $1`, [u.userId]);
+      const auth = { Authorization: `Bearer ${u.accessToken}` };
+
+      const antes = await request.default(app).get('/api/auth/me').set(auth);
+      expect(antes.body.aceptaciones_pendientes).toEqual(['terminos', 'privacidad']);
+
+      const sinCasilla = await request.default(app).post('/api/auth/aceptaciones').set(auth).send({});
+      expect(sinCasilla.status).toBe(400);
+
+      const aceptar = () =>
+        request.default(app).post('/api/auth/aceptaciones').set(auth)
+          .send({ acepta_terminos: true, version_terminos: '1.0', version_privacidad: '1.0' });
+      const [r1, r2] = await Promise.all([aceptar(), aceptar()]);
+      expect([r1.status, r2.status]).toEqual([200, 200]);
+
+      const despues = await request.default(app).get('/api/auth/me').set(auth);
+      expect(despues.body.aceptaciones_pendientes).toEqual([]);
+      const filas = await AppDataSource.query(
+        `SELECT documento, metodo FROM aceptaciones_legales WHERE usuario_id = $1 ORDER BY documento`,
+        [u.userId]
+      );
+      expect(filas).toEqual([
+        { documento: 'privacidad', metodo: 'sesion' },
+        { documento: 'terminos', metodo: 'sesion' },
+      ]);
     });
   });
 

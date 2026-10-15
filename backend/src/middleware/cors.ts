@@ -245,6 +245,20 @@ export const signupLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+/**
+ * Formulario público de derechos ARCO: cada solicitud manda un acuse por correo,
+ * así que se limita por IP para que nadie lo use para bombardear un buzón ajeno.
+ */
+export const arcoLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  store: new AlmacenLimiteRedis('arco'),
+  skip: (req) => isBypassRequest(req),
+  message: { error: 'Demasiadas solicitudes desde esta conexión. Intenta más tarde o escríbenos por correo.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 /** Límite para forgot-password (anti enumeración/spam de email) */
 export const passwordResetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

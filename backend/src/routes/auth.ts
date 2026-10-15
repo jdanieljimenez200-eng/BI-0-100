@@ -26,6 +26,14 @@ import {
   urlAutorizacionLogin,
   verificarStateLogin,
 } from '../services/google/loginGoogle';
+import {
+  aceptoExpresamente,
+  documentosPendientes,
+  origenDePeticion,
+  OrigenPeticion,
+  registrarAceptacion,
+  versionesDesfasadas,
+} from '../services/cumplimiento/aceptaciones';
 
 const router = Router();
 
@@ -116,6 +124,9 @@ async function validarInvitacion(codigo: string, email: string): Promise<{ invit
  * Crea la cuenta y, si hay invitación, la consume en la misma transacción.
  * Lanza InvitacionYaUsadaError si otra alta se la llevó antes, o el 23505 de
  * Postgres si el email ya existe (dos altas simultáneas).
+ *
+ * La aceptación de Términos y Aviso de Privacidad se registra en la misma
+ * transacción: no puede quedar una cuenta sin la prueba de su consentimiento.
  */
 async function crearCuenta(datos: {
   email: string;
@@ -124,6 +135,7 @@ async function crearCuenta(datos: {
   tipoCuenta: 'negocio' | 'experto';
   invitacion: InvitacionTrabajador | null;
   googleSub?: string | null;
+  aceptacion: { metodo: 'registro' | 'google'; origen: OrigenPeticion };
 }): Promise<Usuario> {
   const { invitacion } = datos;
   return AppDataSource.transaction(async (manager) => {
@@ -154,6 +166,7 @@ async function crearCuenta(datos: {
         .execute();
       if (consumo.affected !== 1) throw new InvitacionYaUsadaError();
     }
+    await registrarAceptacion(manager, u.id, datos.aceptacion.metodo, datos.aceptacion.origen);
     return u;
   });
 }
@@ -305,6 +318,20 @@ const handleSignup = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'El nombre es requerido' });
     }
 
+    // Consentimiento expreso: casilla sin marcar por defecto en el formulario.
+    if (!aceptoExpresamente(req.body.acepta_terminos)) {
+      return res.status(400).json({
+        error: 'Para crear tu cuenta acepta los Términos y el Aviso de Privacidad y confirma que eres mayor de edad',
+        codigo: 'aceptacion_requerida',
+      });
+    }
+    if (versionesDesfasadas(req.body).length > 0) {
+      return res.status(409).json({
+        error: 'Actualizamos los Términos o el Aviso de Privacidad. Recarga la página y revísalos antes de continuar.',
+        codigo: 'documentos_actualizados',
+      });
+    }
+
     const email = emailRaw.trim().toLowerCase();
 
     // Validar formato de email
@@ -347,6 +374,7 @@ const handleSignup = async (req: Request, res: Response) => {
         nombre: name.trim(),
         tipoCuenta: req.body.tipo_cuenta === 'experto' ? 'experto' : 'negocio',
         invitacion: invitacionValida,
+        aceptacion: { metodo: 'registro', origen: origenDePeticion(req) },
       });
     } catch (err) {
       if (err instanceof InvitacionYaUsadaError) {
@@ -490,6 +518,9 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
       tipo_cuenta: usuario.tipo_cuenta,
       es_admin: usuario.es_admin ?? false,
       permisos,
+      // La app pide aceptarlos antes de seguir (cuentas previas al registro de
+      // aceptaciones, colaboradores dados de alta por el dueño, versión nueva).
+      aceptaciones_pendientes: await documentosPendientes(usuario.id),
     };
 
     res.json(userPayload);
@@ -503,6 +534,38 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
  * Cambia lo que el usuario eligió al registrarse. Un experto que también tiene
  * negocio activa aquí el panel de análisis, y al revés. No toca plan ni permisos.
  */
+/**
+ * Acepta, ya con sesión, los documentos que la cuenta tenga pendientes. Misma
+ * casilla y mismas comprobaciones que el registro.
+ */
+router.post('/aceptaciones', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!aceptoExpresamente(req.body?.acepta_terminos)) {
+      return res.status(400).json({
+        error: 'Acepta los Términos y el Aviso de Privacidad y confirma que eres mayor de edad',
+        codigo: 'aceptacion_requerida',
+      });
+    }
+    if (versionesDesfasadas(req.body).length > 0) {
+      return res.status(409).json({
+        error: 'Actualizamos los Términos o el Aviso de Privacidad. Recarga la página y revísalos antes de continuar.',
+        codigo: 'documentos_actualizados',
+      });
+    }
+    const origen = origenDePeticion(req);
+    await AppDataSource.transaction(async (manager) => {
+      // Con el cerrojo de la fila del usuario, dos clics a la vez no duplican la aceptación.
+      await manager.query(`SELECT 1 FROM usuarios WHERE id = $1 FOR UPDATE`, [req.userId]);
+      const pendientes = await documentosPendientes(req.userId!, manager);
+      if (pendientes.length) await registrarAceptacion(manager, req.userId!, 'sesion', origen, pendientes);
+    });
+    return res.json({ aceptaciones_pendientes: [] });
+  } catch (err) {
+    logger.error('POST /api/auth/aceptaciones error:', err);
+    return res.status(500).json({ error: 'No se pudo registrar la aceptación' });
+  }
+});
+
 router.patch('/tipo-cuenta', authenticate, async (req: AuthRequest, res: Response) => {
   const tipo = req.body?.tipo_cuenta;
   if (tipo !== 'negocio' && tipo !== 'experto') {
@@ -771,6 +834,9 @@ router.get('/google', (req: Request, res: Response) => {
       modo,
       tipoCuenta: req.query.tipo === 'experto' ? 'experto' : 'negocio',
       codigoInvitacion: /^[A-Z0-9_-]{4,32}$/.test(codigo) ? codigo : null,
+      // La casilla del formulario de registro. Sin ella no se crea una cuenta
+      // nueva (sí se entra a una que ya existe).
+      aceptaTerminos: req.query.acepta === '1',
     },
     nonce
   );
@@ -784,7 +850,7 @@ type ResultadoGoogle = { usuario: Usuario; nuevo: boolean } | { error: string };
  * La cuenta de un perfil de Google: primero por `google_sub`; si no, por email
  * (se enlaza: Google ya verificó que ese correo es suyo); si no, se crea.
  */
-async function cuentaDeGoogle(perfil: PerfilGoogle, intento: IntentoGoogle): Promise<ResultadoGoogle> {
+async function cuentaDeGoogle(perfil: PerfilGoogle, intento: IntentoGoogle, origen: OrigenPeticion): Promise<ResultadoGoogle> {
   const repo = AppDataSource.getRepository(Usuario);
   const porSub = await repo.findOne({ where: { google_sub: perfil.sub } });
   if (porSub) return { usuario: porSub, nuevo: false };
@@ -796,6 +862,10 @@ async function cuentaDeGoogle(perfil: PerfilGoogle, intento: IntentoGoogle): Pro
     porEmail.google_sub = perfil.sub;
     return { usuario: porEmail, nuevo: false };
   }
+
+  // Cuenta nueva: hace falta la aceptación expresa del formulario de registro.
+  // Desde «Iniciar sesión» no hay casilla, así que se manda a registrarse.
+  if (!intento.aceptaTerminos) return { error: 'aceptacion_requerida' };
 
   let invitacion: InvitacionTrabajador | null = null;
   if (intento.codigoInvitacion) {
@@ -813,6 +883,7 @@ async function cuentaDeGoogle(perfil: PerfilGoogle, intento: IntentoGoogle): Pro
       tipoCuenta: intento.tipoCuenta,
       invitacion,
       googleSub: perfil.sub,
+      aceptacion: { metodo: 'google', origen },
     });
     return { usuario, nuevo: true };
   } catch (err) {
@@ -849,7 +920,7 @@ router.get('/google/callback', async (req: Request, res: Response) => {
     const perfil = await perfilDesdeCodigo(code, verificador, intento.nonce);
     if (!perfil.emailVerificado) return fallar('email_no_verificado');
 
-    const r = await cuentaDeGoogle(perfil, intento);
+    const r = await cuentaDeGoogle(perfil, intento, origenDePeticion(req));
     if ('error' in r) return fallar(r.error);
     if (r.usuario.activo === false) return fallar('cuenta_desactivada');
 

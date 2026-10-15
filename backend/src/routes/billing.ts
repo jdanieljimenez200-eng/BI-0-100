@@ -22,7 +22,17 @@ import {
   datosPatrocinio,
   PURCHASABLE_PLANS,
   BillingCycle,
+  getPriceId,
+  describirPrecio,
+  textoCargoRecurrente,
+  textoImporte,
+  estadoSuscripcion,
+  programarCancelacion,
+  reanudarSuscripcion,
+  EstadoSuscripcion,
 } from '../services/billing/stripeService';
+import { aceptoExpresamente, origenDePeticion, registrarAutorizacionCargo } from '../services/cumplimiento/aceptaciones';
+import { enviarAvisoRenovacion } from '../services/email/emailService';
 import * as patrocinios from '../services/network/patrociniosService';
 import * as impulsosNet from '../services/network/impulsosService';
 import { Producto } from '../models/Producto';
@@ -90,6 +100,16 @@ router.get('/status', authenticate, async (req: AuthRequest, res: Response) => {
 
     const creditos = await estadoCreditos(user.id, planType);
 
+    // Si la renovación ya está cancelada, la pantalla lo dice (y ofrece deshacerlo).
+    let suscripcion: EstadoSuscripcion | null = null;
+    if (user.stripe_subscription_id && isStripeAvailable()) {
+      try {
+        suscripcion = await estadoSuscripcion(user.stripe_subscription_id);
+      } catch (err) {
+        logger.warn('[billing] no se pudo leer la suscripción en Stripe:', err);
+      }
+    }
+
     res.json({
       plan: planType,
       limites,
@@ -107,6 +127,11 @@ router.get('/status', authenticate, async (req: AuthRequest, res: Response) => {
       },
       stripe_disponible: isStripeAvailable(),
       plan_expires_at: user.plan_expires_at ?? null,
+      suscripcion: suscripcion && {
+        estado: suscripcion.estado,
+        cancelacion_programada: suscripcion.cancelacionProgramada,
+        fin_periodo: suscripcion.finPeriodo,
+      },
       todos_planes: PLAN_LIMITES,
       planes_comprables: isStripeAvailable() ? getPlanesDisponibles() : [],
     });
@@ -152,6 +177,20 @@ router.post(
       const billingCycle: BillingCycle =
         req.body?.billing_cycle === 'annual' ? 'annual' : 'monthly';
 
+      // LFPC art. 76 Bis fr. VIII: el cargo recurrente necesita autorización expresa.
+      if (!aceptoExpresamente(req.body?.autoriza_cargo_recurrente)) {
+        res.status(400).json({
+          error: 'Para suscribirte autoriza el cargo automático recurrente',
+          codigo: 'autorizacion_requerida',
+        });
+        return;
+      }
+      const priceId = getPriceId(plan, billingCycle);
+      if (!priceId) {
+        res.status(400).json({ error: 'Ese plan no está disponible para ese ciclo de pago' });
+        return;
+      }
+
       const repo = AppDataSource.getRepository(Usuario);
       const user = await repo.findOneBy({ id: req.userId! } as FindOptionsWhere<Usuario>);
       if (!user) {
@@ -165,12 +204,23 @@ router.post(
         await repo.update({ id: user.id } as FindOptionsWhere<Usuario>, { stripe_customer_id: customerId });
       }
 
+      // Lo que se autoriza es el cargo tal como lo tiene Stripe, y queda registrado
+      // antes de mandar a pagar.
+      const precio = await describirPrecio(priceId);
+      await registrarAutorizacionCargo(
+        AppDataSource.manager,
+        user.id,
+        { concepto: `plan:${plan}:${billingCycle}`, ...precio },
+        origenDePeticion(req),
+      );
+
       const url = await createCheckoutSession({
         customerId,
         plan,
         successUrl: urlApp('/dashboard/billing', { session: 'success', plan }),
         cancelUrl: urlApp('/dashboard/billing', { session: 'cancel' }),
         billingCycle,
+        textoAutorizacion: textoCargoRecurrente(precio),
       });
 
       res.json({ checkout_url: url });
@@ -203,6 +253,49 @@ router.post('/portal', authenticate, async (req: AuthRequest, res: Response) => 
     res.status(500).json({ error: msg });
   }
 });
+
+// ─── POST /api/billing/cancelar · /reanudar ───────────────────────────────────
+/**
+ * Cancelar la suscripción desde la app, en un clic y sin flujo de retención
+ * (LFPC art. 76 Bis fr. IX). No hay más cargos; el plan sigue hasta el fin del
+ * periodo pagado y luego la cuenta pasa al plan Gratis (webhook `deleted`).
+ */
+async function cambiarRenovacion(req: AuthRequest, res: Response, cancelar: boolean): Promise<void> {
+  if (!isStripeAvailable()) {
+    res.status(503).json({ error: 'Pagos no disponibles en este entorno' });
+    return;
+  }
+  try {
+    const user = await AppDataSource.getRepository(Usuario).findOne({
+      where: { id: req.userId! } as FindOptionsWhere<Usuario>,
+      select: ['id', 'stripe_subscription_id'],
+    });
+    if (!user?.stripe_subscription_id) {
+      res.status(400).json({ error: 'No tienes una suscripción activa' });
+      return;
+    }
+    const estado = cancelar
+      ? await programarCancelacion(user.stripe_subscription_id)
+      : await reanudarSuscripcion(user.stripe_subscription_id);
+    logger.info(`[billing] ${req.userId} ${cancelar ? 'canceló' : 'reanudó'} la renovación de su suscripción`);
+    res.json({
+      estado: estado.estado,
+      cancelacion_programada: estado.cancelacionProgramada,
+      fin_periodo: estado.finPeriodo,
+    });
+  } catch (err) {
+    logger.error(`[billing] error al ${cancelar ? 'cancelar' : 'reanudar'} la suscripción:`, err);
+    reportarError(err, { userId: req.userId, accion: cancelar ? 'cancelar' : 'reanudar' });
+    res.status(502).json({
+      error: cancelar
+        ? 'No pudimos cancelar en este momento. Inténtalo de nuevo o escríbenos y la cancelamos por ti.'
+        : 'No pudimos reanudar la suscripción. Inténtalo de nuevo.',
+    });
+  }
+}
+
+router.post('/cancelar', authenticate, (req: AuthRequest, res: Response) => cambiarRenovacion(req, res, true));
+router.post('/reanudar', authenticate, (req: AuthRequest, res: Response) => cambiarRenovacion(req, res, false));
 
 // ─── POST /api/billing/webhook ────────────────────────────────────────────────
 router.post('/webhook', async (req: Request, res: Response) => {
@@ -244,7 +337,40 @@ const EVENTOS_QUE_CAMBIAN_PLAN = new Set<string>([
   'customer.subscription.deleted',
 ]);
 
+/** Días mínimos entre el aviso de renovación y el cargo (LFPC art. 76 Bis fr. IX). */
+export const DIAS_AVISO_RENOVACION = 5;
+
+type AvisoRenovacion = Parameters<typeof enviarAvisoRenovacion>[0];
+
+/**
+ * Datos del aviso de renovación a partir de un `invoice.upcoming`, o `null` si no
+ * hay cargo que avisar (importe cero o sin fecha de cobro).
+ */
+export function avisoDeFactura(
+  factura: Record<string, unknown>,
+  usuario: { email: string; nombre: string },
+): AvisoRenovacion | null {
+  const monto = typeof factura['amount_due'] === 'number' ? (factura['amount_due'] as number) : 0;
+  if (monto <= 0) return null;
+  const lineas = (factura['lines'] as { data?: Record<string, unknown>[] } | undefined)?.data ?? [];
+  const inicioLinea = (lineas[0]?.['period'] as { start?: number } | undefined)?.start;
+  const cuando = (factura['next_payment_attempt'] as number | null | undefined) ?? inicioLinea ?? null;
+  if (!cuando) return null;
+  return {
+    email: usuario.email,
+    nombre: usuario.nombre,
+    conceptos: lineas
+      .map((l) => (typeof l['description'] === 'string' ? (l['description'] as string) : ''))
+      .filter(Boolean)
+      .slice(0, 10),
+    importe: textoImporte(monto, String(factura['currency'] ?? 'mxn').toUpperCase()),
+    fechaCargo: new Date(cuando * 1000),
+  };
+}
+
 async function handleStripeEvent(event: Stripe.Event): Promise<void> {
+  let avisoRenovacion: AvisoRenovacion | null = null;
+
   await AppDataSource.transaction(async (manager) => {
     const yaProcesado = await registrarEvento(manager, event);
     if (yaProcesado) return;
@@ -261,6 +387,20 @@ async function handleStripeEvent(event: Stripe.Event): Promise<void> {
     // se quedaría en freemium por haber pagado más. Y su
     // `stripe_subscription_id` pasaría a apuntar al patrocinio, dejando su
     // suscripción real sin rastro.
+    // ── Aviso de renovación (planes y patrocinios por igual) ───────────────
+    //
+    // Va antes del desvío de patrocinios: el aviso es por cualquier cargo
+    // recurrente y no toca el plan de nadie. El correo sale tras el COMMIT.
+    if (event.type === 'invoice.upcoming') {
+      const factura = event.data.object as unknown as Record<string, unknown>;
+      const usuario = await repo.findOne({
+        where: { stripe_customer_id: factura['customer'] as string } as FindOptionsWhere<Usuario>,
+        select: ['id', 'email', 'nombre', 'activo'],
+      });
+      if (usuario && usuario.activo !== false) avisoRenovacion = avisoDeFactura(factura, usuario);
+      return;
+    }
+
     if (esPatrocinio(event.data.object)) {
       await manejarEventoPatrocinio(manager, event);
       return;
@@ -331,6 +471,8 @@ async function handleStripeEvent(event: Stripe.Event): Promise<void> {
     }
   });
 
+  if (avisoRenovacion) await enviarAvisoDeRenovacion(avisoRenovacion, event.id);
+
   if (EVENTOS_QUE_CAMBIAN_PLAN.has(event.type)) {
     const obj = event.data.object as unknown as Record<string, unknown>;
     const customerId = obj['customer'] as string | undefined;
@@ -345,6 +487,26 @@ async function handleStripeEvent(event: Stripe.Event): Promise<void> {
         logger.error('[stripe:webhook] no se pudo invalidar la caché de plan:', err);
       }
     }
+  }
+}
+
+/**
+ * Manda el aviso de renovación y deja rastro si no cumple los 5 días (Stripe manda
+ * `invoice.upcoming` con los días configurados en Settings › Billing ›
+ * Subscriptions) o si el correo no sale.
+ */
+async function enviarAvisoDeRenovacion(aviso: AvisoRenovacion, eventId: string): Promise<void> {
+  const dias = (aviso.fechaCargo.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+  if (dias < DIAS_AVISO_RENOVACION) {
+    const err = new Error(
+      `invoice.upcoming llegó ${dias.toFixed(1)} días antes del cargo: configura en Stripe el aviso con al menos 7 días`,
+    );
+    logger.error(`[billing] ${err.message}`);
+    reportarError(err, { stripe_event_id: eventId });
+  }
+  if (!(await enviarAvisoRenovacion(aviso))) {
+    logger.error(`[billing] el aviso de renovación del evento ${eventId} no se pudo enviar`);
+    reportarError(new Error('Aviso de renovación no enviado'), { stripe_event_id: eventId });
   }
 }
 

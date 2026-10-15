@@ -67,6 +67,7 @@ async function main() {
     nombre: 'Runner POS k6',
     email,
     password: 'Password123!',
+    acepta_terminos: true,
   });
 
   const token = signup.body.token || signup.body.accessToken;

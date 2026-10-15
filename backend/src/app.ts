@@ -52,6 +52,7 @@ import verticalRoutes from './routes/vertical';
 import ventasRoutes from './routes/ventas';
 import mantenimientosRoutes from './routes/mantenimientos';
 import googleCalendarRoutes from './routes/googleCalendar';
+import privacidadRoutes from './routes/privacidad';
 
 const app = express();
 // Saltos de proxy delante del backend (Railway/Nginx = 1; Cloudflare + proxy del
@@ -230,6 +231,7 @@ app.use('/api/vertical', verticalRoutes);
 app.use('/api/ventas', ventasRoutes);
 app.use('/api/mantenimientos', mantenimientosRoutes);
 app.use('/api/integraciones/google-calendar', googleCalendarRoutes);
+app.use('/api/privacidad', privacidadRoutes);
 
 // 404 Handler
 app.use((req: Request, res: Response): void => {

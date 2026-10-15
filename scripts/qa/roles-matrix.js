@@ -78,6 +78,7 @@ async function run() {
     nombre: 'Owner QA',
     email: ownerEmail,
     password: 'Password123!',
+    acepta_terminos: true,
   });
   const ownerToken = ownerSignup.body.token || ownerSignup.body.accessToken;
   const ownerId = ownerSignup.body.user?.id || ownerSignup.body.usuario?.id;
@@ -135,6 +136,7 @@ async function run() {
     nombre: 'Super Admin QA',
     email: adminEmail,
     password: 'Password123!',
+    acepta_terminos: true,
   });
   const adminToken = adminSignup.body.token || adminSignup.body.accessToken;
   const adminId = adminSignup.body.user?.id || adminSignup.body.usuario?.id;

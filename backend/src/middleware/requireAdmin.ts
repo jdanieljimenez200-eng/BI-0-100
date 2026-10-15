@@ -56,6 +56,8 @@ export const PERMISOS = {
   verCostos: ['superadmin'],
   // Los prompts deciden lo que la IA dice a todos los clientes: solo superadmin.
   gestionarPrompts: ['superadmin'],
+  // Solicitudes de derechos ARCO: datos personales y plazos legales, solo superadmin.
+  atenderArco: ['superadmin'],
 } as const satisfies Record<string, readonly AdminRol[]>;
 
 export type Permiso = keyof typeof PERMISOS;

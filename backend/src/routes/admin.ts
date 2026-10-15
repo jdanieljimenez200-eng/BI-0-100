@@ -19,6 +19,14 @@ import { AuditoriaAdmin } from '../models/AuditoriaAdmin';
 import * as papelera from '../services/admin/papelera';
 import { cancelarSuscripcion } from '../services/billing/stripeService';
 import { registrarAccionAdmin, MotivoSchema } from '../services/admin/auditoria';
+import {
+  actualizarSolicitudArco,
+  ActualizacionArcoSchema,
+  ESTADOS_ARCO,
+  EstadoArco,
+  listarSolicitudesArco,
+} from '../services/cumplimiento/arco';
+import { enviarRespuestaArco } from '../services/email/emailService';
 
 const router = Router();
 exigirUuid(router, 'id');
@@ -684,6 +692,59 @@ router.post('/usuarios/:id/restaurar', requirePermiso('gestionarPapelera'), asyn
     if (err instanceof papelera.ErrorPapelera) return res.status(err.status).json({ error: err.message });
     logger.error('[admin] error restaurando de la papelera:', err);
     return res.status(500).json({ error: 'Error al restaurar' });
+  }
+});
+
+// ─── Solicitudes ARCO (docs/legal/09_PROCEDIMIENTO_ARCO.md) ──────────────────
+
+/** Bandeja de solicitudes: las abiertas primero, por fecha límite de respuesta. */
+router.get('/arco', requirePermiso('atenderArco'), async (req: AuthRequest, res: Response) => {
+  const estado = typeof req.query.estado === 'string' && (ESTADOS_ARCO as readonly string[]).includes(req.query.estado)
+    ? (req.query.estado as EstadoArco)
+    : undefined;
+  try {
+    return res.json({ solicitudes: await listarSolicitudesArco({ estado }) });
+  } catch (err) {
+    logger.error('[admin] error listando solicitudes ARCO:', err);
+    return res.status(500).json({ error: 'Error al leer las solicitudes' });
+  }
+});
+
+/**
+ * Cambia el estado, la respuesta o las notas de una solicitud, con auditoría.
+ * Con `enviar_respuesta`, la respuesta se manda por correo al titular después
+ * del COMMIT.
+ */
+router.patch('/arco/:id', requirePermiso('atenderArco'), async (req: AuthRequest, res: Response) => {
+  const cambio = ActualizacionArcoSchema.safeParse(req.body ?? {});
+  if (!cambio.success) return res.status(400).json({ error: cambio.error.issues[0]?.message ?? 'Datos inválidos' });
+  if (cambio.data.enviar_respuesta && !cambio.data.respuesta) {
+    return res.status(400).json({ error: 'Escribe la respuesta antes de enviarla' });
+  }
+
+  try {
+    const r = await AppDataSource.transaction(async (manager) => {
+      const resultado = await actualizarSolicitudArco(manager, req.params.id, cambio.data);
+      if (!resultado) return null;
+      await registrarAccionAdmin(manager, req, {
+        accion: 'arco.actualizada',
+        recursoTipo: 'solicitud_arco',
+        recursoId: req.params.id,
+        antes: { estado: resultado.antes.estado },
+        despues: { estado: resultado.despues.estado, respuesta_enviada: Boolean(cambio.data.enviar_respuesta) },
+      });
+      return resultado.despues;
+    });
+    if (!r) return res.status(404).json({ error: 'Solicitud no encontrada' });
+
+    let respuestaEnviada = false;
+    if (cambio.data.enviar_respuesta && r.respuesta) {
+      respuestaEnviada = await enviarRespuestaArco({ email: r.email, folio: r.folio, respuesta: r.respuesta });
+    }
+    return res.json({ solicitud: r, respuesta_enviada: respuestaEnviada });
+  } catch (err) {
+    logger.error('[admin] error actualizando solicitud ARCO:', err);
+    return res.status(500).json({ error: 'Error al actualizar la solicitud' });
   }
 });
 

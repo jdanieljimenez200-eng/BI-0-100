@@ -189,7 +189,8 @@ export type Permiso =
   | 'verAuditoria'
   | 'gestionarPapelera'
   | 'verCostos'
-  | 'gestionarPrompts';
+  | 'gestionarPrompts'
+  | 'atenderArco';
 
 export const NOMBRE_ROL: Record<AdminRol, string> = {
   soporte: 'Soporte',
@@ -363,4 +364,48 @@ export function pedirCodigoTotp(): string | null {
   const codigo = window.prompt('Escribe un código nuevo de tu app de autenticación (6 cifras):');
   const limpio = (codigo ?? '').replace(/\D/g, '');
   return limpio.length === 6 ? limpio : null;
+}
+
+// ─── Solicitudes ARCO ────────────────────────────────────────────────────────
+
+export type TipoArco = 'acceso' | 'rectificacion' | 'cancelacion' | 'oposicion' | 'revocacion' | 'limitacion';
+export type EstadoArco =
+  | 'recibida'
+  | 'requiere_info'
+  | 'en_revision'
+  | 'respondida'
+  | 'ejecutada'
+  | 'improcedente'
+  | 'remitida';
+
+export interface SolicitudArco {
+  id: string;
+  folio: string;
+  usuario_id: string | null;
+  nombre: string;
+  email: string;
+  tipo: TipoArco;
+  relacion: 'titular' | 'representante';
+  descripcion: string;
+  estado: EstadoArco;
+  respuesta: string | null;
+  notas_internas: string | null;
+  fecha_recepcion: string;
+  fecha_limite_respuesta: string;
+  fecha_respuesta: string | null;
+  fecha_limite_ejecucion: string | null;
+  fecha_ejecucion: string | null;
+}
+
+export async function listarSolicitudesArco(estado?: EstadoArco) {
+  const { data } = await api.get<{ solicitudes: SolicitudArco[] }>('/admin/arco', { params: estado ? { estado } : {} });
+  return data.solicitudes;
+}
+
+export async function actualizarSolicitudArco(
+  id: string,
+  cambio: { estado?: EstadoArco; respuesta?: string | null; notas_internas?: string | null; enviar_respuesta?: boolean },
+) {
+  const { data } = await api.patch<{ solicitud: SolicitudArco; respuesta_enviada: boolean }>(`/admin/arco/${id}`, cambio);
+  return data;
 }

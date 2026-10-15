@@ -10,6 +10,7 @@ foreach ($user in $users) {
         email = $user.email
         password = $user.password
         nombre = $user.nombre
+        acepta_terminos = $true
     } | ConvertTo-Json
     
     Write-Host "Creating $($user.email)..."

@@ -269,3 +269,106 @@ export const notificarRevisionFicha = async (params: {
     return false;
   }
 };
+
+// ─── Privacidad y cobros ─────────────────────────────────────────────────────
+
+/** Texto del usuario dentro de un correo HTML: sin etiquetas ni atributos inyectados. */
+export const escaparHtml = (texto: string): string =>
+  texto.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
+const fechaLarga = (d: Date): string =>
+  d.toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Mexico_City' });
+
+/**
+ * Acuse de una solicitud ARCO al titular, con su folio y la fecha límite de
+ * respuesta. Nunca lanza: la solicitud ya está guardada.
+ */
+export const enviarAcuseArco = async (p: {
+  email: string;
+  nombre: string;
+  folio: string;
+  tipo: string;
+  fechaLimite: Date;
+}): Promise<boolean> => {
+  const cuerpo = `
+    <h1>Recibimos tu solicitud de privacidad</h1>
+    <p>Hola, ${escaparHtml(p.nombre)}:</p>
+    <p>Registramos tu solicitud de <strong>${escaparHtml(p.tipo)}</strong> con el folio <strong>${escaparHtml(p.folio)}</strong>.</p>
+    <p>Para proteger tus datos, antes de atenderla confirmaremos tu identidad: te escribiremos desde este correo.
+       Si actúas en nombre de otra persona, ten a la mano el documento que te autoriza.</p>
+    <p>Te responderemos a más tardar el <strong>${fechaLarga(p.fechaLimite)}</strong>.</p>
+    <p style="color:#666;font-size:13px">Si no hiciste esta solicitud, responde a este correo para avisarnos.</p>
+  `;
+  try {
+    return await sendEmail({ to: p.email, subject: `Solicitud de privacidad ${p.folio} recibida`, html: cuerpo });
+  } catch (err) {
+    logger.error('[arco] error enviando el acuse:', err);
+    return false;
+  }
+};
+
+/** Aviso interno de una solicitud ARCO nueva a PRIVACIDAD_EMAIL (si está configurado). */
+export const avisarSolicitudArcoInterna = async (p: {
+  folio: string;
+  tipo: string;
+  fechaLimite: Date;
+}): Promise<boolean> => {
+  const destino = process.env.PRIVACIDAD_EMAIL?.trim();
+  if (!destino) return false;
+  const cuerpo = `
+    <h1>Nueva solicitud ARCO ${escaparHtml(p.folio)}</h1>
+    <p>Tipo: <strong>${escaparHtml(p.tipo)}</strong></p>
+    <p>Fecha límite de respuesta: <strong>${fechaLarga(p.fechaLimite)}</strong></p>
+    <p><a href="${urlApp('/dashboard/admin/arco')}">Atenderla en el panel</a></p>
+  `;
+  try {
+    return await sendEmail({ to: destino, subject: `[ARCO] Nueva solicitud ${p.folio}`, html: cuerpo });
+  } catch (err) {
+    logger.error('[arco] error enviando el aviso interno:', err);
+    return false;
+  }
+};
+
+/** Respuesta escrita por el responsable de datos, enviada al titular. */
+export const enviarRespuestaArco = async (p: { email: string; folio: string; respuesta: string }): Promise<boolean> => {
+  const cuerpo = `
+    <h1>Respuesta a tu solicitud ${escaparHtml(p.folio)}</h1>
+    <div style="white-space:pre-wrap">${escaparHtml(p.respuesta)}</div>
+  `;
+  try {
+    return await sendEmail({ to: p.email, subject: `Respuesta a tu solicitud de privacidad ${p.folio}`, html: cuerpo });
+  } catch (err) {
+    logger.error('[arco] error enviando la respuesta:', err);
+    return false;
+  }
+};
+
+/**
+ * Aviso de renovación de una suscripción (LFPC art. 76 Bis fr. IX): al menos 5
+ * días naturales antes del cargo, con el importe, la fecha y cómo cancelar.
+ */
+export const enviarAvisoRenovacion = async (p: {
+  email: string;
+  nombre: string;
+  conceptos: string[];
+  importe: string;
+  fechaCargo: Date;
+}): Promise<boolean> => {
+  const lista = p.conceptos.length
+    ? `<ul>${p.conceptos.map((c) => `<li>${escaparHtml(c)}</li>`).join('')}</ul>`
+    : '';
+  const cuerpo = `
+    <h1>Tu suscripción se renueva pronto</h1>
+    <p>Hola, ${escaparHtml(p.nombre)}:</p>
+    <p>El <strong>${fechaLarga(p.fechaCargo)}</strong> haremos el cargo automático de <strong>${escaparHtml(p.importe)}</strong> a tu método de pago por:</p>
+    ${lista}
+    <p>Si no quieres renovar, puedes cancelar antes de esa fecha, sin penalización, desde
+       <a href="${urlApp('/dashboard/billing')}">Facturación</a>. Conservas lo que ya pagaste hasta el final del periodo.</p>
+  `;
+  try {
+    return await sendEmail({ to: p.email, subject: 'Aviso de renovación de tu suscripción a BI 0 A 100', html: cuerpo });
+  } catch (err) {
+    logger.error('[billing] error enviando el aviso de renovación:', err);
+    return false;
+  }
+};

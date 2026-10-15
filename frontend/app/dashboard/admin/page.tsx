@@ -255,6 +255,14 @@ export default function AdminPage() {
               Papelera
             </Link>
           )}
+          {puede('atenderArco') && (
+            <Link
+              href="/dashboard/admin/arco"
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-white/15 text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              Solicitudes ARCO
+            </Link>
+          )}
           {puede('verCostos') && (
             <Link
               href="/dashboard/admin/costos-ia"

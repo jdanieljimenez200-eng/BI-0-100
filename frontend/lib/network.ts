@@ -573,9 +573,15 @@ export async function misPatrocinios() {
   return data.patrocinios;
 }
 
-export async function iniciarPatrocinio(expertoId: string) {
+/**
+ * Abre el pago de un patrocinio. Es una suscripción: la pantalla que lo llame debe
+ * mostrar el importe y la periodicidad y pedir que se marque la autorización del
+ * cargo recurrente (LFPC art. 76 Bis); sin ella el servidor responde 400.
+ */
+export async function iniciarPatrocinio(expertoId: string, autorizaCargoRecurrente: boolean) {
   const { data } = await api.post<{ url: string }>('/network/patrocinios/checkout', {
     experto_id: expertoId,
+    autoriza_cargo_recurrente: autorizaCargoRecurrente,
   });
   return data.url;
 }

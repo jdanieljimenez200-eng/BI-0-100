@@ -29,6 +29,8 @@ export interface IntentoGoogle {
   modo: ModoGoogle;
   tipoCuenta: 'negocio' | 'experto';
   codigoInvitacion: string | null;
+  /** Marcó la casilla de Términos y Aviso de Privacidad (solo se exige para crear cuenta). */
+  aceptaTerminos: boolean;
 }
 
 export interface PerfilGoogle {
@@ -76,7 +78,14 @@ const firmar = (cuerpo: string) => crypto.createHmac('sha256', claveState()).upd
 
 export function firmarStateLogin(intento: IntentoGoogle, nonce: string, ahora = Date.now()): string {
   const cuerpo = Buffer.from(
-    JSON.stringify({ m: intento.modo, t: intento.tipoCuenta, c: intento.codigoInvitacion, n: nonce, e: ahora + VIGENCIA_LOGIN_MS })
+    JSON.stringify({
+      m: intento.modo,
+      t: intento.tipoCuenta,
+      c: intento.codigoInvitacion,
+      a: intento.aceptaTerminos,
+      n: nonce,
+      e: ahora + VIGENCIA_LOGIN_MS,
+    })
   ).toString('base64url');
   return `${cuerpo}.${firmar(cuerpo)}`;
 }
@@ -94,7 +103,7 @@ export function verificarStateLogin(state: unknown, ahora = Date.now()): (Intent
     if ((d.m !== 'login' && d.m !== 'registro') || (d.t !== 'negocio' && d.t !== 'experto')) return null;
     if (typeof d.n !== 'string' || typeof d.e !== 'number' || d.e < ahora) return null;
     if (d.c !== null && typeof d.c !== 'string') return null;
-    return { modo: d.m, tipoCuenta: d.t, codigoInvitacion: d.c, nonce: d.n };
+    return { modo: d.m, tipoCuenta: d.t, codigoInvitacion: d.c, aceptaTerminos: d.a === true, nonce: d.n };
   } catch {
     return null;
   }

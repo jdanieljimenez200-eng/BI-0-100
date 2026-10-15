@@ -23,6 +23,8 @@ export const ERRORES_GOOGLE: Record<string, string> = {
   cuenta_desactivada: 'Esta cuenta está desactivada. Contacta a soporte.',
   google_otra_cuenta: 'Este correo ya está ligado a otra cuenta de Google.',
   invitacion_invalida: 'El código de invitación no es válido, ya se usó o es para otro correo.',
+  aceptacion_requerida:
+    'No encontramos una cuenta con ese Google. Para crearla, ve a «Crear cuenta» y acepta los Términos y el Aviso de Privacidad.',
 };
 
 function LogoGoogle() {
@@ -45,9 +47,23 @@ interface Props {
   /** Forma del botón para que case con el de enviar de cada pantalla. */
   forma?: 'pastilla' | 'redondeado';
   deshabilitado?: boolean;
+  /**
+   * Registro: si marcó la casilla de Términos y Aviso de Privacidad. Sin ella el
+   * backend no crea la cuenta; el clic llama a `alFaltarAceptacion` y no sale.
+   */
+  aceptaTerminos?: boolean;
+  alFaltarAceptacion?: () => void;
 }
 
-export default function BotonGoogle({ modo, tipoCuenta, codigoInvitacion, forma = 'redondeado', deshabilitado = false }: Props) {
+export default function BotonGoogle({
+  modo,
+  tipoCuenta,
+  codigoInvitacion,
+  forma = 'redondeado',
+  deshabilitado = false,
+  aceptaTerminos = false,
+  alFaltarAceptacion,
+}: Props) {
   const [disponible, setDisponible] = useState(false);
   const [yendo, setYendo] = useState(false);
 
@@ -96,6 +112,7 @@ export default function BotonGoogle({ modo, tipoCuenta, codigoInvitacion, forma 
   const params = new URLSearchParams({ modo });
   if (tipoCuenta) params.set('tipo', tipoCuenta);
   if (codigoInvitacion) params.set('codigo', codigoInvitacion);
+  if (modo === 'registro' && aceptaTerminos) params.set('acepta', '1');
   const inactivo = deshabilitado || yendo;
 
   return (
@@ -105,6 +122,11 @@ export default function BotonGoogle({ modo, tipoCuenta, codigoInvitacion, forma 
         href={`${API_BASE_URL}/auth/google?${params.toString()}`}
         onClick={(e) => {
           if (inactivo) { e.preventDefault(); return; }
+          if (modo === 'registro' && !aceptaTerminos) {
+            e.preventDefault();
+            alFaltarAceptacion?.();
+            return;
+          }
           const next = new URLSearchParams(window.location.search).get('next');
           if (next) {
             sessionStorage.setItem('bi_next', next);

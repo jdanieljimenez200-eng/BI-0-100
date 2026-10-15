@@ -22,7 +22,7 @@ export async function signupTestUser(
   const password = overrides.password ?? 'Testpassword123!';
   const name = overrides.name ?? 'Test User';
 
-  const response = await request.default(app).post('/api/auth/signup').send({ email, password, name });
+  const response = await request.default(app).post('/api/auth/signup').send({ email, password, name, acepta_terminos: true });
 
   if (response.status !== 201) {
     throw new Error(

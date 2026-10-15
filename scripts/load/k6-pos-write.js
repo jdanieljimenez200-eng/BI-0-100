@@ -36,6 +36,7 @@ export function setup() {
       nombre: 'K6 POS Owner',
       email: email,
       password: 'Password123!',
+      acepta_terminos: true,
     }),
     { headers: { 'Content-Type': 'application/json' } }
   );

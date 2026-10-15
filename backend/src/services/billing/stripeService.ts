@@ -84,12 +84,84 @@ export async function getOrCreateCustomer(
   return customer.id;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Cargos recurrentes (LFPC art. 76 Bis fr. VIII y IX)
+//
+// Antes de mandar a pagar una suscripción se muestra y se registra el cargo
+// exacto: importe, moneda y periodicidad tal como los tiene el Price en Stripe
+// (no los del catálogo de la app, que podrían no coincidir con lo que se cobra).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PrecioRecurrente {
+  priceId: string;
+  /** Unidad mínima de la moneda (centavos). */
+  montoMinimo: number | null;
+  moneda: string;
+  intervalo: string | null;
+  intervaloCantidad: number | null;
+}
+
+const cachePrecios = new Map<string, { precio: PrecioRecurrente; vence: number }>();
+
+/** Importe y periodicidad de un Price (en caché 10 min: cambian casi nunca). */
+export async function describirPrecio(priceId: string): Promise<PrecioRecurrente> {
+  if (!stripe) throw new Error('Stripe no configurado');
+  const enCache = cachePrecios.get(priceId);
+  if (enCache && enCache.vence > Date.now()) return enCache.precio;
+  const p = await stripe.prices.retrieve(priceId);
+  const precio: PrecioRecurrente = {
+    priceId,
+    montoMinimo: p.unit_amount ?? null,
+    moneda: (p.currency ?? 'mxn').toUpperCase(),
+    intervalo: p.recurring?.interval ?? null,
+    intervaloCantidad: p.recurring?.interval_count ?? null,
+  };
+  cachePrecios.set(priceId, { precio, vence: Date.now() + 10 * 60 * 1000 });
+  return precio;
+}
+
+const PERIODO: Record<string, [string, string]> = {
+  day: ['día', 'días'],
+  week: ['semana', 'semanas'],
+  month: ['mes', 'meses'],
+  year: ['año', 'años'],
+};
+
+/** «cada mes», «cada 3 meses», «cada año». */
+export function textoPeriodicidad(intervalo: string | null, cantidad: number | null): string {
+  const [uno, varios] = PERIODO[intervalo ?? ''] ?? ['periodo', 'periodos'];
+  const n = cantidad && cantidad > 1 ? cantidad : 1;
+  return n === 1 ? `cada ${uno}` : `cada ${n} ${varios}`;
+}
+
+/** «$599.00 MXN», con el formato mexicano de miles. */
+export function textoImporte(montoMinimo: number | null, moneda: string): string {
+  if (montoMinimo === null) return `el importe indicado en ${moneda}`;
+  const valor = new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(montoMinimo / 100);
+  return `$${valor} ${moneda}`;
+}
+
+/**
+ * Texto de la autorización del cargo recurrente: el mismo que se muestra en el
+ * Checkout de Stripe, junto al botón de pagar.
+ */
+export function textoCargoRecurrente(precio: PrecioRecurrente): string {
+  return (
+    `Al suscribirte autorizas un cargo automático de ${textoImporte(precio.montoMinimo, precio.moneda)} ` +
+    `${textoPeriodicidad(precio.intervalo, precio.intervaloCantidad)} a este método de pago hasta que canceles. ` +
+    'Te avisaremos por correo al menos 5 días antes de cada renovación y puedes cancelar en cualquier momento, ' +
+    'sin penalización, desde Facturación.'
+  );
+}
+
 export async function createCheckoutSession(params: {
   customerId: string;
   plan: PurchasablePlan;
   successUrl: string;
   cancelUrl: string;
   billingCycle?: BillingCycle;
+  /** Texto de la autorización del cargo recurrente, visible junto al botón de pagar. */
+  textoAutorizacion?: string;
 }): Promise<string> {
   if (!stripe) throw new Error('Stripe no configurado');
 
@@ -111,6 +183,7 @@ export async function createCheckoutSession(params: {
     // docs/pricing/PROPUESTA_PLANES_2026-09.md). No se fuerza aquí para no chocar
     // con la moneda del Price.
     allow_promotion_codes: true,
+    ...(params.textoAutorizacion ? { custom_text: { submit: { message: params.textoAutorizacion } } } : {}),
     metadata: {
       plan: params.plan,
       billing_cycle: ciclo,
@@ -207,6 +280,7 @@ export async function createSponsorshipCheckoutSession(params: {
   categoria: CategoriaPatrocinable;
   successUrl: string;
   cancelUrl: string;
+  textoAutorizacion?: string;
 }): Promise<string> {
   if (!stripe) throw new Error('Stripe no configurado');
 
@@ -230,6 +304,7 @@ export async function createSponsorshipCheckoutSession(params: {
     cancel_url: params.cancelUrl,
     locale: 'es',
     allow_promotion_codes: true,
+    ...(params.textoAutorizacion ? { custom_text: { submit: { message: params.textoAutorizacion } } } : {}),
     metadata,
     // También en la suscripción: los eventos `customer.subscription.*` no
     // traen la metadata de la sesión, solo la suya.
@@ -332,4 +407,43 @@ export async function cancelarSuscripcion(subscriptionId: string): Promise<boole
     if (codigo === 'resource_missing') return true;
     return false;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cancelación desde la app (LFPC art. 76 Bis fr. IX: inmediata y sin trabas)
+//
+// Se programa al final del periodo ya pagado: no hay más cargos y la persona
+// conserva lo que pagó. Se puede deshacer mientras el periodo siga corriendo.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface EstadoSuscripcion {
+  estado: string;
+  cancelacionProgramada: boolean;
+  /** Fin del periodo pagado: fecha del próximo cargo, o del fin del plan si se canceló. */
+  finPeriodo: Date | null;
+}
+
+function aEstado(sub: Stripe.Subscription): EstadoSuscripcion {
+  return {
+    estado: sub.status,
+    cancelacionProgramada: sub.cancel_at_period_end === true,
+    finPeriodo: sub.current_period_end ? new Date(sub.current_period_end * 1000) : null,
+  };
+}
+
+export async function estadoSuscripcion(subscriptionId: string): Promise<EstadoSuscripcion> {
+  if (!stripe) throw new Error('Stripe no configurado');
+  return aEstado(await stripe.subscriptions.retrieve(subscriptionId));
+}
+
+/** Deja de renovar la suscripción: termina al acabar el periodo pagado. */
+export async function programarCancelacion(subscriptionId: string): Promise<EstadoSuscripcion> {
+  if (!stripe) throw new Error('Stripe no configurado');
+  return aEstado(await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true }));
+}
+
+/** Deshace una cancelación programada (solo mientras el periodo siga vigente). */
+export async function reanudarSuscripcion(subscriptionId: string): Promise<EstadoSuscripcion> {
+  if (!stripe) throw new Error('Stripe no configurado');
+  return aEstado(await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: false }));
 }

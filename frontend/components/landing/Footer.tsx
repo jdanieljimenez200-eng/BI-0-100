@@ -61,6 +61,9 @@ export default function Footer() {
             <Link href="/privacidad" className="text-sm text-slate-300 hover:text-white transition-colors font-sans py-0.5">
               Aviso de Privacidad y Datos
             </Link>
+            <Link href="/arco" className="text-sm text-slate-300 hover:text-white transition-colors font-sans py-0.5">
+              Derechos ARCO
+            </Link>
             <Link href="/net0" className="text-sm text-slate-300 hover:text-white transition-colors font-sans py-0.5">
               Net0 — Red de Profesiones y Oficios
             </Link>

@@ -83,7 +83,7 @@ describeWithDb('Red: perfiles e impulsos', () => {
       const email = `experto-${randomUUID()}@example.com`;
       const alta = await api()
         .post('/api/auth/signup')
-        .send({ email, password: 'Testpassword123!', name: 'Experta', tipo_cuenta: 'experto' });
+        .send({ email, password: 'Testpassword123!', name: 'Experta', tipo_cuenta: 'experto', acepta_terminos: true });
       expect(alta.status).toBe(201);
       expect(alta.body.user.tipo_cuenta).toBe('experto');
 
