@@ -1,5 +1,6 @@
 'use client';
 
+import { toast } from 'sonner';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -195,7 +196,7 @@ export default function CanalesCobroModal({
       await api.delete(`/contabilidad/${productoId}/canales/${id}`);
       onActualizar();
     } catch {
-      alert('No se pudo desactivar el canal.');
+      toast.error('No se pudo desactivar el canal.');
     }
   };
 

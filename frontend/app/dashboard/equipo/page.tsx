@@ -1,5 +1,6 @@
 'use client';
 
+import { toast } from 'sonner';
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
@@ -245,7 +246,7 @@ export default function EquipoPage() {
       await reloadTrabajadores();
     } catch (err: unknown) {
       const info = interpretarErrorApi(err, 'No se pudo revocar la invitación.');
-      alert(info.mensaje);
+      toast.error(info.mensaje);
     } finally {
       setRevokingInvId(null);
     }
@@ -257,7 +258,7 @@ export default function EquipoPage() {
       setCopiedCode(id);
       setTimeout(() => setCopiedCode(null), 2500);
     } catch {
-      alert(`Código: ${text}`);
+      toast(`Código: ${text}`, { description: 'Cópialo a mano: el navegador no dejó usar el portapapeles.', duration: 20000 });
     }
   };
 
@@ -275,7 +276,7 @@ export default function EquipoPage() {
       await reloadTrabajadores();
     } catch (err: unknown) {
       const info = interpretarErrorApi(err, 'No se pudo eliminar el trabajador.');
-      alert(info.mensaje);
+      toast.error(info.mensaje);
     } finally {
       setDeletingWorkerId(null);
     }
@@ -355,7 +356,7 @@ export default function EquipoPage() {
           }),
         };
       });
-      alert(`No se pudo actualizar el permiso de "${cap.label}". Intenta de nuevo.`);
+      toast.error(`No se pudo actualizar el permiso de "${cap.label}". Intenta de nuevo.`);
     } finally {
       setMutatingKeys((prev) => {
         const next = new Set(prev);
@@ -391,7 +392,7 @@ export default function EquipoPage() {
           [workerId]: list.map((a) => (a.id === asig.id ? { ...a, activo: asig.activo } : a)),
         };
       });
-      alert('No se pudo actualizar el estado de la asignación.');
+      toast.error('No se pudo actualizar el estado de la asignación.');
     } finally {
       setMutatingKeys((prev) => {
         const next = new Set(prev);
@@ -428,7 +429,7 @@ export default function EquipoPage() {
       await reloadTrabajadores();
     } catch (err: unknown) {
       const info = interpretarErrorApi(err, 'No se pudo asignar el producto.');
-      alert(info.mensaje);
+      toast.error(info.mensaje);
     } finally {
       setAssigningWorkerId(null);
     }
@@ -446,7 +447,7 @@ export default function EquipoPage() {
       await reloadTrabajadores();
     } catch (err: unknown) {
       const info = interpretarErrorApi(err, 'No se pudo revocar la asignación.');
-      alert(info.mensaje);
+      toast.error(info.mensaje);
     } finally {
       setRevokingAsigId(null);
     }

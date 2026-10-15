@@ -1,5 +1,6 @@
 'use client';
 
+import { toast } from 'sonner';
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, CheckCircle, Check, CreditCard } from 'lucide-react';
 import api from '@/lib/api';
@@ -87,7 +88,7 @@ export default function LiquidacionesPanel({
       await cargarDatos();
       if (onMovimientosCambio) onMovimientosCambio();
     } catch {
-      alert('Error al conciliar la liquidación');
+      toast.error('Error al conciliar la liquidación');
     } finally {
       setConciliandoId(null);
     }

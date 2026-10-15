@@ -1,5 +1,5 @@
 export const metadata = {
-  title: 'Resultado: Análisis de Ventas | BI 0 a 100',
+  title: 'Resultado: Análisis de Ventas',
   description: 'Estrategia de ventas personalizada - Resultado'
 };
 

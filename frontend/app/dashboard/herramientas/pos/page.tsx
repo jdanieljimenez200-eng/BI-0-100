@@ -1,5 +1,6 @@
 'use client';
 
+import { toast } from 'sonner';
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -170,7 +171,7 @@ const CATEGORIAS_SUGERIDAS = [
 function imprimirTicketTermico(venta: Venta, taxCfg: TaxConfig, negocioNombre: string) {
   const printWin = window.open('', '_blank', 'width=420,height=650');
   if (!printWin) {
-    alert('Por favor habilita las ventanas emergentes (popups) para imprimir el ticket.');
+    toast.error('Por favor habilita las ventanas emergentes (popups) para imprimir el ticket.');
     return;
   }
 
@@ -449,7 +450,7 @@ function PosInner({
       setPuntoCobro({ cobra_impuesto: data.cobra_impuesto !== false, puede_cambiar: true });
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
-      alert(e.response?.data?.error ?? 'No se pudo guardar el cambio. Intenta de nuevo.');
+      toast.error(e.response?.data?.error ?? 'No se pudo guardar el cambio. Intenta de nuevo.');
     } finally {
       setGuardandoPuntoCobro(false);
     }
@@ -679,7 +680,7 @@ function PosInner({
   const agregarConceptoLibre = useCallback(() => {
     const precioNum = Number(customItem.precio);
     if (!customItem.nombre.trim() || !Number.isFinite(precioNum) || precioNum <= 0) {
-      alert('Ingresa un nombre y precio válido mayor a 0.');
+      toast.error('Ingresa un nombre y precio válido mayor a 0.');
       return;
     }
     setCarrito((prev) => [
@@ -811,7 +812,7 @@ function PosInner({
         if (hayRespuestaDelServidor(err)) claveCobro.current = nuevaClaveIdempotencia();
         const resp = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
         const msg = resp?.error ?? resp?.message ?? (err instanceof Error ? err.message : null) ?? 'No se pudo cobrar';
-        alert(`Error al cobrar: ${msg}`);
+        toast.error(`Error al cobrar: ${msg}`, { duration: 10000 });
       } finally {
         setCobroEnCurso(false);
       }
@@ -856,7 +857,7 @@ function PosInner({
     if (!itemForm.nombre.trim() || !itemForm.precio) return;
     const precioNum = Number(itemForm.precio);
     if (!Number.isFinite(precioNum) || precioNum < 0) {
-      alert('El precio debe ser un número válido mayor o igual a 0.');
+      toast.error('El precio debe ser un número válido mayor o igual a 0.');
       return;
     }
 
@@ -1009,7 +1010,7 @@ function PosInner({
       const { data } = await api.get(`/pos/ventas/${v.id}/whatsapp`);
       window.open(data.whatsapp_url, '_blank');
     } catch {
-      alert('No se pudo generar el enlace de WhatsApp');
+      toast.error('No se pudo generar el enlace de WhatsApp');
     }
   }, []);
 
@@ -1017,7 +1018,7 @@ function PosInner({
 
   const exportarHistorialCsv = useCallback(() => {
     if (ventasFiltradas.length === 0) {
-      alert('No hay ventas para exportar con los filtros actuales.');
+      toast.info('No hay ventas para exportar con los filtros actuales.');
       return;
     }
 

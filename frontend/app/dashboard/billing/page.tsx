@@ -435,7 +435,7 @@ function BillingContent() {
       window.location.href = data.checkout_url;
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string; mensaje?: string } } };
-      alert(e.response?.data?.mensaje ?? e.response?.data?.error ?? 'Error al iniciar pago');
+      toast.error(e.response?.data?.mensaje ?? e.response?.data?.error ?? 'Error al iniciar pago');
     } finally { setCheckoutLoading(null); }
   };
 
@@ -464,7 +464,7 @@ function BillingContent() {
       window.location.href = data.portal_url;
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
-      alert(e.response?.data?.error ?? 'Error al abrir portal');
+      toast.error(e.response?.data?.error ?? 'Error al abrir portal');
     } finally { setPortalLoading(false); }
   };
 

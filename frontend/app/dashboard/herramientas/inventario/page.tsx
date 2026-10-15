@@ -1,5 +1,6 @@
 'use client';
 
+import { toast } from 'sonner';
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -260,14 +261,14 @@ function InventarioInner({
       // lista igual que uno borrado, así que sin decirlo el usuario cree que
       // se perdió su historial.
       if (data?.archivado) {
-        alert(data.mensaje ?? 'El insumo tiene movimientos: se archivó y su historial se conserva.');
+        toast.info(data.mensaje ?? 'El insumo tiene movimientos: se archivó y su historial se conserva.');
       }
       setInsumos((prev) => prev.filter((i) => i.id !== id));
     } catch (err) {
       // Antes el error se tragaba y la fila desaparecía igual, hasta que la
       // recarga la devolvía a su sitio sin explicación.
       const ax = err as { response?: { data?: { error?: string } } };
-      alert(`No se pudo eliminar: ${ax.response?.data?.error ?? 'inténtalo de nuevo.'}`);
+      toast.error(`No se pudo eliminar: ${ax.response?.data?.error ?? 'inténtalo de nuevo.'}`);
     }
     cargarDatos();
   }, [cargarDatos]);
@@ -288,17 +289,17 @@ function InventarioInner({
     if (modalOp.tipo === 'ajuste') {
       objetivoNum = Number(opForm.stock_objetivo);
       if (!Number.isFinite(objetivoNum) || objetivoNum < 0) {
-        alert('El stock objetivo debe ser un número válido mayor o igual a 0.');
+        toast.error('El stock objetivo debe ser un número válido mayor o igual a 0.');
         return;
       }
     } else {
       cantidadNum = Number(opForm.cantidad);
       if (!Number.isFinite(cantidadNum) || cantidadNum <= 0) {
-        alert('La cantidad debe ser un número mayor que 0.');
+        toast.error('La cantidad debe ser un número mayor que 0.');
         return;
       }
       if ((modalOp.tipo === 'salida' || modalOp.tipo === 'merma') && cantidadNum > stockActual) {
-        alert(`No puedes ${modalOp.tipo === 'merma' ? 'registrar una merma' : 'sacar'} más de lo disponible en stock (${fmtNum(stockActual, 3)} ${modalOp.insumo.unidad}).`);
+        toast.error(`No puedes ${modalOp.tipo === 'merma' ? 'registrar una merma' : 'sacar'} más de lo disponible en stock (${fmtNum(stockActual, 3)} ${modalOp.insumo.unidad}).`);
         return;
       }
     }
@@ -307,7 +308,7 @@ function InventarioInner({
     if (modalOp.tipo === 'entrada') {
       costoNum = Number(opForm.costo_unitario);
       if (!Number.isFinite(costoNum) || costoNum < 0) {
-        alert('El costo unitario debe ser un número válido mayor o igual a 0.');
+        toast.error('El costo unitario debe ser un número válido mayor o igual a 0.');
         return;
       }
     }
@@ -339,7 +340,7 @@ function InventarioInner({
     } catch (err: unknown) {
       if (hayRespuestaDelServidor(err)) claveOp.current = nuevaClaveIdempotencia();
       const ax = err as { response?: { data?: { error?: string } } };
-      alert(`Error: ${ax.response?.data?.error ?? (err instanceof Error ? err.message : 'No se pudo aplicar el movimiento')}`);
+      toast.error(`Error: ${ax.response?.data?.error ?? (err instanceof Error ? err.message : 'No se pudo aplicar el movimiento')}`);
     } finally {
       setOpEnCurso(false);
     }
