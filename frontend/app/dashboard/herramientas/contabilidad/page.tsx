@@ -48,6 +48,8 @@ import CanalesCobroModal, { CanalCobroData } from './CanalesCobroModal';
 import SimuladorPreciosComision from './SimuladorPreciosComision';
 import LiquidacionesPanel from './LiquidacionesPanel';
 import EstadoResultadosPnL from './EstadoResultadosPnL';
+import { calcularDesgloseComision, textoPorcentaje } from '@/lib/comisiones';
+import { r2 } from '@/lib/dinero';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -106,7 +108,6 @@ function fmtMoney(value: number, simbolo: string, locale: string): string {
 const todayISO = hoyLocal;
 
 const pct = (tasa: number, decimales = 0) => `${(tasa * 100).toFixed(decimales)}%`;
-const r2 = (v: number) => Math.round(v * 100) / 100;
 
 // Categorías bloqueadas en freemium (espejo de GATED_CATS_FREEMIUM en el backend)
 const GATED_CATS_FREEMIUM = ['Gasolina', 'Insumos', 'Materiales'];
@@ -760,7 +761,7 @@ function ContabilidadInner({
                       </p>
                     </div>
                     <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
-                      {(Number(c.comision_porcentaje) * 100).toFixed(1)}% {c.aplica_iva_comision ? '+ IVA' : ''}
+                      {textoPorcentaje(c.comision_porcentaje, taxCfg.locale)} {c.aplica_iva_comision ? '+ IVA' : ''}
                     </span>
                   </div>
 
@@ -803,6 +804,8 @@ function ContabilidadInner({
           canales={canales}
           simboloMoneda={taxCfg.simbolo}
           locale={taxCfg.locale}
+          tasaIva={taxCfg.consumo.tasa}
+          precioIncluyeImpuesto={producto.cobra_impuesto_consumo !== false}
         />
       )}
 
@@ -1417,7 +1420,7 @@ function ContabilidadInner({
                       <option value="" className="bg-[#0F1C2A]">Directo / Efectivo (Sin comisión descontada)</option>
                       {canales.map((c) => (
                         <option key={c.id} value={c.id} className="bg-[#0F1C2A]">
-                          {c.nombre} ({c.institucion} · {(Number(c.comision_porcentaje) * 100).toFixed(1)}%{c.aplica_iva_comision ? ' + IVA' : ''})
+                          {c.nombre} ({c.institucion} · {textoPorcentaje(c.comision_porcentaje, taxCfg.locale)}{c.aplica_iva_comision ? ' + IVA' : ''})
                         </option>
                       ))}
                     </select>
@@ -1427,14 +1430,17 @@ function ContabilidadInner({
                       const canalSel = canales.find((c) => c.id === form.canal_cobro_id);
                       if (!canalSel) return null;
                       const bruto = Number(form.monto);
-                      const pct = Number(canalSel.comision_porcentaje) || 0;
-                      const fija = Number(canalSel.comision_fija) || 0;
-                      const comBase = Math.round((bruto * pct + fija) * 100) / 100;
-                      const comIva = canalSel.aplica_iva_comision ? Math.round(comBase * 0.16 * 100) / 100 : 0;
-                      const retIsr = Math.round(bruto * (Number(canalSel.retencion_isr_porcentaje) || 0) * 100) / 100;
-                      const retIva = Math.round(bruto * (Number(canalSel.retencion_iva_porcentaje) || 0) * 100) / 100;
-                      const deducciones = Math.round((comBase + comIva + retIsr + retIva) * 100) / 100;
-                      const neto = Math.round((bruto - deducciones) * 100) / 100;
+                      // La misma cuenta que hace el servidor al guardar (lib/comisiones.ts):
+                      // IVA de la comisión con la tasa del país (antes 16 % fijo) y
+                      // retenciones sobre la venta sin el IVA que ya trae el precio.
+                      const tasa = taxCfg.consumo.tasa;
+                      const ivaDentro = producto.cobra_impuesto_consumo !== false && tasa > 0 ? r2(bruto - bruto / (1 + tasa)) : 0;
+                      const des = calcularDesgloseComision(bruto, canalSel, tasa, ivaDentro);
+                      const comBase = des.comisionBase;
+                      const comIva = des.comisionIva;
+                      const retIsr = des.retencionIsr;
+                      const retIva = des.retencionIva;
+                      const neto = des.montoNeto;
 
                       return (
                         <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3 text-[11px] space-y-1.5 mt-2">
@@ -1443,13 +1449,13 @@ function ContabilidadInner({
                             <span className="font-mono">{taxCfg.simbolo}{bruto.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between text-rose-300">
-                            <span>Comisión {canalSel.institucion} ({canalSel.aplica_iva_comision ? 'con IVA' : ''}):</span>
-                            <span className="font-mono">−{taxCfg.simbolo}{(comBase + comIva).toFixed(2)}</span>
+                            <span>Comisión {canalSel.institucion}{comIva > 0 ? ' con IVA' : ''}:</span>
+                            <span className="font-mono">−{taxCfg.simbolo}{r2(comBase + comIva).toFixed(2)}</span>
                           </div>
                           {(retIsr + retIva) > 0 && (
                             <div className="flex justify-between text-amber-300">
-                              <span>Retenciones fiscales SAT:</span>
-                              <span className="font-mono">−{taxCfg.simbolo}{(retIsr + retIva).toFixed(2)}</span>
+                              <span>Retenciones de impuestos de la app:</span>
+                              <span className="font-mono">−{taxCfg.simbolo}{r2(retIsr + retIva).toFixed(2)}</span>
                             </div>
                           )}
                           <div className="flex justify-between text-emerald-300 font-bold pt-1 border-t border-emerald-500/20">
@@ -1511,6 +1517,9 @@ function ContabilidadInner({
           }}
           onClose={() => setShowCanalesModal(false)}
           simboloMoneda={taxCfg.simbolo}
+          pais={producto.pais ?? 'MX'}
+          tasaIva={taxCfg.consumo.tasa}
+          locale={taxCfg.locale}
         />
       )}
 

@@ -28,6 +28,7 @@ import {
   calcularPrecioObjetivo,
   registrarAsientosComisionTransaccional,
   PRESETS_CANALES_DEFAULT,
+  PAISES_CON_PRESETS,
 } from '../services/contabilidad/comisionesService';
 import { ah } from '../utils/asyncHandler';
 import { auditarDinero } from '../services/auditoria/auditoriaDinero';
@@ -36,6 +37,7 @@ import { paginar, responderPagina, leerLimite as leerLimitePagina } from '../uti
 import { hoyDePeticion, hoyEnZona, zonaDePeticion } from '../utils/fechaLocal';
 import { idempotente } from '../middleware/idempotency';
 import { dinero, MAX_DINERO } from '../utils/limitesNumericos';
+import { getTaxConfig, impuestoIncluido } from '../utils/taxConfig';
 
 const CrearMovimientoContableSchema = z.object({
   tipo: z.enum(['ingreso', 'egreso'], { errorMap: () => ({ message: 'tipo debe ser ingreso o egreso' }) }),
@@ -158,6 +160,20 @@ const exigirProductoPropio = ah(async (req: AuthRequest, res: Response, next: Ne
   }
   next();
 });
+
+/**
+ * IVA del país del producto y si sus precios ya lo traen, para que la comisión
+ * y las retenciones de un ingreso manual o del simulador salgan igual que en el
+ * POS. Antes Contabilidad usaba 16 % fijo (también en Colombia, con 19 %).
+ */
+async function impuestoDelProducto(usuarioId: string, productoId: string): Promise<{ tasa: number; incluido: boolean; pais: string }> {
+  const p = await AppDataSource.getRepository(Producto).findOne({
+    where: { id: productoId, usuario_id: usuarioId },
+    select: ['id', 'pais', 'cobra_impuesto_consumo'],
+  });
+  const pais = p?.pais || 'MX';
+  return { tasa: getTaxConfig(pais).consumo.tasa, incluido: p?.cobra_impuesto_consumo !== false, pais };
+}
 
 // ── Filtros comunes de las consultas (query string) ──────────────────────────
 const FiltrosQuerySchema = z
@@ -392,7 +408,13 @@ router.post('/:productoId', idempotente('contabilidad_mov'), requireHerramientaA
       retencion_iva_porcentaje: canalResolv ? Number(canalResolv.retencion_iva_porcentaje) : (retencion_iva_porcentaje ?? 0),
       dias_liquidacion: canalResolv ? canalResolv.dias_liquidacion : 1,
     };
-    desgloseResult = calcularDesgloseComision(Number(monto), canalConfig);
+    const imp = await impuestoDelProducto(req.userId!, req.params.productoId);
+    desgloseResult = calcularDesgloseComision(
+      Number(monto),
+      canalConfig,
+      imp.tasa,
+      imp.incluido ? impuestoIncluido(Number(monto), imp.tasa) : 0
+    );
   }
 
   const mov = await AppDataSource.transaction(async (manager) => {
@@ -716,6 +738,22 @@ router.delete('/:productoId/canales/:id', ah(async (req: AuthRequest, res: Respo
 
 // POST /api/contabilidad/:productoId/canales/seed-defaults — Cargar catálogo inicial de canales
 router.post('/:productoId/canales/seed-defaults', exigirProductoPropio, ah(async (req: AuthRequest, res: Response) => {
+  // Las tarifas de referencia son mexicanas (pesos, IVA 16 %, retenciones del
+  // SAT): en otro país darían comisiones falsas. Ahí el dueño da de alta las suyas.
+  const { pais } = await impuestoDelProducto(req.userId!, req.params.productoId);
+  if (!PAISES_CON_PRESETS.includes(pais)) {
+    const canales = await repoCanales().find({
+      where: { usuario_id: req.userId!, producto_id: req.params.productoId, activo: true },
+      order: { tipo_canal: 'ASC', nombre: 'ASC' },
+    });
+    res.status(200).json({
+      creados: 0,
+      canales,
+      sin_referencia: true,
+      mensaje: 'Aún no tenemos tarifas de referencia para tu país. Agrega tu terminal o app con la comisión de tu contrato.',
+    });
+    return;
+  }
   const existentes = await repoCanales().find({
     where: { usuario_id: req.userId!, producto_id: req.params.productoId },
     select: ['nombre', 'institucion', 'tipo_canal'],
@@ -799,7 +837,8 @@ router.post('/:productoId/canales/simular', validateBody(SimularPreciosSchema), 
     };
   }
 
-  const simulacion = calcularPrecioObjetivo(monto_deseado_neto, cfg);
+  const imp = await impuestoDelProducto(req.userId!, req.params.productoId);
+  const simulacion = calcularPrecioObjetivo(monto_deseado_neto, cfg, imp.tasa, imp.incluido);
   res.json(simulacion);
 }));
 

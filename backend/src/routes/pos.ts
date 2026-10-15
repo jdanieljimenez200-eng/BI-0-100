@@ -518,7 +518,14 @@ router.post('/ventas', idempotente('pos_venta'), requireHerramientaAccess('pos',
         if (!canalCobro) throw new VentaError(404, 'Canal de cobro no encontrado');
         // El IVA de la comisión lo cobra la terminal según su país, no según el
         // impuesto de la venta (que puede ser 0 % si el producto está exento).
-        desgloseComision = calcularDesgloseComision(totales.total, canalCobro, getTaxConfig(pais).consumo.tasa);
+        // Las retenciones de plataformas van sobre la venta sin el impuesto
+        // que ya trae el precio (totales.impuesto_monto; 0 si no se cobra).
+        desgloseComision = calcularDesgloseComision(
+          totales.total,
+          canalCobro,
+          getTaxConfig(pais).consumo.tasa,
+          totales.impuesto_monto
+        );
       }
 
       const descripcionMov = `${numeroTicket} — ${totales.lineas.length} item(s)${resCliente.cliente_nombre ? ` — ${resCliente.cliente_nombre}` : ''}${canalCobro ? ` [${canalCobro.nombre}]` : ''}`;

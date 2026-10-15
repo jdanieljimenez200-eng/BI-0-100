@@ -374,7 +374,8 @@ export async function analisisCanales(f: FiltrosMovimientos) {
   let granTotalComisiones = 0;
   const canales = filas.map((c) => {
     const totalBruto = num(c.total_bruto);
-    const deducciones = num(c.total_comisiones) + num(c.total_comisiones_iva) + num(c.total_retenciones);
+    // r2: sumado en coma flotante salía 425.59000000000003 en la pantalla de canales.
+    const deducciones = r2(num(c.total_comisiones) + num(c.total_comisiones_iva) + num(c.total_retenciones));
     granTotalBruto += totalBruto;
     granTotalComisiones += deducciones;
     return {

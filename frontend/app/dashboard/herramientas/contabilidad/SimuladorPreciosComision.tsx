@@ -14,20 +14,27 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import type { CanalCobroData } from './CanalesCobroModal';
+import { calcularPrecioObjetivo, textoPorcentaje } from '@/lib/comisiones';
+import { r2 } from '@/lib/dinero';
 
 interface Props {
   canales: CanalCobroData[];
   simboloMoneda?: string;
   locale?: string;
+  /** IVA del país (0.16 en México): antes 16 % fijo también en Colombia o Perú. */
+  tasaIva?: number;
+  /** El precio al público trae el impuesto: las retenciones se calculan sin él. */
+  precioIncluyeImpuesto?: boolean;
 }
 
 export default function SimuladorPreciosComision({
   canales,
   simboloMoneda = '$',
   locale = 'es-MX',
+  tasaIva = 0.16,
+  precioIncluyeImpuesto = true,
 }: Props) {
   const [montoDeseado, setMontoDeseado] = useState<string>('200');
-  const [tasaIva, setTasaIva] = useState<number>(0.16);
 
   const fmt = (v: number) =>
     `${simboloMoneda}${new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)}`;
@@ -37,27 +44,15 @@ export default function SimuladorPreciosComision({
   // Calcular precio objetivo para cada canal
   const comparativa = useMemo(() => {
     return canales.map((canal) => {
-      const pct = Math.max(0, Number(canal.comision_porcentaje) || 0);
-      const fija = Math.max(0, Number(canal.comision_fija) || 0);
-      const factorIva = canal.aplica_iva_comision ? 1 + tasaIva : 1;
-      const retIsr = Math.max(0, Number(canal.retencion_isr_porcentaje) || 0);
-      const retIva = Math.max(0, Number(canal.retencion_iva_porcentaje) || 0);
-
-      const tasaTotal = pct * factorIva + retIsr + retIva;
-      const costoFijoTotal = fija * factorIva;
-
-      let precioObjetivo = netoNum;
-      if (tasaTotal < 1) {
-        precioObjetivo = Math.round(((netoNum + costoFijoTotal) / (1 - tasaTotal)) * 100) / 100;
-      }
-
-      const comisionBase = Math.round((precioObjetivo * pct + fija) * 100) / 100;
-      const comisionIva = canal.aplica_iva_comision ? Math.round(comisionBase * tasaIva * 100) / 100 : 0;
-      const retencionIsrMonto = Math.round(precioObjetivo * retIsr * 100) / 100;
-      const retencionIvaMonto = Math.round(precioObjetivo * retIva * 100) / 100;
-      const totalDeducciones = Math.round((comisionBase + comisionIva + retencionIsrMonto + retencionIvaMonto) * 100) / 100;
-      const netoReal = Math.round((precioObjetivo - totalDeducciones) * 100) / 100;
-      const sobreprecioRequerido = precioObjetivo - netoNum;
+      // Misma cuenta que el servidor (lib/comisiones.ts ↔ comisionesService.ts).
+      const { precioSugerido: precioObjetivo, desglose } = calcularPrecioObjetivo(netoNum, canal, tasaIva, precioIncluyeImpuesto);
+      const comisionBase = desglose.comisionBase;
+      const comisionIva = desglose.comisionIva;
+      const retencionIsrMonto = desglose.retencionIsr;
+      const retencionIvaMonto = desglose.retencionIva;
+      const totalDeducciones = desglose.totalDeducciones;
+      const netoReal = desglose.montoNeto;
+      const sobreprecioRequerido = r2(precioObjetivo - netoNum);
       const markupPorcentaje = netoNum > 0 ? Math.round((sobreprecioRequerido / netoNum) * 1000) / 10 : 0;
 
       return {
@@ -73,7 +68,7 @@ export default function SimuladorPreciosComision({
         markupPorcentaje,
       };
     });
-  }, [canales, netoNum, tasaIva]);
+  }, [canales, netoNum, tasaIva, precioIncluyeImpuesto]);
 
   return (
     <div className="space-y-6">
@@ -198,21 +193,21 @@ export default function SimuladorPreciosComision({
 
                     {item.comisionIva > 0 && (
                       <div className="flex justify-between text-[11px]">
-                        <span className="text-white/40">IVA de comisión (16%):</span>
+                        <span className="text-white/40">IVA de comisión ({textoPorcentaje(tasaIva, locale)}):</span>
                         <span className="font-mono text-rose-300/80">−{fmt(item.comisionIva)}</span>
                       </div>
                     )}
 
                     {item.retencionIsrMonto > 0 && (
                       <div className="flex justify-between text-[11px]">
-                        <span className="text-white/40">Retención ISR ({((Number(item.canal.retencion_isr_porcentaje) || 0) * 100).toFixed(1)}%):</span>
+                        <span className="text-white/40">Retención ISR ({textoPorcentaje(item.canal.retencion_isr_porcentaje, locale)}{precioIncluyeImpuesto ? ' sin IVA' : ''}):</span>
                         <span className="font-mono text-amber-300">−{fmt(item.retencionIsrMonto)}</span>
                       </div>
                     )}
 
                     {item.retencionIvaMonto > 0 && (
                       <div className="flex justify-between text-[11px]">
-                        <span className="text-white/40">Retención IVA ({((Number(item.canal.retencion_iva_porcentaje) || 0) * 100).toFixed(1)}%):</span>
+                        <span className="text-white/40">Retención IVA ({textoPorcentaje(item.canal.retencion_iva_porcentaje, locale)}{precioIncluyeImpuesto ? ' sin IVA' : ''}):</span>
                         <span className="font-mono text-amber-300">−{fmt(item.retencionIvaMonto)}</span>
                       </div>
                     )}

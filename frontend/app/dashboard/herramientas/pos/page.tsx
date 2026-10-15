@@ -39,6 +39,8 @@ import ProductoGate from '@/components/herramientas/ProductoGate';
 import HerramientaGate from '@/components/herramientas/HerramientaGate';
 import type { ProductoActivo } from '@/lib/productoActivo';
 import { Breadcrumbs } from '@/components/ui';
+import { calcularDesgloseComision, textoPorcentaje } from '@/lib/comisiones';
+import { r2 } from '@/lib/dinero';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,8 +94,12 @@ interface CanalCobroMin {
   nombre: string;
   tipo: string;
   institucion?: string | null;
+  /** Fracción: 0.036 = 3.6 %. */
   comision_porcentaje: number | string;
   comision_fija: number | string;
+  aplica_iva_comision?: boolean | null;
+  retencion_isr_porcentaje?: number | string | null;
+  retencion_iva_porcentaje?: number | string | null;
   activo: boolean;
 }
 
@@ -125,7 +131,6 @@ function fmtMoney(value: number, simbolo: string, locale: string): string {
   return `${simbolo}${new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
 }
 
-const r2 = (v: number) => Math.round(v * 100) / 100;
 
 /**
  * Lo que pagó el cliente por la línea (precio del catálogo × cantidad). En la
@@ -2069,23 +2074,29 @@ function PosInner({
                       </option>
                       {canalesCobro.map((c) => (
                         <option key={c.id} value={c.id} className="bg-[#0b132b] text-white">
-                          {c.nombre} {c.institucion ? `(${c.institucion})` : ''} · {Number(c.comision_porcentaje)}%{Number(c.comision_fija) > 0 ? ` + $${Number(c.comision_fija)}` : ''}
+                          {c.nombre} {c.institucion ? `(${c.institucion})` : ''} · {textoPorcentaje(c.comision_porcentaje, taxCfg.locale)}{Number(c.comision_fija) > 0 ? ` + ${fmtMoney(Number(c.comision_fija), taxCfg.simbolo, taxCfg.locale)}` : ''}
                         </option>
                       ))}
                     </select>
                     {canalCobroId && (() => {
                       const sel = canalesCobro.find((c) => c.id === canalCobroId);
                       if (!sel) return null;
-                      const pct = Number(sel.comision_porcentaje) || 0;
-                      const fija = Number(sel.comision_fija) || 0;
-                      const comBase = (totales.total * pct) / 100 + fija;
-                      const comIva = comBase * 0.16;
-                      const totalCom = comBase + comIva;
-                      const neto = Math.max(0, totales.total - totalCom);
+                      // La misma cuenta que hace el servidor al cobrar (lib/comisiones.ts):
+                      // IVA del país, solo si la terminal lo cobra, y retenciones sin IVA.
+                      const d = calcularDesgloseComision(totales.total, sel, taxCfg.consumo.tasa, totales.impuesto);
+                      const retenciones = r2(d.retencionIsr + d.retencionIva);
                       return (
-                        <div className="flex items-center justify-between text-[11px] pt-1 text-emerald-400">
-                          <span className="text-white/50">Comisión estimada (c/IVA): -{fmtMoney(totalCom, taxCfg.simbolo, taxCfg.locale)}</span>
-                          <span className="font-semibold font-mono">Neto: {fmtMoney(neto, taxCfg.simbolo, taxCfg.locale)}</span>
+                        <div className="pt-1 space-y-0.5 text-[11px]">
+                          <div className="flex items-center justify-between text-emerald-400">
+                            <span className="text-white/50">
+                              Comisión{d.comisionIva > 0 ? ' con IVA' : ''}: -{fmtMoney(r2(d.comisionBase + d.comisionIva), taxCfg.simbolo, taxCfg.locale)}
+                            </span>
+                            <span className="font-semibold font-mono">Te llega: {fmtMoney(d.montoNeto, taxCfg.simbolo, taxCfg.locale)}</span>
+                          </div>
+                          {retenciones > 0 && (
+                            <p className="text-white/40">Incluye {fmtMoney(retenciones, taxCfg.simbolo, taxCfg.locale)} de retenciones de impuestos de la app.</p>
+                          )}
+                          <p className="text-white/30">Con la tarifa que guardaste para este canal; si tu contrato cambió, actualízala en Contabilidad.</p>
                         </div>
                       );
                     })()}

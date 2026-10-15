@@ -91,6 +91,12 @@ describeWithDb('Flujos entre herramientas', () => {
       expect((await api().get(`/contabilidad/${productoId}/canales`)).body).toHaveLength(primera);
 
       expect((await api().post(`/contabilidad/${productoAjenoId}/canales/seed-defaults`)).status).toBe(404);
+
+      // Las tarifas de referencia son mexicanas: en Colombia no se cargan.
+      const [co] = await q(`INSERT INTO productos (usuario_id, nombre, pais) VALUES ($1, 'Panadería', 'CO') RETURNING id`, [cuentaId]);
+      const enCo = await api().post(`/contabilidad/${co.id}/canales/seed-defaults`);
+      expect(enCo.status).toBe(200);
+      expect(enCo.body).toMatchObject({ creados: 0, sin_referencia: true, canales: [] });
       expect(
         (await api().post(`/contabilidad/${productoAjenoId}/canales`, { nombre: 'X', tipo_canal: 'terminal', institucion: 'X' })).status
       ).toBe(404);
@@ -524,8 +530,10 @@ describeWithDb('Flujos entre herramientas', () => {
            FROM movimientos_contables WHERE id = $1`,
         [id]
       );
-      // 300 comisión + 48 IVA + 10 ISR + 80 IVA retenido = 438 → neto 562
-      expect(mov).toEqual({ fuente: 'delivery', estado_liquidacion: 'pendiente', c: 300, i: 48, ret: 90, neto: 562 });
+      // Los $1,000 traen $137.93 de IVA (México, precio con IVA): las
+      // retenciones van sobre los 862.07 → ISR 8.62 + IVA retenido 68.97.
+      // 300 comisión + 48 IVA de la comisión + 77.59 = 425.59 → neto 574.41
+      expect(mov).toEqual({ fuente: 'delivery', estado_liquidacion: 'pendiente', c: 300, i: 48, ret: 77.59, neto: 574.41 });
       const hijos = await q(`SELECT COUNT(*)::int AS n FROM movimientos_contables WHERE parent_movimiento_id = $1`, [id]);
       expect(hijos[0].n).toBe(4);
     });

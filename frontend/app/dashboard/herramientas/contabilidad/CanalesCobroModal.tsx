@@ -16,6 +16,7 @@ import {
   Landmark,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { textoPorcentaje } from '@/lib/comisiones';
 
 export interface CanalCobroData {
   id: string;
@@ -40,6 +41,11 @@ interface Props {
   onActualizar: () => void;
   onClose: () => void;
   simboloMoneda?: string;
+  /** País del producto: las retenciones de apps y el catálogo de referencia son de México. */
+  pais?: string;
+  /** IVA del país, el que la terminal le suma a su comisión. */
+  tasaIva?: number;
+  locale?: string;
 }
 
 export default function CanalesCobroModal({
@@ -48,8 +54,13 @@ export default function CanalesCobroModal({
   onActualizar,
   onClose,
   simboloMoneda = '$',
+  pais = 'MX',
+  tasaIva = 0.16,
+  locale = 'es-MX',
 }: Props) {
+  const esMexico = pais === 'MX';
   const [cargandoSeed, setCargandoSeed] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
   const [editando, setEditando] = useState<CanalCobroData | null>(null);
   const [creandoNuevo, setCreandoNuevo] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -84,7 +95,10 @@ export default function CanalesCobroModal({
     try {
       setCargandoSeed(true);
       setErrorMsg(null);
-      await api.post(`/contabilidad/${productoId}/canales/seed-defaults`);
+      setAviso(null);
+      const { data } = await api.post(`/contabilidad/${productoId}/canales/seed-defaults`);
+      // Fuera de México no hay tarifas de referencia: el servidor lo dice.
+      if (data?.sin_referencia) setAviso(data.mensaje);
       onActualizar();
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { error?: string } } };
@@ -226,8 +240,19 @@ export default function CanalesCobroModal({
             <p className="text-xs text-white/50">
               Configura cuánto te cobra cada terminal (Clip, BBVA) o app de delivery (Uber Eats, Rappi) para descontarlo automáticamente.
             </p>
+            <p className="text-[11px] text-white/40 mt-1">
+              Pon la tarifa de tu contrato: cada terminal y cada app cobra distinto según tu plan, y la cambian. Si cargas el catálogo,
+              son tarifas de referencia; compáralas con tu estado de cuenta y ajústalas.
+            </p>
           </div>
         </div>
+
+        {aviso && (
+          <div role="status" className="my-4 p-3 bg-white/5 border border-white/10 rounded-2xl text-xs text-white/70 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{aviso}</span>
+          </div>
+        )}
 
         {errorMsg && (
           <div className="my-4 p-3 bg-rose-500/10 border border-rose-500/25 rounded-2xl text-xs text-rose-300 flex items-center gap-2">
@@ -253,7 +278,7 @@ export default function CanalesCobroModal({
               className="text-xs font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 px-3.5 py-2 rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50"
             >
               <Sparkles className="w-4 h-4" />
-              <span>{cargandoSeed ? 'Cargando catálogo…' : 'Cargar Clip, Uber Eats y más presets'}</span>
+              <span>{cargandoSeed ? 'Cargando catálogo…' : esMexico ? 'Cargar tarifas de referencia (Clip, Uber Eats…)' : 'Cargar tarifas de referencia'}</span>
             </button>
           )}
         </div>
@@ -294,8 +319,10 @@ export default function CanalesCobroModal({
                         // Presets de comision segun tipo
                         comision_porcentaje:
                           e.target.value === 'delivery' ? '30.0' : e.target.value === 'terminal' ? '3.6' : form.comision_porcentaje,
-                        retencion_isr_porcentaje: e.target.value === 'delivery' ? '1.0' : '0',
-                        retencion_iva_porcentaje: e.target.value === 'delivery' ? '8.0' : '0',
+                        // Retenciones de apps solo con referencia mexicana (2026: ISR 2.5 %,
+                        // IVA 8 % de la venta sin IVA). En otro país las pone el dueño.
+                        retencion_isr_porcentaje: e.target.value === 'delivery' && esMexico ? '2.5' : '0',
+                        retencion_iva_porcentaje: e.target.value === 'delivery' && esMexico ? '8.0' : '0',
                         dias_liquidacion: e.target.value === 'delivery' ? '7' : '1',
                       })
                     }
@@ -398,7 +425,7 @@ export default function CanalesCobroModal({
                       onChange={(e) => setForm({ ...form, aplica_iva_comision: e.target.checked })}
                       className="accent-emerald-500 rounded"
                     />
-                    <span className="text-xs text-white/80 font-medium">Aplica IVA a comisión (16%)</span>
+                    <span className="text-xs text-white/80 font-medium">Aplica IVA a comisión ({textoPorcentaje(tasaIva, locale)})</span>
                   </label>
                   <span className="text-[9px] text-emerald-400/70 mt-1">
                     Es IVA acreditable en tu declaración fiscal.
@@ -411,34 +438,40 @@ export default function CanalesCobroModal({
                 <div className="grid grid-cols-2 gap-3 bg-amber-500/5 p-3.5 rounded-xl border border-amber-500/20">
                   <div>
                     <label className="text-[10px] uppercase font-bold text-amber-300 tracking-wider block mb-1">
-                      Retención ISR Plataforma Digital (%)
+                      Retención ISR de la app (% sin IVA)
                     </label>
                     <input
                       type="number"
                       step="0.1"
                       min="0"
-                      placeholder="1.0"
+                      placeholder={esMexico ? '2.5' : '0'}
                       value={form.retencion_isr_porcentaje}
                       onChange={(e) => setForm({ ...form, retencion_isr_porcentaje: e.target.value })}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500/50 font-mono"
                     />
-                    <span className="text-[9px] text-amber-300/60 block mt-0.5">Típicamente 1% a 2.5% según régimen</span>
+                    <span className="text-[9px] text-amber-300/60 block mt-0.5">
+                      {esMexico
+                        ? 'México 2026: 2.5 % con RFC registrado en la app; sin RFC, 20 %. Revisa el detalle de retenciones de la app.'
+                        : 'La que aparece en el detalle de retenciones de la app.'}
+                    </span>
                   </div>
 
                   <div>
                     <label className="text-[10px] uppercase font-bold text-amber-300 tracking-wider block mb-1">
-                      Retención IVA Plataforma Digital (%)
+                      Retención IVA de la app (% sin IVA)
                     </label>
                     <input
                       type="number"
                       step="0.1"
                       min="0"
-                      placeholder="8.0"
+                      placeholder={esMexico ? '8.0' : '0'}
                       value={form.retencion_iva_porcentaje}
                       onChange={(e) => setForm({ ...form, retencion_iva_porcentaje: e.target.value })}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500/50 font-mono"
                     />
-                    <span className="text-[9px] text-amber-300/60 block mt-0.5">Típicamente 8% (50% del IVA)</span>
+                    <span className="text-[9px] text-amber-300/60 block mt-0.5">
+                      {esMexico ? 'México: la mitad del IVA (8 %) si eres persona física; una sociedad no tiene esta retención.' : 'La que aparece en el detalle de retenciones de la app.'}
+                    </span>
                   </div>
                 </div>
               )}
@@ -479,7 +512,7 @@ export default function CanalesCobroModal({
                 className="text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-black px-4 py-2.5 rounded-xl transition-colors flex items-center gap-2 shadow-lg shadow-emerald-500/20"
               >
                 <Sparkles className="w-4 h-4" />
-                <span>Cargar catálogo recomendado</span>
+                <span>Cargar tarifas de referencia</span>
               </button>
               <button
                 onClick={abrirNuevo}
@@ -492,7 +525,7 @@ export default function CanalesCobroModal({
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1">
             {canales.map((canal) => {
-              const pctStr = `${(Number(canal.comision_porcentaje) * 100).toFixed(1)}%`;
+              const pctStr = textoPorcentaje(canal.comision_porcentaje, locale);
               const fijaStr = Number(canal.comision_fija) > 0 ? ` + ${simboloMoneda}${Number(canal.comision_fija)}` : '';
               const ivaStr = canal.aplica_iva_comision ? ' + IVA' : '';
 
@@ -544,14 +577,14 @@ export default function CanalesCobroModal({
                       {Number(canal.retencion_isr_porcentaje) > 0 && (
                         <div className="flex justify-between items-center text-rose-300/80">
                           <span className="text-[11px] text-white/40">Retención ISR:</span>
-                          <span className="font-mono">{(Number(canal.retencion_isr_porcentaje) * 100).toFixed(1)}%</span>
+                          <span className="font-mono">{textoPorcentaje(canal.retencion_isr_porcentaje, locale)}</span>
                         </div>
                       )}
 
                       {Number(canal.retencion_iva_porcentaje) > 0 && (
                         <div className="flex justify-between items-center text-rose-300/80">
                           <span className="text-[11px] text-white/40">Retención IVA:</span>
-                          <span className="font-mono">{(Number(canal.retencion_iva_porcentaje) * 100).toFixed(1)}%</span>
+                          <span className="font-mono">{textoPorcentaje(canal.retencion_iva_porcentaje, locale)}</span>
                         </div>
                       )}
 

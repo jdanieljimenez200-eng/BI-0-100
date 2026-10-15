@@ -2,6 +2,7 @@ import {
   calcularDesgloseComision,
   calcularPrecioObjetivo,
   PRESETS_CANALES_DEFAULT,
+  PAISES_CON_PRESETS,
 } from '../../services/contabilidad/comisionesService';
 
 describe('comisionesService', () => {
@@ -43,25 +44,46 @@ describe('comisionesService', () => {
       expect(resultado.montoNeto).toBe(475.06);
     });
 
-    it('calcula correctamente Uber Eats con 30% comision + IVA y retenciones fiscales de plataformas', () => {
+    it('calcula Uber Eats: 30 % + IVA y las retenciones 2026 (ISR 2.5 %, IVA 8 %)', () => {
       const uberPreset = PRESETS_CANALES_DEFAULT.find((c) => c.institucion === 'Uber Eats')!;
       expect(uberPreset).toBeDefined();
 
       const resultado = calcularDesgloseComision(1000, uberPreset, 0.16);
 
-      // Comision base = 1000 * 0.30 = 300.00
-      // IVA comision = 300.00 * 0.16 = 48.00
-      // Retencion ISR = 1000 * 0.01 = 10.00
-      // Retencion IVA = 1000 * 0.08 = 80.00
-      // Total deducciones = 300 + 48 + 10 + 80 = 438.00
-      // Neto = 562.00
+      // Sin impuesto dentro del bruto, las retenciones van sobre los 1000.
+      // Comisión 300 + IVA 48 + ISR 25 + IVA retenido 80 = 453
       expect(resultado.comisionBase).toBe(300.00);
       expect(resultado.comisionIva).toBe(48.00);
-      expect(resultado.retencionIsr).toBe(10.00);
+      expect(resultado.retencionIsr).toBe(25.00);
       expect(resultado.retencionIva).toBe(80.00);
-      expect(resultado.totalDeducciones).toBe(438.00);
-      expect(resultado.montoNeto).toBe(562.00);
-      expect(resultado.tasaEfectivaPorcentaje).toBe(43.8);
+      expect(resultado.totalDeducciones).toBe(453.00);
+      expect(resultado.montoNeto).toBe(547.00);
+      expect(resultado.tasaEfectivaPorcentaje).toBe(45.3);
+    });
+
+    it('las retenciones van sobre la venta SIN el IVA que trae el precio', () => {
+      const uberPreset = PRESETS_CANALES_DEFAULT.find((c) => c.institucion === 'Uber Eats')!;
+      // Pedido de $1,160 con IVA incluido (160): la base de las retenciones es 1000.
+      const r = calcularDesgloseComision(1160, uberPreset, 0.16, 160);
+      expect(r.comisionBase).toBe(348.00); // la comisión sí va sobre lo que pagó el cliente
+      expect(r.comisionIva).toBe(55.68);
+      expect(r.retencionIsr).toBe(25.00); // antes 1160 × 1 % = 11.60
+      expect(r.retencionIva).toBe(80.00); // la mitad del IVA; antes 1160 × 8 % = 92.80
+      expect(r.montoNeto).toBe(651.32);
+    });
+
+    it('el IVA de la comisión sigue la tasa del país', () => {
+      const r = calcularDesgloseComision(1000, { institucion: 'Terminal CO', comision_porcentaje: 0.03, comision_fija: 0, aplica_iva_comision: true }, 0.19);
+      expect(r.comisionBase).toBe(30);
+      expect(r.comisionIva).toBe(5.7);
+      expect(r.montoNeto).toBe(964.3);
+    });
+
+    it('las tarifas de referencia son solo de México y lo dicen', () => {
+      expect(PAISES_CON_PRESETS).toEqual(['MX']);
+      for (const preset of PRESETS_CANALES_DEFAULT) {
+        expect(preset.notas).toMatch(/referencia/i);
+      }
     });
 
     it('maneja valores 0 o negativos de forma segura', () => {
@@ -94,9 +116,17 @@ describe('comisionesService', () => {
       const uberPreset = PRESETS_CANALES_DEFAULT.find((c) => c.institucion === 'Uber Eats')!;
       const { precioSugerido, desglose } = calcularPrecioObjetivo(500, uberPreset, 0.16);
 
-      // Tasa total = 0.30 * 1.16 + 0.01 + 0.08 = 0.348 + 0.09 = 0.438
-      // Precio sugerido = 500 / (1 - 0.438) = 500 / 0.562 ≈ 889.68
-      expect(precioSugerido).toBeCloseTo(889.68, 1);
+      // Tasa total = 0.30 × 1.16 + 0.025 + 0.08 = 0.453 → 500 / 0.547 ≈ 914.08
+      expect(precioSugerido).toBeCloseTo(914.08, 1);
+      expect(desglose.montoNeto).toBeCloseTo(500, 0);
+    });
+
+    it('con el IVA dentro del precio, las retenciones se calculan sin él', () => {
+      const uberPreset = PRESETS_CANALES_DEFAULT.find((c) => c.institucion === 'Uber Eats')!;
+      const { precioSugerido, desglose } = calcularPrecioObjetivo(500, uberPreset, 0.16, true);
+
+      // Tasa total = 0.348 + 0.105 / 1.16 ≈ 0.43852 → 500 / 0.56148 ≈ 890.50
+      expect(precioSugerido).toBeCloseTo(890.5, 1);
       expect(desglose.montoNeto).toBeCloseTo(500, 0);
     });
   });

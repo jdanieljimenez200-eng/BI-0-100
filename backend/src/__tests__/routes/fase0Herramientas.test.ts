@@ -208,12 +208,13 @@ describeWithDb('Fase 0 — correcciones críticas de las herramientas', () => {
     it('análisis de canales y liquidaciones con KPIs en SQL', async () => {
       const canales = await c.api.get(`/contabilidad/${c.pid}/analisis-canales`);
       expect(canales.body.canales).toHaveLength(1);
-      // 300 comisión + 48 IVA + 10 ISR + 80 IVA retenido
-      expect(canales.body.canales[0]).toMatchObject({ institucion: 'Uber Eats', transacciones: 1, total_bruto: 1000, total_deducciones: 438, total_neto: 562 });
-      expect(canales.body.totales.porcentaje_fuga_global).toBe(43.8);
+      // 300 comisión + 48 IVA + retenciones sobre la venta sin IVA (862.07):
+      // 8.62 ISR + 68.97 IVA retenido = 425.59. Redondeado: antes salía 425.59000000000003.
+      expect(canales.body.canales[0]).toMatchObject({ institucion: 'Uber Eats', transacciones: 1, total_bruto: 1000, total_deducciones: 425.59, total_neto: 574.41 });
+      expect(canales.body.totales.porcentaje_fuga_global).toBe(42.6);
 
       const liq = await c.api.get(`/contabilidad/${c.pid}/liquidaciones`);
-      expect(liq.body.kpis).toMatchObject({ total_pendiente_cobro: 562, conteo_pendientes: 1, total_comisiones_deducidas: 438 });
+      expect(liq.body.kpis).toMatchObject({ total_pendiente_cobro: 574.41, conteo_pendientes: 1, total_comisiones_deducidas: 425.59 });
       expect(liq.body.movimientos).toHaveLength(1);
       expect((await c.api.get(`/contabilidad/${c.pid}/liquidaciones?estado=liquidado`)).body.movimientos).toHaveLength(0);
     });
